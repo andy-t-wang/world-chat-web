@@ -1,71 +1,71 @@
-# XMTP E2EE Chat Application Specification
+# XMTP E2EE Chat Application
 
-> A state-of-the-art, performant web-based end-to-end encrypted messaging application built on the XMTP protocol.
+> Desktop-first web messaging app built on XMTP protocol with Telegram-style split-pane layout.
 
-## Project Overview
+## Quick Start
 
-This document defines the architecture and implementation guidelines for building a high-performance, secure chat application using XMTP as the underlying messaging protocol. The design draws inspiration from Signal and WhatsApp's approaches while optimizing for web browser constraints.
-
----
+```bash
+pnpm install
+pnpm dev        # http://localhost:3000 → redirects to /chat
+pnpm exec tsc --noEmit  # Type check
+```
 
 ## Tech Stack
 
-Use pnpm as the package manager.
-
-### Core Framework
-
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **Next.js 16** | App framework (App Router) | ^16.1.0 |
-| **React 19.2** | UI library (View Transitions, Activity) | ^19.2.0 |
-| **TypeScript** | Type safety | ^5.7.0 |
-| **Tailwind CSS** | Styling | ^4.0.0 |
-| **Turbopack** | Bundler (default in Next.js 16) | bundled |
-
-### Next.js 16 Key Features We Leverage
-
-| Feature | Usage in This App |
-|---------|-------------------|
-| **Turbopack** | Default bundler - 5-10x faster Fast Refresh, 2-5x faster builds |
-| **Cache Components** | Explicit `"use cache"` for conversation list, user profiles |
-| **proxy.ts** | Replaces middleware.ts - handles auth redirects, rate limiting |
-| **React Compiler** | Automatic memoization (enabled) - reduces manual memo/useCallback |
-| **View Transitions** | Smooth animations between conversation views |
-| **Activity** | Background conversation rendering while maintaining state |
-
-### XMTP & Messaging
-
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **@xmtp/browser-sdk** | XMTP client for browsers | latest |
-| **libxmtp (WASM)** | Core protocol (bundled with SDK) | - |
-
-### State Management & Data
-
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **Jotai** | Atomic state management | ^2.10.0 |
-| **jotai/utils** | atomFamily, splitAtom | - |
-| **Dexie.js** | IndexedDB wrapper (optional cache) | ^4.0.0 |
-
-### UI Performance
-
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **@tanstack/react-virtual** | List virtualization | ^3.10.0 |
-| **lucide-react** | Icons | ^0.460.0 |
-
-### Wallet & Auth
-
-| Technology | Purpose | Version |
-|------------|---------|---------|
-| **wagmi** | Wallet connection | ^2.0.0 |
-| **viem** | Ethereum interactions | ^2.0.0 |
-| **@privy-io/react-auth** | Auth (alternative) | optional |
+| Technology | Purpose |
+|------------|---------|
+| **Next.js 16.1** | App framework (App Router, Turbopack) |
+| **React 19.2** | UI library |
+| **TypeScript 5** | Type safety (target: ES2020) |
+| **Tailwind CSS 4** | Styling |
+| **Jotai** | Atomic state management |
+| **@tanstack/react-virtual** | List virtualization |
+| **@xmtp/browser-sdk** | E2EE messaging protocol |
+| **wagmi + viem** | Wallet connection |
+| **lucide-react** | Icons |
 
 ---
 
-## Architecture Overview
+## Architecture
+
+### Layout Structure (Telegram-style)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        /chat                                 │
+├──────────────────┬──────────────────────────────────────────┤
+│    Sidebar       │           MessagePanel                   │
+│   (320-380px)    │         (flex-1)                         │
+│                  │                                          │
+│  ┌────────────┐  │  ┌────────────────────────────────────┐ │
+│  │ Search     │  │  │ Header (name, avatar, status)      │ │
+│  ├────────────┤  │  ├────────────────────────────────────┤ │
+│  │ Chat       │  │  │                                    │ │
+│  │ Requests   │  │  │ Messages Area (virtualized)        │ │
+│  ├────────────┤  │  │ - Incoming: white bg, left aligned │ │
+│  │            │  │  │ - Outgoing: blue bg, right aligned │ │
+│  │ Convo List │  │  │                                    │ │
+│  │ (virtual)  │  │  ├────────────────────────────────────┤ │
+│  │            │  │  │ Input (attach, text, emoji, send)  │ │
+│  └────────────┘  │  └────────────────────────────────────┘ │
+│                  │                                          │
+│  Selected =      │  No selection = EmptyState              │
+│  blue bg #005CFF │                                          │
+└──────────────────┴──────────────────────────────────────────┘
+```
+
+### State Management (Jotai)
+
+Key atoms in `stores/`:
+
+| Atom | Purpose |
+|------|---------|
+| `selectedConversationIdAtom` | Currently selected conversation (drives MessagePanel) |
+| `conversationIdsAtom` | List of conversation IDs |
+| `conversationMetadataAtom(id)` | Metadata per conversation (preview, unread, etc.) |
+| `messageAtomFamily(id)` | Individual message data (granular updates) |
+| `conversationMessageIdsAtom(id)` | Message IDs per conversation |
+| `xmtpClientAtom` | XMTP client instance |
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -121,63 +121,40 @@ Use pnpm as the package manager.
 ## Directory Structure
 
 ```
-/                                 # Project root (no src/ folder)
-├── app/                          # Next.js App Router
-│   ├── layout.tsx                # Root layout with providers (JotaiProvider)
-│   ├── page.tsx                  # Redirects to /chat
-│   ├── globals.css               # Global styles
-│   ├── chat/
-│   │   ├── layout.tsx            # Chat layout (full height container)
-│   │   ├── page.tsx              # Conversation list page
-│   │   └── [conversationId]/
-│   │       └── page.tsx          # Individual conversation view (TODO)
-│   └── api/                      # API routes (if needed)
+/
+├── app/
+│   ├── layout.tsx          # Root layout + JotaiProvider
+│   ├── page.tsx            # Redirects to /chat
+│   └── chat/
+│       ├── layout.tsx      # Full-height flex container
+│       └── page.tsx        # Sidebar + MessagePanel/EmptyState
 │
 ├── components/
 │   ├── chat/
-│   │   ├── index.ts              # Barrel export
-│   │   ├── ConversationList.tsx  # Virtualized conversation list ✅
-│   │   ├── ConversationItem.tsx  # Single conversation preview ✅
-│   │   ├── ChatHeader.tsx        # Header with search, scan, profile ✅
-│   │   ├── ChatRequestsBanner.tsx # Pending requests banner ✅
-│   │   ├── NewChatButton.tsx     # FAB for new conversation ✅
-│   │   ├── MessageList.tsx       # Virtualized message list (TODO)
-│   │   ├── MessageRow.tsx        # Individual message (TODO)
-│   │   ├── MessageInput.tsx      # Compose input (TODO)
-│   │   ├── MessageReactions.tsx  # Reactions display (TODO)
-│   │   └── MessageStatus.tsx     # Delivery status indicators (TODO)
+│   │   ├── Sidebar.tsx         # Left panel (search + conversation list)
+│   │   ├── ConversationList.tsx # Virtualized list
+│   │   ├── ConversationItem.tsx # Single conversation row
+│   │   ├── ChatRequestsBanner.tsx
+│   │   ├── MessagePanel.tsx    # Right panel (header + messages + input)
+│   │   └── EmptyState.tsx      # Shown when no conversation selected
 │   ├── ui/
-│   │   ├── index.ts              # Barrel export
-│   │   ├── Avatar.tsx            # Letter/image avatar with color palette ✅
-│   │   └── VerificationBadge.tsx # Blue checkmark badge ✅
+│   │   ├── Avatar.tsx          # Letter/image avatar with color palette
+│   │   └── VerificationBadge.tsx
 │   └── providers/
-│       ├── index.ts              # Barrel export
-│       ├── JotaiProvider.tsx     # Jotai state provider ✅
-│       ├── XMTPProvider.tsx      # XMTP client context (TODO)
-│       └── WalletProvider.tsx    # Wallet connection (TODO)
+│       └── JotaiProvider.tsx
 │
-├── stores/                       # Jotai atoms ✅
-│   ├── index.ts                  # Barrel export
-│   ├── messages.ts               # Message atoms and families
-│   ├── conversations.ts          # Conversation atoms
-│   ├── client.ts                 # XMTP client atom
-│   └── ui.ts                     # UI state (selected conversation, etc.)
+├── stores/                 # Jotai atoms
+│   ├── client.ts           # XMTP client state
+│   ├── conversations.ts    # Conversation atoms + derived
+│   ├── messages.ts         # Message atoms + pagination
+│   └── ui.ts               # UI state (selection, modals, toasts)
 │
-├── hooks/                        # Custom React hooks (TODO)
-│   ├── useXMTPClient.ts          # Client initialization
-│   ├── useConversations.ts       # Conversation list with streaming
-│   ├── useMessages.ts            # Message loading and pagination
-│   ├── useMessageStream.ts       # Real-time message streaming
-│   └── useSendMessage.ts         # Optimistic message sending
+├── types/
+│   ├── xmtp.ts             # XMTP type extensions
+│   └── messages.ts         # Message-related types
 │
-├── lib/
-│   └── utils/
-│       └── lru.ts                # LRU cache implementation ✅
-│
-├── types/                        # TypeScript types ✅
-│   ├── index.ts                  # Barrel export
-│   ├── xmtp.ts                   # XMTP type extensions
-│   └── messages.ts               # Message-related types
+├── lib/utils/
+│   └── lru.ts              # LRU cache for memory management
 │
 ├── config/
 │   └── constants.ts              # App constants ✅
@@ -1083,35 +1060,19 @@ If migrating from Next.js 15, note these changes:
 
 ## Design System
 
-### Figma Design References
-
-Use the designs here for each section from figma. These are mobile first designs that you should be able to adapt to desktop as needed.
-
-| Screen | Figma URL |
-|--------|-----------|
-| **Conversation List** | https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=148945-77900&m=dev |
-| **Conversation View** | https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71232&m=dev |
-| **Payments & Link Preview** | https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71230&m=dev |
-| **Base Setup** | https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=100779-46314&m=dev |
-
-### Design Tokens (from Figma)
-
-#### Colors
+### Colors (from Figma)
 
 | Token | Hex | Usage |
 |-------|-----|-------|
-| `Primary/Grey/900` | `#181818` | Primary text, dark elements |
-| `Primary/Grey/500` | `#717680` | Secondary text, message preview |
-| `Primary/Grey/400` | `#9BA3AE` | Muted text, timestamps, icons |
-| `Primary/Grey/100` | `#F5F5F5` | Backgrounds, search input |
-| `Primary/Grey/0` | `#FFFFFF` | White backgrounds |
-| `Primary/Info/600` | `#005CFF` | Links, verification badge, unread count |
-| `Primary/Success/600` | `#00C230` | Online status, success states |
-| `Primary/Success/200` | `#CCF3D9` | Success background (avatar) |
+| Grey/900 | `#181818` | Primary text |
+| Grey/500 | `#717680` | Secondary text, previews |
+| Grey/400 | `#9BA3AE` | Muted text, timestamps |
+| Grey/100 | `#F5F5F5` | Backgrounds |
+| Info/600 | `#005CFF` | Selected state, links, badges |
+| Success/600 | `#00C230` | Online status |
+| Success/200 | `#CCF3D9` | Avatar backgrounds |
 
-#### Avatar Color Palette
-
-Letter-based avatars use a consistent color palette based on name hash:
+### Avatar Colors
 
 ```typescript
 const AVATAR_COLORS = [
@@ -1140,23 +1101,42 @@ const AVATAR_COLORS = [
 
 | Element | Size |
 |---------|------|
-| Avatar (md) | 52px |
-| Avatar (sm) | 36px |
-| Avatar (lg) | 72px |
-| Conversation item height | 72px |
+| Sidebar width | 320px (lg: 380px) |
+| Avatar sm/md/lg | 36px / 52px / 72px |
+| Conversation item height | 56px (desktop) |
 | Message row estimate | 72px |
-| FAB button | 56px |
-| Search input height | 44px |
-| Horizontal padding | 24px (px-6) |
 
-#### Component Patterns
+### ConversationItem Selected State
 
-**ConversationItem:**
-- Full-width button for tap target
-- Avatar + content container with gap-3 (12px)
-- Name truncated at 200px max-width
-- Preview text truncated with ellipsis
-- Right side: timestamp + indicators stacked
+- Background: `#005CFF` (hover: `#0052E0`)
+- Text: white, secondary text: `white/70`
+- Unread badge: inverted (white bg, blue text)
+
+---
+
+## Figma Design References
+
+| Screen | Node ID | URL |
+|--------|---------|-----|
+| Conversation List | `148945:77900` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=148945-77900&m=dev) |
+| Conversation View | `138629:71232` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71232&m=dev) |
+| Payments & Link Preview | `138629:71230` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71230&m=dev) |
+
+**Note**: Figma designs are mobile-first. Adapt to desktop split-pane layout.
+
+---
+
+## Key Implementation Decisions
+
+1. **Desktop-first layout** - Split-pane like Telegram, not mobile stacked view
+2. **Jotai atomFamily** - Granular subscriptions for O(1) message updates
+3. **Virtualization** - @tanstack/react-virtual for large lists
+4. **Selected state in Jotai** - `selectedConversationIdAtom` drives which panel shows
+5. **LRU cache** - Evict old messages from memory (max 1000)
+6. **Optimistic updates** - Show pending messages immediately
+7. **XMTP insertedAtNs** - Use for pagination (stable ordering vs sentAtNs)
+
+---
 
 **ChatHeader:**
 - Three-column layout: scan | title | profile
