@@ -182,13 +182,24 @@ class XMTPStreamManager {
       }
 
       // Get last message preview (newest first)
+      // Fetch a few messages to find the first displayable one (skip read receipts, reactions)
       const messages = await conv.messages({
-        limit: BigInt(1),
+        limit: BigInt(10),
         direction: SortDirection.Descending,
       });
-      if (messages.length > 0) {
-        lastMessagePreview = extractMessageContent(messages[0]);
-        lastActivityNs = messages[0].sentAtNs;
+
+      // Find first message with displayable content
+      for (const msg of messages) {
+        const content = extractMessageContent(msg);
+        if (content) {
+          lastMessagePreview = content;
+          lastActivityNs = msg.sentAtNs;
+          break;
+        }
+        // Still track activity time even for non-displayable messages
+        if (lastActivityNs === BigInt(0)) {
+          lastActivityNs = msg.sentAtNs;
+        }
       }
     } catch (error) {
       console.error('[StreamManager] Error building metadata for', conv.id, error);
@@ -462,7 +473,12 @@ class XMTPStreamManager {
           // Update conversation metadata
           const metadata = this.conversationMetadata.get(conversationId);
           if (metadata) {
-            metadata.lastMessagePreview = extractMessageContent(msg);
+            // Only update preview if message has displayable content
+            const content = extractMessageContent(msg);
+            if (content) {
+              metadata.lastMessagePreview = content;
+            }
+            // Always update activity time
             metadata.lastActivityNs = msg.sentAtNs;
             // Notify UI of metadata change
             this.incrementMetadataVersion();
