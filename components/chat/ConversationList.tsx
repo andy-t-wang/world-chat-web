@@ -51,11 +51,29 @@ export function ConversationList({
     const data = metadata.get(id);
     if (!data) return null;
 
-    return {
+    // Base props common to all conversation types
+    const baseProps = {
       id: data.id,
-      peerAddress: data.peerAddress,
+      conversationType: data.conversationType,
       lastMessage: data.lastMessagePreview ?? undefined,
       timestamp: formatTimestamp(data.lastActivityNs),
+    };
+
+    // Add type-specific props
+    if (data.conversationType === 'group') {
+      return {
+        ...baseProps,
+        groupName: data.groupName,
+        memberCount: data.memberCount,
+        memberPreviews: data.memberPreviews,
+        avatarUrl: data.groupImageUrl,
+      };
+    }
+
+    // DM props
+    return {
+      ...baseProps,
+      peerAddress: data.peerAddress,
       isVerified: true, // TODO: Check verification status
     };
   };

@@ -13,32 +13,72 @@ import { VIRTUALIZATION } from '@/config/constants';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage } from '@/types/messages';
 
+interface MemberPreview {
+  inboxId: string;
+  address: string;
+}
+
+// Helper component to display sender name in group messages
+function GroupMessageSender({ address }: { address: string | undefined }) {
+  const { displayName } = useUsername(address);
+  const name = displayName ?? (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Unknown');
+
+  return (
+    <span className="text-xs font-medium text-[#005CFF] ml-1 mb-1 block">
+      {name}
+    </span>
+  );
+}
+
 interface MessagePanelProps {
   conversationId: string;
-  /** Peer's wallet address for username/avatar lookup */
-  peerAddress: string;
+  /** Type of conversation */
+  conversationType: 'dm' | 'group';
+  /** Peer's wallet address for username/avatar lookup (DMs) */
+  peerAddress?: string;
   /** Override display name */
   name?: string;
   /** Override avatar URL */
   avatarUrl?: string | null;
   isVerified?: boolean;
   subtitle?: string;
+  /** Group name (for groups) */
+  groupName?: string;
+  /** Member count (for groups) */
+  memberCount?: number;
+  /** Member previews for group avatar */
+  memberPreviews?: MemberPreview[];
 }
 
 export function MessagePanel({
   conversationId,
+  conversationType,
   peerAddress,
   name: nameOverride,
   avatarUrl,
   isVerified = false,
   subtitle,
+  groupName,
+  memberCount,
+  memberPreviews,
 }: MessagePanelProps) {
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
-  const { displayName } = useUsername(peerAddress);
-  const name = nameOverride ?? displayName;
+  // For DMs: Fetch username from World App Username API
+  const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
+
+  // Determine display name based on conversation type
+  const name = conversationType === 'group'
+    ? (groupName || 'Group Chat')
+    : (nameOverride ?? displayName);
+
+  // Subtitle for groups (member count)
+  const groupSubtitle = conversationType === 'group' && memberCount
+    ? `${memberCount} members`
+    : undefined;
+
   const client = useAtomValue(xmtpClientAtom);
 
   // Use messages hook
@@ -191,14 +231,24 @@ export function MessagePanel({
       {/* Header */}
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
-          <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+          {conversationType === 'group' ? (
+            <Avatar
+              isGroup
+              groupName={groupName}
+              imageUrl={avatarUrl}
+              memberPreviews={memberPreviews}
+              size="sm"
+            />
+          ) : (
+            <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+          )}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-[#181818]">{name}</span>
-              {isVerified && <VerificationBadge size="sm" />}
+              {isVerified && conversationType === 'dm' && <VerificationBadge size="sm" />}
             </div>
-            {subtitle && (
-              <span className="text-sm text-[#717680]">{subtitle}</span>
+            {(subtitle || groupSubtitle) && (
+              <span className="text-sm text-[#717680]">{subtitle || groupSubtitle}</span>
             )}
           </div>
         </div>
@@ -333,6 +383,11 @@ export function MessagePanel({
               }
 
               // Incoming message
+              // For groups, find sender address from member previews
+              const senderAddress = conversationType === 'group'
+                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                : peerAddress;
+
               return (
                 <div
                   key={item.id}
@@ -345,8 +400,18 @@ export function MessagePanel({
                   }}
                   className="flex gap-2 py-1"
                 >
-                  <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" className="shrink-0 mt-1" />
+                  <Avatar
+                    address={senderAddress}
+                    name={conversationType === 'dm' ? nameOverride : undefined}
+                    imageUrl={conversationType === 'dm' ? avatarUrl : undefined}
+                    size="sm"
+                    className="shrink-0 mt-1"
+                  />
                   <div className="max-w-[70%]">
+                    {/* Show sender name for group messages */}
+                    {conversationType === 'group' && (
+                      <GroupMessageSender address={senderAddress} />
+                    )}
                     <div className="bg-white rounded-2xl rounded-tl-md px-4 py-2 shadow-sm">
                       <p className="text-[#181818] whitespace-pre-wrap break-words">{text}</p>
                     </div>

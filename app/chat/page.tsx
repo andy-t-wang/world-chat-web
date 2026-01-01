@@ -102,12 +102,25 @@ export default function ChatPage() {
 
         {/* Right Panel */}
         {selectedId && conversationMetadata ? (
-          <MemoizedMessagePanel
-            key={selectedId}
-            conversationId={selectedId}
-            peerAddress={conversationMetadata.peerAddress}
-            isVerified={true}
-          />
+          conversationMetadata.conversationType === 'group' ? (
+            <MemoizedMessagePanel
+              key={selectedId}
+              conversationId={selectedId}
+              conversationType="group"
+              groupName={conversationMetadata.groupName}
+              memberCount={conversationMetadata.memberCount}
+              memberPreviews={conversationMetadata.memberPreviews}
+              avatarUrl={conversationMetadata.groupImageUrl}
+            />
+          ) : (
+            <MemoizedMessagePanel
+              key={selectedId}
+              conversationId={selectedId}
+              conversationType="dm"
+              peerAddress={conversationMetadata.peerAddress}
+              isVerified={true}
+            />
+          )
         ) : (
           <EmptyState />
         )}

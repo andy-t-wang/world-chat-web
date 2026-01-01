@@ -5,14 +5,27 @@ import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { useUsername } from '@/hooks/useUsername';
 
+interface MemberPreview {
+  inboxId: string;
+  address: string;
+}
+
 export interface ConversationItemProps {
   id: string;
-  /** Peer's wallet address - used to lookup username and profile picture */
-  peerAddress: string;
+  /** Type of conversation */
+  conversationType: 'dm' | 'group';
+  /** Peer's wallet address - used for DMs */
+  peerAddress?: string;
   /** Override display name (if not using username lookup) */
   name?: string;
   /** Override avatar URL (if not using profile picture lookup) */
   avatarUrl?: string | null;
+  /** Group name - for groups */
+  groupName?: string;
+  /** Number of members - for groups */
+  memberCount?: number;
+  /** Member previews for group avatars */
+  memberPreviews?: MemberPreview[];
   isVerified?: boolean;
   lastMessage?: string | null;
   lastMessageType?: 'text' | 'image' | 'video' | 'deleted' | 'reaction';
@@ -79,9 +92,13 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
 export function ConversationItem(props: ConversationItemProps) {
   const {
+    conversationType,
     peerAddress,
     name: nameOverride,
     avatarUrl,
+    groupName,
+    memberCount,
+    memberPreviews,
     isVerified = false,
     timestamp,
     unreadCount = 0,
@@ -91,12 +108,18 @@ export function ConversationItem(props: ConversationItemProps) {
     onClick,
   } = props;
 
-  // Fetch username and profile picture from World App Username API
-  const { displayName, record } = useUsername(peerAddress);
-  const name = nameOverride ?? displayName;
+  // For DMs: Fetch username and profile picture from World App Username API
+  const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
 
-  // Show orb verification badge if user has World ID orb verification
-  // For now, we use the isVerified prop since verification level isn't in the UsernameRecord
+  // Determine display name based on conversation type
+  const name = conversationType === 'group'
+    ? (groupName || 'Group Chat')
+    : (nameOverride ?? displayName);
+
+  // Subtitle for groups (member count)
+  const subtitle = conversationType === 'group' && memberCount
+    ? `${memberCount} members`
+    : undefined;
 
   return (
     <button
@@ -110,24 +133,34 @@ export function ConversationItem(props: ConversationItemProps) {
         }
       `}
     >
-      {/* Avatar - uses address to auto-fetch profile picture */}
-      <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+      {/* Avatar */}
+      {conversationType === 'group' ? (
+        <Avatar
+          isGroup
+          groupName={groupName}
+          imageUrl={avatarUrl}
+          memberPreviews={memberPreviews}
+          size="sm"
+        />
+      ) : (
+        <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+      )}
 
       {/* Content */}
       <div className="flex-1 min-w-0 flex items-center gap-3">
-        {/* User Info */}
+        {/* User/Group Info */}
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           {/* Name Row */}
           <div className="flex items-center gap-1">
             <span className={`text-[15px] font-medium truncate max-w-[160px] ${isSelected ? 'text-white' : 'text-[#181818]'}`}>
               {name}
             </span>
-            {isVerified && <VerificationBadge size="sm" />}
+            {isVerified && conversationType === 'dm' && <VerificationBadge size="sm" />}
           </div>
 
-          {/* Preview Row */}
+          {/* Preview Row - show subtitle for groups if no last message, otherwise show preview */}
           <div className={`text-[14px] leading-[1.3] truncate ${isSelected ? 'text-white/70' : 'text-[#717680]'}`}>
-            {formatPreview(props)}
+            {props.lastMessage ? formatPreview(props) : (subtitle || formatPreview(props))}
           </div>
         </div>
 

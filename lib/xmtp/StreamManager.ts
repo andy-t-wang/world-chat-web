@@ -27,10 +27,24 @@ import type { PaginationState } from '@/types/messages';
 // Conversation type
 type Conversation = Dm | Group;
 
+// Member preview for group avatars
+interface MemberPreview {
+  inboxId: string;
+  address: string;
+}
+
 interface ConversationMetadata {
   id: string;
+  conversationType: 'dm' | 'group';
+  // For DMs
   peerAddress: string;
   peerInboxId: string;
+  // For Groups
+  groupName?: string;
+  groupImageUrl?: string;
+  memberCount?: number;
+  memberPreviews?: MemberPreview[];
+  // Common
   lastMessagePreview: string;
   lastActivityNs: bigint;
 }
@@ -168,14 +182,20 @@ class XMTPStreamManager {
    * Build metadata for a conversation
    */
   private async buildConversationMetadata(conv: Conversation): Promise<ConversationMetadata> {
+    let conversationType: 'dm' | 'group' = 'dm';
     let peerAddress = '';
     let peerInboxId = '';
+    let groupName: string | undefined;
+    let groupImageUrl: string | undefined;
+    let memberCount: number | undefined;
+    let memberPreviews: MemberPreview[] | undefined;
     let lastMessagePreview = '';
     let lastActivityNs = BigInt(0);
 
     try {
-      // Get peer info for DMs
       if (isDm(conv)) {
+        // DM: Get peer info
+        conversationType = 'dm';
         peerInboxId = await conv.peerInboxId();
         const members = await conv.members();
         for (const member of members) {
@@ -184,6 +204,19 @@ class XMTPStreamManager {
             break;
           }
         }
+      } else {
+        // Group: Get group info
+        conversationType = 'group';
+        const group = conv as Group;
+        groupName = group.name;
+        groupImageUrl = group.imageUrl;
+        const members = await group.members();
+        memberCount = members.length;
+        // Get first 4 members for avatar previews
+        memberPreviews = members.slice(0, 4).map((m) => ({
+          inboxId: m.inboxId,
+          address: m.accountIdentifiers?.[0]?.identifier ?? '',
+        }));
       }
 
       // Get last message preview (newest first)
@@ -212,8 +245,13 @@ class XMTPStreamManager {
 
     return {
       id: conv.id,
+      conversationType,
       peerAddress,
       peerInboxId,
+      groupName,
+      groupImageUrl,
+      memberCount,
+      memberPreviews,
       lastMessagePreview,
       lastActivityNs,
     };

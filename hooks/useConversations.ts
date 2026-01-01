@@ -11,12 +11,28 @@ import {
 import { streamManager } from '@/lib/xmtp/StreamManager';
 
 /**
+ * Member preview for group avatars
+ */
+export interface MemberPreview {
+  inboxId: string;
+  address: string;
+}
+
+/**
  * Conversation metadata returned by the hook
  */
 export interface ConversationMetadata {
   id: string;
+  conversationType: 'dm' | 'group';
+  // For DMs
   peerAddress: string;
   peerInboxId: string;
+  // For Groups
+  groupName?: string;
+  groupImageUrl?: string;
+  memberCount?: number;
+  memberPreviews?: MemberPreview[];
+  // Common
   lastMessagePreview: string;
   lastActivityNs: bigint;
 }
@@ -58,6 +74,8 @@ export function useConversations() {
 export function useConversationMetadata(conversationId: string | null): ConversationMetadata | null {
   // Subscribe to conversationIds to know when conversations are loaded
   const conversationIds = useAtomValue(conversationIdsAtom);
+  // Subscribe to metadata version to re-render when metadata changes
+  const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
 
   // Memoize the result to prevent unnecessary re-renders
   const metadata = useMemo(() => {
@@ -67,7 +85,7 @@ export function useConversationMetadata(conversationId: string | null): Conversa
       return null;
     }
     return streamManager.getConversationMetadata(conversationId) ?? null;
-  }, [conversationId, conversationIds]);
+  }, [conversationId, conversationIds, metadataVersion]);
 
   return metadata;
 }
