@@ -3,10 +3,15 @@
 import { Pin, BellOff, Image, Video, Ban } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import { useUsername } from '@/hooks/useUsername';
 
 export interface ConversationItemProps {
   id: string;
-  name: string;
+  /** Peer's wallet address - used to lookup username and profile picture */
+  peerAddress: string;
+  /** Override display name (if not using username lookup) */
+  name?: string;
+  /** Override avatar URL (if not using profile picture lookup) */
   avatarUrl?: string | null;
   isVerified?: boolean;
   lastMessage?: string | null;
@@ -74,7 +79,8 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
 export function ConversationItem(props: ConversationItemProps) {
   const {
-    name,
+    peerAddress,
+    name: nameOverride,
     avatarUrl,
     isVerified = false,
     timestamp,
@@ -84,6 +90,13 @@ export function ConversationItem(props: ConversationItemProps) {
     isSelected = false,
     onClick,
   } = props;
+
+  // Fetch username and profile picture from World App Username API
+  const { displayName, record } = useUsername(peerAddress);
+  const name = nameOverride ?? displayName;
+
+  // Show orb verification badge if user has World ID orb verification
+  // For now, we use the isVerified prop since verification level isn't in the UsernameRecord
 
   return (
     <button
@@ -97,8 +110,8 @@ export function ConversationItem(props: ConversationItemProps) {
         }
       `}
     >
-      {/* Avatar */}
-      <Avatar name={name} imageUrl={avatarUrl} size="sm" />
+      {/* Avatar - uses address to auto-fetch profile picture */}
+      <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
 
       {/* Content */}
       <div className="flex-1 min-w-0 flex items-center gap-3">

@@ -26,6 +26,7 @@ export const conversationMetadataAtom = atomFamily((conversationId: string) =>
     unreadCount: 0,
     peerAddress: '',
     peerInboxId: '',
+    isActive: true,
   })
 );
 
@@ -33,8 +34,12 @@ interface ConversationMetadata {
   lastMessagePreview: string | null;
   lastActivityNs: bigint;
   unreadCount: number;
+  /** Display only - NOT for operations */
   peerAddress: string;
+  /** Primary identifier - use for all operations */
   peerInboxId: string;
+  /** Whether conversation is active (false after history import until reactivated) */
+  isActive: boolean;
 }
 
 /**
@@ -169,7 +174,9 @@ export const conversationWithMetadataAtom = atomFamily((conversationId: string) 
       lastMessagePreview: meta.lastMessagePreview,
       lastActivityNs: meta.lastActivityNs,
       unreadCount: meta.unreadCount,
+      peerInboxId: meta.peerInboxId,
       peerAddress: meta.peerAddress,
+      isActive: meta.isActive,
     };
   })
 );

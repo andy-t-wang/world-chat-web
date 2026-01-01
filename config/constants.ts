@@ -63,6 +63,18 @@ export const UI = {
   AVATAR_SIZE: 40,
 } as const;
 
+/** World App Username API Configuration */
+export const USERNAME_API = {
+  /** Base URL for the Username API */
+  BASE_URL: 'https://usernames.worldcoin.org',
+  /** Maximum addresses to query in a single batch request */
+  MAX_BATCH_SIZE: 100,
+  /** Cache TTL in milliseconds (5 minutes) */
+  CACHE_TTL_MS: 5 * 60 * 1000,
+  /** Maximum usernames to cache */
+  MAX_CACHE_SIZE: 500,
+} as const;
+
 /** Local Storage Keys */
 export const STORAGE_KEYS = {
   /** Key for storing encryption salt */

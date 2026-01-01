@@ -1,9 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
+import { useUsername } from '@/hooks/useUsername';
 
 interface AvatarProps {
-  name: string;
+  /** Display name for initials fallback */
+  name?: string;
+  /** Wallet address to lookup username/profile picture */
+  address?: string | null;
+  /** Direct image URL (overrides address lookup) */
   imageUrl?: string | null;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -43,21 +48,30 @@ function getColorFromName(name: string): (typeof AVATAR_COLORS)[number] {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-export function Avatar({ name, imageUrl, size = 'md', className = '' }: AvatarProps) {
-  const initials = useMemo(() => getInitials(name), [name]);
-  const colors = useMemo(() => getColorFromName(name), [name]);
+export function Avatar({ name, address, imageUrl, size = 'md', className = '' }: AvatarProps) {
+  const { displayName, profilePicture } = useUsername(address);
+  const [imgError, setImgError] = useState(false);
+
+  // Use provided name, or fall back to username/address from hook
+  const displayLabel = name ?? displayName ?? '';
+  const initials = useMemo(() => getInitials(displayLabel), [displayLabel]);
+  const colors = useMemo(() => getColorFromName(displayLabel), [displayLabel]);
   const dimensions = SIZE_MAP[size];
 
-  if (imageUrl) {
+  // Priority: explicit imageUrl > profile picture from API
+  const avatarUrl = imageUrl ?? (imgError ? null : profilePicture);
+
+  if (avatarUrl) {
     return (
       <div
         className={`relative shrink-0 rounded-full overflow-hidden ${className}`}
         style={{ width: dimensions.container, height: dimensions.container }}
       >
         <img
-          src={imageUrl}
-          alt={name}
+          src={avatarUrl}
+          alt={displayLabel}
           className="w-full h-full object-cover"
+          onError={() => setImgError(true)}
         />
       </div>
     );

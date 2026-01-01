@@ -27,7 +27,12 @@ export interface ConversationWithMetadata {
   lastMessagePreview: string | null;
   lastActivityNs: bigint;
   unreadCount: number;
-  peerAddress: string;
+  /** Primary identifier - use for all operations */
+  peerInboxId: string;
+  /** Display only - NOT for operations */
+  peerAddress?: string;
+  /** Whether conversation is active (false after history import until reactivated) */
+  isActive: boolean;
 }
 
 /** Message content types supported by the app */

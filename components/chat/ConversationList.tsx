@@ -18,10 +18,12 @@ interface ConversationListProps {
 }
 
 // Demo data for initial UI development
+// Using mock wallet addresses - in production these come from XMTP conversations
 const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   {
     id: '1',
-    name: 'Dave',
+    peerAddress: '0x1234567890123456789012345678901234567890',
+    name: 'Dave', // Override name for demo (normally fetched from username API)
     isVerified: true,
     lastMessage: 'Ok!',
     timestamp: '16:14',
@@ -29,6 +31,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '2',
+    peerAddress: '0x2345678901234567890123456789012345678901',
     name: 'Ethan Carter',
     isVerified: true,
     lastMessage: 'I mean he wrecked it!',
@@ -38,6 +41,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '3',
+    peerAddress: '0x3456789012345678901234567890123456789012',
     name: 'Alex',
     isVerified: true,
     isTyping: true,
@@ -46,6 +50,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '4',
+    peerAddress: '0x4567890123456789012345678901234567890123',
     name: 'Munichers',
     isVerified: true,
     isTyping: true,
@@ -55,6 +60,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '5',
+    peerAddress: '0x5678901234567890123456789012345678901234',
     name: 'Tiago',
     isVerified: true,
     lastMessageType: 'reaction',
@@ -65,6 +71,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '6',
+    peerAddress: '0x6789012345678901234567890123456789012345',
     name: 'Mr. Strickland',
     isVerified: true,
     lastMessageType: 'deleted',
@@ -73,6 +80,7 @@ const DEMO_CONVERSATIONS: ConversationItemProps[] = [
   },
   {
     id: '7',
+    peerAddress: '0x7890123456789012345678901234567890123456',
     name: 'Peter',
     isVerified: true,
     lastMessageType: 'image',

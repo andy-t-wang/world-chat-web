@@ -10,6 +10,8 @@ pnpm dev        # http://localhost:3000 → redirects to /chat
 pnpm exec tsc --noEmit  # Type check
 ```
 
+Whenever you need to reference the XMTP docs use this: https://github.com/xmtp/docs-xmtp-org/blob/main/llms/llms-chat-apps.txt
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -118,6 +120,161 @@ Key atoms in `stores/`:
 
 ---
 
+## XMTP Identifier Architecture
+
+### Source of Truth: inboxId (NOT address)
+
+**inboxId is the primary identifier** in XMTP. While wallet addresses are used for initial auth, they are NOT the source of truth:
+
+| Identifier | Purpose | Scope |
+|------------|---------|-------|
+| `inboxId` | Unique user identity | Per user (across all devices/wallets) |
+| `installationId` | Device/app instance | Per device installation |
+| `address` | Wallet address | Auth only, NOT conversation key |
+
+**Critical**: Multiple wallet addresses can map to a single inboxId. Always use inboxId for conversation and messaging operations.
+
+### DM Stitching
+
+When a user creates DMs from different installations, XMTP creates separate underlying MLS groups but **presents them as one unified conversation**:
+
+```
+User A (Installation 1) → DM to User B → MLS Group 1 (topic-1)
+User A (Installation 2) → DM to User B → MLS Group 2 (topic-2)
+
+UI displays: Single DM conversation (stitched from both topics)
+```
+
+**Push notification caveat**: Each DM can have multiple topics. You must subscribe to ALL topics via `allPushTopics()` or you'll miss notifications.
+
+### History Sync
+
+XMTP automatically syncs across devices using:
+
+1. **Sync Group**: Special MLS group containing all user's devices
+2. **Sync Worker**: Processes consent, archives, preferences
+3. **History Server**: Stores encrypted payloads with keys distributed via sync group
+
+What syncs: conversations, messages, consent state, HMAC keys.
+
+**Post-import state**: Imported conversations start **inactive** and **read-only**. Check `conversation.isActive()` before network operations. Conversations reactivate when existing members send a message.
+
+### State Mapping to Jotai
+
+```typescript
+// stores/client.ts - Use inboxId as primary identifier
+export const currentInboxIdAtom = atom<string | null>((get) => {
+  const client = get(xmtpClientAtom);
+  return client?.inboxId ?? null;  // NOT accountAddress
+});
+
+// DM creation - always use inboxId
+const dm = await client.conversations.findOrCreateDm(recipientInboxId);
+
+// Check if message is own (compare inboxId, not address)
+const isOwnMessage = message.senderInboxId === currentUserInboxId;
+
+// Conversation active check before operations
+if (!conversation.isActive()) {
+  // Show read-only UI, disable send
+}
+```
+
+### Message Ordering
+
+Use `insertedAtNs` (NOT `sentAtNs`) for pagination:
+
+```typescript
+// Messages may arrive out of order - insertedAtNs provides stable ordering
+const messages = await conversation.messages({
+  sortBy: 'INSERTED',
+  limit: 20,
+  insertedBeforeNs: lastMessage.insertedAtNs,
+});
+```
+
+### Consent States
+
+- Automatic consent when user creates or receives messages in a conversation
+- Consent syncs across devices via sync worker
+- Imported conversations start inactive until reactivated
+
+---
+
+## World App Username API
+
+The app resolves wallet addresses to human-readable usernames and profile pictures via the World App Username API.
+
+### API Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/{address}` | Resolve single address → `UsernameRecord` |
+| `POST /api/v1/query` | Batch resolve addresses → `UsernameRecord[]` |
+| `GET /api/v1/search/{prefix}` | Search usernames (max 10 results) |
+| `GET /api/v1/avatar/{username}` | Redirect to profile picture |
+
+**Base URL**: `https://usernames.worldcoin.org`
+
+### UsernameRecord Schema
+
+```typescript
+interface UsernameRecord {
+  address: `0x${string}`;                    // Checksummed wallet address
+  username: string;                          // World App username
+  profile_picture_url: string | null;        // Full-size avatar
+  minimized_profile_picture_url: string | null; // Thumbnail avatar
+}
+```
+
+### Integration Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Component Layer                                             │
+│  ├─ Avatar (address prop → auto-fetches profile picture)    │
+│  ├─ ConversationItem (peerAddress → displays username)      │
+│  └─ MessageRow (senderAddress → shows sender name)          │
+├─────────────────────────────────────────────────────────────┤
+│  Hook Layer                                                  │
+│  ├─ useUsername(address) → { displayName, profilePicture }  │
+│  └─ useBatchUsernames(addresses[]) → prefetch for lists     │
+├─────────────────────────────────────────────────────────────┤
+│  Store Layer (Jotai)                                         │
+│  └─ usernameAtomFamily(address) → { record, isLoading }     │
+├─────────────────────────────────────────────────────────────┤
+│  Service Layer                                               │
+│  ├─ resolveAddress(address) → single lookup                 │
+│  ├─ resolveAddresses(addresses[]) → batch lookup            │
+│  └─ LRU cache (500 entries, 5min TTL)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Usage Examples
+
+```typescript
+// In a component - automatic username/avatar lookup
+<Avatar address={peerAddress} size="md" />
+<ConversationItem peerAddress={peerAddress} lastMessage="Hello" />
+
+// Manual username lookup with hook
+const { displayName, profilePicture, isLoading } = useUsername(address);
+
+// Batch prefetch for conversation list
+useBatchUsernames(conversationAddresses);
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `types/username.ts` | TypeScript types from OpenAPI spec |
+| `lib/username/service.ts` | API client with LRU caching |
+| `stores/usernames.ts` | Jotai atoms for username state |
+| `hooks/useUsername.ts` | React hook for components |
+
+---
+
 ## Directory Structure
 
 ```
@@ -147,14 +304,22 @@ Key atoms in `stores/`:
 │   ├── client.ts           # XMTP client state
 │   ├── conversations.ts    # Conversation atoms + derived
 │   ├── messages.ts         # Message atoms + pagination
+│   ├── usernames.ts        # Username lookup atoms
 │   └── ui.ts               # UI state (selection, modals, toasts)
+│
+├── hooks/
+│   └── useUsername.ts      # Username lookup hook
 │
 ├── types/
 │   ├── xmtp.ts             # XMTP type extensions
-│   └── messages.ts         # Message-related types
+│   ├── messages.ts         # Message-related types
+│   └── username.ts         # Username API types
 │
-├── lib/utils/
-│   └── lru.ts              # LRU cache for memory management
+├── lib/
+│   ├── utils/
+│   │   └── lru.ts          # LRU cache for memory management
+│   └── username/
+│       └── service.ts      # Username API client with caching
 │
 ├── config/
 │   └── constants.ts              # App constants ✅
