@@ -13,9 +13,6 @@ import { VIRTUALIZATION } from '@/config/constants';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage } from '@/types/messages';
 
-// Debug counter for render tracking
-let messagePanelRenderCount = 0;
-
 interface MessagePanelProps {
   conversationId: string;
   /** Peer's wallet address for username/avatar lookup */
@@ -36,22 +33,15 @@ export function MessagePanel({
   isVerified = false,
   subtitle,
 }: MessagePanelProps) {
-  messagePanelRenderCount++;
-  console.log(`[MessagePanel] Render #${messagePanelRenderCount} for ${conversationId.slice(0, 8)}...`);
-
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
-  console.log(`[MessagePanel] About to call useUsername for ${peerAddress.slice(0, 10)}...`);
-  const { displayName, isLoading: usernameLoading } = useUsername(peerAddress);
-  console.log(`[MessagePanel] useUsername returned: displayName=${displayName}, isLoading=${usernameLoading}`);
-
+  const { displayName } = useUsername(peerAddress);
   const name = nameOverride ?? displayName;
   const client = useAtomValue(xmtpClientAtom);
 
   // Use messages hook
-  console.log(`[MessagePanel] About to call useMessages for ${conversationId.slice(0, 8)}...`);
   const {
     messageIds,
     pendingMessages,
@@ -63,7 +53,6 @@ export function MessagePanel({
     retryMessage,
     getMessage,
   } = useMessages(conversationId);
-  console.log(`[MessagePanel] useMessages returned: messageIds.length=${messageIds.length}, isLoading=${isLoading}, isInitialLoading=${isInitialLoading}`);
 
   // Get own inbox ID for determining message direction
   const ownInboxId = client?.inboxId ?? '';
