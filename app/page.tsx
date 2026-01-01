@@ -1,21 +1,54 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { ConnectWallet } from '@/components/auth/ConnectWallet';
-import { MessageCircle, Shield, Zap } from 'lucide-react';
+import { wasConnected } from '@/lib/auth/session';
+import { MessageCircle, Shield, Zap, Loader2 } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
-  const { isConnected } = useAccount();
+  const { isConnected, isReconnecting } = useAccount();
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [hadPreviousSession, setHadPreviousSession] = useState(false);
+
+  // Check for previous session on mount
+  useEffect(() => {
+    const previouslyConnected = wasConnected();
+    setHadPreviousSession(previouslyConnected);
+    // Give wagmi a moment to reconnect if there was a previous session
+    if (!previouslyConnected) {
+      setIsCheckingAuth(false);
+    }
+  }, []);
 
   // Redirect to chat when connected
   useEffect(() => {
     if (isConnected) {
       router.push('/chat');
+    } else if (hadPreviousSession && !isReconnecting) {
+      // Previous session but couldn't reconnect - show login
+      setIsCheckingAuth(false);
     }
-  }, [isConnected, router]);
+  }, [isConnected, isReconnecting, hadPreviousSession, router]);
+
+  // Show loading while checking auth or reconnecting
+  if (isCheckingAuth && hadPreviousSession) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
+            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
+            <span className="text-[#717680]">Reconnecting...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex flex-col">

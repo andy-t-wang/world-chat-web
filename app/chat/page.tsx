@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, memo } from 'react';
+import { useEffect, useState, memo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { useAtomValue } from 'jotai';
@@ -9,6 +9,7 @@ import { NewConversationModal } from '@/components/chat/NewConversationModal';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { useXmtpClient } from '@/hooks/useXmtpClient';
 import { useConversationMetadata } from '@/hooks/useConversations';
+import { wasConnected } from '@/lib/auth/session';
 import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
@@ -16,23 +17,29 @@ const MemoizedMessagePanel = memo(MessagePanel);
 
 export default function ChatPage() {
   const router = useRouter();
-  const { isConnected, isConnecting } = useAccount();
-  const { client, isInitializing, isReady, error: xmtpError } = useXmtpClient();
+  const { isConnected, isConnecting, isReconnecting } = useAccount();
+  const { client, isInitializing, isReady, isRestoringSession, error: xmtpError } = useXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [hadPreviousSession] = useState(() => wasConnected());
 
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
 
-  // Redirect to home if not connected
+  // Redirect to home only if definitively not connected (not just reconnecting)
   useEffect(() => {
-    if (!isConnecting && !isConnected) {
+    // Don't redirect if we had a previous session and might be reconnecting
+    if (hadPreviousSession && (isConnecting || isReconnecting)) {
+      return;
+    }
+    // Only redirect if we're sure there's no connection
+    if (!isConnecting && !isReconnecting && !isConnected && !hadPreviousSession) {
       router.push('/');
     }
-  }, [isConnected, isConnecting, router]);
+  }, [isConnected, isConnecting, isReconnecting, hadPreviousSession, router]);
 
-  // Show loading while checking wallet connection
-  if (isConnecting || !isConnected) {
+  // Show loading while reconnecting
+  if ((isConnecting || isReconnecting || !isConnected) && hadPreviousSession) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
@@ -40,8 +47,17 @@ export default function ChatPage() {
     );
   }
 
-  // Show XMTP initialization state
-  if (isInitializing) {
+  // Not connected and no previous session - redirect handled by useEffect
+  if (!isConnected) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+      </div>
+    );
+  }
+
+  // Show XMTP initialization state (skip full loading screen for returning users)
+  if (isInitializing && !isRestoringSession) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">

@@ -14,9 +14,12 @@ export interface XMTPClientOptions {
   appVersion?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyClient = Client<any>;
+
 /** Client state for tracking initialization */
 export interface XMTPClientState {
-  client: Client | null;
+  client: AnyClient | null;
   isInitializing: boolean;
   error: Error | null;
 }

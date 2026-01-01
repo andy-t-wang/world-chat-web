@@ -137,8 +137,30 @@ export function MessagePanel({
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
+  // Check if message should be displayed (filter out read receipts, etc.)
+  const shouldDisplayMessage = (message: DecodedMessage): boolean => {
+    const typeId = (message.contentType as { typeId?: string })?.typeId;
+    // Filter out read receipts - they shouldn't appear as messages
+    if (typeId === 'readReceipt') return false;
+    return true;
+  };
+
   // Extract message text content
-  const getMessageText = (message: DecodedMessage): string => {
+  const getMessageText = (message: DecodedMessage): string | null => {
+    const typeId = (message.contentType as { typeId?: string })?.typeId;
+
+    // Skip read receipts entirely
+    if (typeId === 'readReceipt') return null;
+
+    // Handle reactions - show emoji
+    if (typeId === 'reaction') {
+      const content = message.content as { content?: string; action?: string } | undefined;
+      if (content?.content) {
+        return `Reacted ${content.content}`;
+      }
+      return null;
+    }
+
     const content = message.content;
 
     if (typeof content === 'string') {
@@ -146,8 +168,17 @@ export function MessagePanel({
     }
 
     if (content && typeof content === 'object') {
-      if ('text' in content && typeof content.text === 'string') {
-        return content.text;
+      // Handle text content
+      if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
+        return (content as { text: string }).text;
+      }
+      // Handle reply content (has nested content object)
+      if ('content' in content) {
+        const nestedContent = (content as { content: unknown }).content;
+        if (typeof nestedContent === 'string') return nestedContent;
+        if (nestedContent && typeof nestedContent === 'object' && 'text' in nestedContent) {
+          return (nestedContent as { text: string }).text;
+        }
       }
     }
 
@@ -264,8 +295,14 @@ export function MessagePanel({
               const msg = getMessage(item.id);
               if (!msg) return null;
 
+              // Filter out read receipts and other non-displayable messages
+              if (!shouldDisplayMessage(msg)) return null;
+
               const isOwnMessage = msg.senderInboxId === ownInboxId;
               const text = getMessageText(msg);
+
+              // Skip messages with no text content (e.g., reactions handled elsewhere)
+              if (text === null) return null;
 
               if (isOwnMessage) {
                 return (

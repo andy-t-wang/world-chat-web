@@ -4,11 +4,10 @@
  */
 
 import { atom } from 'jotai';
-import type { Client } from '@xmtp/browser-sdk';
-import type { XMTPClientState } from '@/types/xmtp';
+import type { XMTPClientState, AnyClient } from '@/types/xmtp';
 
 /** The XMTP client instance */
-export const xmtpClientAtom = atom<Client | null>(null);
+export const xmtpClientAtom = atom<AnyClient | null>(null);
 
 /** Client initialization state */
 export const clientStateAtom = atom<XMTPClientState>({
@@ -77,6 +76,6 @@ export const clientLifecycleAtom = atom(
 /** Actions for client state management */
 type ClientAction =
   | { type: 'INIT_START' }
-  | { type: 'INIT_SUCCESS'; client: Client }
+  | { type: 'INIT_SUCCESS'; client: AnyClient }
   | { type: 'INIT_ERROR'; error: Error }
   | { type: 'DISCONNECT' };

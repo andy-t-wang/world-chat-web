@@ -17,6 +17,15 @@ importers:
       '@xmtp/browser-sdk':
         specifier: ^5.3.0
         version: 5.3.0
+      '@xmtp/content-type-reaction':
+        specifier: ^2.0.2
+        version: 2.0.2
+      '@xmtp/content-type-read-receipt':
+        specifier: ^2.0.2
+        version: 2.0.2
+      '@xmtp/content-type-reply':
+        specifier: ^2.0.3
+        version: 2.0.3
       jotai:
         specifier: ^2.16.1
         version: 2.16.1(@babel/core@7.28.5)(@babel/template@7.27.2)(@types/react@19.2.7)(react@19.2.3)
@@ -884,6 +893,15 @@ packages:
 
   '@xmtp/content-type-primitives@2.0.3':
     resolution: {integrity: sha512-JOTaNHhcqNO1uAZV9wE8TLEtEgMApuzuoAKMuMRXsKXfAb86G7Pe84moVsr20r7VaIqDjhDlzPw1GYYs7DMODw==}
+
+  '@xmtp/content-type-reaction@2.0.2':
+    resolution: {integrity: sha512-v7wGMycSsUi8NyLR+ytjDhNY4Nr4p8qNwKx8LZPlA8IwLacq2Bp2vKxlOAnGX7m5XP9ivpBNNZvkpR5Limvz1g==}
+
+  '@xmtp/content-type-read-receipt@2.0.2':
+    resolution: {integrity: sha512-klrdEhWt5OtE3dhBZiFRvjheI3d5XlLbIz9TMkvvPAaG4fvqJeMvlkkKqpyUUeVFTe6JQp1VfzT0bEL7RAhzMg==}
+
+  '@xmtp/content-type-reply@2.0.3':
+    resolution: {integrity: sha512-b7oi6Hh48MRBpq3w/XWzUwH2O8np/IodP5x1mHZK+21d/zWPRx/o/6640+G+qWg/nXUF05eb/cnfE50CjD4eoQ==}
 
   '@xmtp/content-type-text@2.0.2':
     resolution: {integrity: sha512-nlRufOYPrG5sNbruNPCsb6Qk9/jmJ5lMooPsZEo4Dbwda/2S4bSvrrIncT6if7M2SCha3hxtlgJlFGeTtHy4gQ==}
@@ -3200,6 +3218,19 @@ snapshots:
 
   '@xmtp/content-type-primitives@2.0.3':
     dependencies:
+      '@xmtp/proto': 3.78.0
+
+  '@xmtp/content-type-reaction@2.0.2':
+    dependencies:
+      '@xmtp/content-type-primitives': 2.0.3
+
+  '@xmtp/content-type-read-receipt@2.0.2':
+    dependencies:
+      '@xmtp/content-type-primitives': 2.0.3
+
+  '@xmtp/content-type-reply@2.0.3':
+    dependencies:
+      '@xmtp/content-type-primitives': 2.0.3
       '@xmtp/proto': 3.78.0
 
   '@xmtp/content-type-text@2.0.2':

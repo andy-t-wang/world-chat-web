@@ -8,12 +8,15 @@
  * - Updates Jotai atoms which React subscribes to
  */
 
-import type { Client, Dm, Group } from '@xmtp/browser-sdk';
+import type { Dm, Group } from '@xmtp/browser-sdk';
+import { SortDirection } from '@xmtp/browser-sdk';
+import type { AnyClient } from '@/types/xmtp';
 import {
   store,
   conversationIdsAtom,
   isLoadingConversationsAtom,
   conversationsErrorAtom,
+  conversationMetadataVersionAtom,
   allConversationMessageIdsAtom,
   allConversationPaginationAtom,
   messageCache,
@@ -37,23 +40,45 @@ function isDm(conv: unknown): conv is Dm & { peerInboxId(): Promise<string> } {
   return typeof (conv as { peerInboxId?: unknown }).peerInboxId === 'function';
 }
 
+// Content type IDs for special message types
+const CONTENT_TYPE_READ_RECEIPT = 'readReceipt';
+const CONTENT_TYPE_REACTION = 'reaction';
+const CONTENT_TYPE_REPLY = 'reply';
+
+// Check if a message is a special type that shouldn't be displayed as text
+function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
+  const typeId = message.contentType?.typeId;
+  return typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION;
+}
+
 // Extract text content from a message
-function extractMessageContent(message: { content: unknown }): string {
+function extractMessageContent(message: { content: unknown; contentType?: { typeId?: string } }): string {
+  // Skip read receipts and reactions for preview
+  if (isSpecialContentType(message)) {
+    return '';
+  }
+
   const content = message.content;
   if (typeof content === 'string') return content;
   if (content && typeof content === 'object') {
+    // Handle text content
     if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
       return (content as { text: string }).text;
     }
-    if ('type' in content) {
-      return `[${(content as { type: string }).type}]`;
+    // Handle reply content (has nested content)
+    if ('content' in content) {
+      const nestedContent = (content as { content: unknown }).content;
+      if (typeof nestedContent === 'string') return nestedContent;
+      if (nestedContent && typeof nestedContent === 'object' && 'text' in nestedContent) {
+        return (nestedContent as { text: string }).text;
+      }
     }
   }
   return '';
 }
 
 class XMTPStreamManager {
-  private client: Client | null = null;
+  private client: AnyClient | null = null;
   private conversationStreamController: AbortController | null = null;
   private messageStreamControllers: Map<string, AbortController> = new Map();
 
@@ -70,7 +95,7 @@ class XMTPStreamManager {
   /**
    * Initialize the manager with an XMTP client
    */
-  async initialize(client: Client): Promise<void> {
+  async initialize(client: AnyClient): Promise<void> {
     // Clean up any existing state
     this.cleanup();
 
@@ -115,6 +140,8 @@ class XMTPStreamManager {
       });
 
       store.set(conversationIdsAtom, ids);
+      // Notify that metadata has been updated
+      this.incrementMetadataVersion();
       console.log(`[StreamManager] Loaded ${ids.length} conversations`);
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
@@ -122,6 +149,14 @@ class XMTPStreamManager {
     } finally {
       store.set(isLoadingConversationsAtom, false);
     }
+  }
+
+  /**
+   * Increment metadata version to trigger UI updates
+   */
+  private incrementMetadataVersion(): void {
+    const current = store.get(conversationMetadataVersionAtom);
+    store.set(conversationMetadataVersionAtom, current + 1);
   }
 
   /**
@@ -146,8 +181,11 @@ class XMTPStreamManager {
         }
       }
 
-      // Get last message preview
-      const messages = await conv.messages({ limit: BigInt(1) });
+      // Get last message preview (newest first)
+      const messages = await conv.messages({
+        limit: BigInt(1),
+        direction: SortDirection.Descending,
+      });
       if (messages.length > 0) {
         lastMessagePreview = extractMessageContent(messages[0]);
         lastActivityNs = messages[0].sentAtNs;
@@ -215,19 +253,15 @@ class XMTPStreamManager {
     if (!this.updateScheduled) return;
     this.updateScheduled = false;
 
-    console.log(`[StreamManager] flushUpdates: messageUpdates=${this.pendingMessageUpdates.size}, paginationUpdates=${this.pendingPaginationUpdates.size}`);
-
     // Batch message ID updates
     if (this.pendingMessageUpdates.size > 0) {
       const current = store.get(allConversationMessageIdsAtom);
       const newMap = new Map(current);
       for (const [id, ids] of this.pendingMessageUpdates) {
-        console.log(`[StreamManager] Setting messageIds for ${id.slice(0, 8)}: ${ids.length} messages`);
         newMap.set(id, ids);
       }
       this.pendingMessageUpdates.clear();
       store.set(allConversationMessageIdsAtom, newMap);
-      console.log(`[StreamManager] Updated allConversationMessageIdsAtom`);
     }
 
     // Batch pagination updates
@@ -235,12 +269,10 @@ class XMTPStreamManager {
       const current = store.get(allConversationPaginationAtom);
       const newMap = new Map(current);
       for (const [id, pagination] of this.pendingPaginationUpdates) {
-        console.log(`[StreamManager] Setting pagination for ${id.slice(0, 8)}: isLoading=${pagination.isLoading}, hasMore=${pagination.hasMore}`);
         newMap.set(id, pagination);
       }
       this.pendingPaginationUpdates.clear();
       store.set(allConversationPaginationAtom, newMap);
-      console.log(`[StreamManager] Updated allConversationPaginationAtom`);
     }
   }
 
@@ -309,11 +341,14 @@ class XMTPStreamManager {
         return;
       }
 
-      // Sync and load messages
+      // Sync and load messages (descending = newest first for initial load)
       await conv.sync();
-      const messages = await conv.messages({ limit: BigInt(50) });
+      const messages = await conv.messages({
+        limit: BigInt(50),
+        direction: SortDirection.Descending,
+      });
 
-      // Store messages
+      // Store messages - keep in descending order (newest first) for display
       const ids: string[] = [];
       for (const msg of messages) {
         messageCache.set(msg.id, msg as unknown as DecodedMessage);
@@ -323,6 +358,7 @@ class XMTPStreamManager {
       this.setMessageIds(conversationId, ids);
       this.setPagination(conversationId, {
         hasMore: messages.length === 50,
+        // Track oldest message for pagination (last item in descending order)
         oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : null,
         isLoading: false,
       });
@@ -357,12 +393,14 @@ class XMTPStreamManager {
     });
 
     try {
+      // Load older messages (before our oldest) in descending order
       const messages = await conv.messages({
         limit: BigInt(50),
         sentBeforeNs: pagination.oldestMessageNs ?? undefined,
+        direction: SortDirection.Descending,
       });
 
-      // Append to existing
+      // Append older messages to end of list (they're already in descending order)
       const currentIds = this.getMessageIds(conversationId);
       const newIds: string[] = [];
 
@@ -373,9 +411,11 @@ class XMTPStreamManager {
         }
       }
 
+      // Append to end (older messages go after current ones in our descending list)
       this.setMessageIds(conversationId, [...currentIds, ...newIds]);
       this.setPagination(conversationId, {
         hasMore: messages.length === 50,
+        // Update oldest to the last message in this batch
         oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : pagination.oldestMessageNs,
         isLoading: false,
       });
@@ -424,6 +464,8 @@ class XMTPStreamManager {
           if (metadata) {
             metadata.lastMessagePreview = extractMessageContent(msg);
             metadata.lastActivityNs = msg.sentAtNs;
+            // Notify UI of metadata change
+            this.incrementMetadataVersion();
           }
         }
       } catch (error) {

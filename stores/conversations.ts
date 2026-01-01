@@ -54,6 +54,12 @@ export const conversationIdsAtom = atom<string[]>([]);
 export const isLoadingConversationsAtom = atom<boolean>(false);
 
 /**
+ * Version counter for conversation metadata - increments when any metadata changes
+ * Used to trigger re-renders in components that depend on metadata
+ */
+export const conversationMetadataVersionAtom = atom<number>(0);
+
+/**
  * Error state for conversations
  */
 export const conversationsErrorAtom = atom<Error | null>(null);

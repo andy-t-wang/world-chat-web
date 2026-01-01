@@ -3,7 +3,7 @@
  * Sets up wallet connectors for browser wallets
  */
 
-import { http, createConfig } from 'wagmi';
+import { http, createConfig, createStorage } from 'wagmi';
 import { mainnet, optimism, base, worldchain } from 'wagmi/chains';
 import { injected, coinbaseWallet, walletConnect } from 'wagmi/connectors';
 
@@ -44,6 +44,11 @@ export const wagmiConfig = createConfig({
     [optimism.id]: http(),
     [base.id]: http(),
   },
+  // Persist connection state to localStorage for instant reconnection
+  storage: createStorage({
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    key: 'wagmi-state',
+  }),
   ssr: true,
 });
 

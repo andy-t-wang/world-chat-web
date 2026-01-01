@@ -49,6 +49,7 @@ export {
   conversationMetadataAtom,
   conversationIdsAtom,
   isLoadingConversationsAtom,
+  conversationMetadataVersionAtom,
   conversationsErrorAtom,
   sortedConversationIdsAtom,
   unreadConversationIdsAtom,
