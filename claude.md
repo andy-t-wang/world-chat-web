@@ -24,12 +24,47 @@ The `Client` class (from `Client.create()`) uses `Conversations` which has **asy
 
 ```typescript
 import { Client } from '@xmtp/browser-sdk';
+import { ReactionCodec } from '@xmtp/content-type-reaction';
+import { ReplyCodec } from '@xmtp/content-type-reply';
+import { ReadReceiptCodec } from '@xmtp/content-type-read-receipt';
 
 const client = await Client.create(signer, {
   env: 'production', // or 'dev'
-  appVersion: 'MyApp/1.0.0',
+  appVersion: 'WorldChat/1.0.0',
+  codecs: [new ReactionCodec(), new ReplyCodec(), new ReadReceiptCodec()],
 });
 ```
+
+### Content Types
+
+The app registers these content type codecs:
+
+| Codec | Package | Purpose |
+|-------|---------|---------|
+| `ReactionCodec` | `@xmtp/content-type-reaction` | Emoji reactions to messages |
+| `ReplyCodec` | `@xmtp/content-type-reply` | Threaded replies |
+| `ReadReceiptCodec` | `@xmtp/content-type-read-receipt` | Read receipt signals |
+
+### Content Type Filtering
+
+**Messages are filtered before display** to hide non-text content:
+
+```typescript
+// Content types that should NOT appear as messages
+const HIDDEN_CONTENT_TYPES = ['readReceipt', 'reaction'];
+
+// In MessagePanel, filter before rendering
+if (!shouldDisplayMessage(msg)) return null;  // Skip read receipts
+if (getMessageText(msg) === null) return null; // Skip unsupported types
+
+// In StreamManager, filter from conversation preview
+function extractMessageContent(message): string {
+  if (isSpecialContentType(message)) return ''; // Don't show in preview
+  // ... extract text content
+}
+```
+
+**Rule**: If a content type cannot be rendered as text, return `null` and skip rendering entirely. Never show "[Unsupported message type]".
 
 ### Conversations API
 
@@ -394,19 +429,66 @@ useBatchUsernames(conversationAddresses);
 // lib/wagmi/config.ts - Wallet connectors configuration
 // Supports: injected (MetaMask, etc.), Coinbase Wallet, WalletConnect
 
-// components/providers/WagmiProvider.tsx - Wraps app with wagmi + react-query
-// components/auth/ConnectWallet.tsx - Wallet connection UI
+// Wagmi state is persisted to localStorage for instant reconnection
+export const wagmiConfig = createConfig({
+  // ...
+  storage: createStorage({
+    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+    key: 'wagmi-state',
+  }),
+});
+
+// lib/auth/session.ts - Check if user was previously connected
+export function wasConnected(): boolean {
+  const state = localStorage.getItem('wagmi-state');
+  return parsed?.state?.connections?.length > 0;
+}
 ```
+
+### XMTP Session Caching
+
+**Goal**: Avoid "Setting up secure messaging..." screen for returning users.
+
+```typescript
+// hooks/useXmtpClient.ts
+
+// Session cache in localStorage (24h TTL)
+const XMTP_SESSION_KEY = 'xmtp-session-cache';
+
+interface SessionCache {
+  address: string;
+  inboxId: string;
+  timestamp: number;
+}
+
+// Check for cached session before showing loading UI
+const hasCachedSession = getCachedSession(address) !== null;
+
+// After successful client creation, cache the session
+if (xmtpClient.inboxId) {
+  cacheSession(address, xmtpClient.inboxId);
+}
+
+// Return isRestoringSession for UI optimization
+return {
+  isRestoringSession: hasCachedSession && clientState.isInitializing,
+};
+```
+
+**UI Behavior**:
+- New users: Show "Setting up secure messaging..." with spinner
+- Returning users: Skip loading screen, show conversations immediately
 
 ### XMTP Client Lifecycle
 
 ```typescript
 // hooks/useXmtpClient.ts
-const { client, isInitializing, isReady, error } = useXmtpClient();
+const { client, isInitializing, isReady, error, isRestoringSession } = useXmtpClient();
 
 // Auto-initializes when wallet connects
 // Creates XMTP signer from viem WalletClient
 // Stores client in Jotai atom for global access
+// Caches session for faster subsequent loads
 ```
 
 ### Creating Conversations
@@ -480,8 +562,9 @@ Landing Page (/)
 │
 ├── hooks/
 │   ├── useUsername.ts      # Username lookup hook
-│   ├── useXmtpClient.ts    # XMTP client lifecycle
-│   └── useConversations.ts # Conversation management
+│   ├── useXmtpClient.ts    # XMTP client lifecycle + session caching
+│   ├── useConversations.ts # Conversation list subscription
+│   └── useMessages.ts      # Message loading + streaming
 │
 ├── types/
 │   ├── xmtp.ts             # XMTP type extensions
@@ -493,8 +576,12 @@ Landing Page (/)
 │   │   └── lru.ts          # LRU cache for memory management
 │   ├── username/
 │   │   └── service.ts      # Username API client with caching
+│   ├── auth/
+│   │   └── session.ts      # wasConnected() utility for cached auth state
+│   ├── xmtp/
+│   │   └── StreamManager.ts # Singleton for XMTP streaming (outside React)
 │   └── wagmi/
-│       └── config.ts       # Wallet connectors configuration
+│       └── config.ts       # Wallet connectors + storage persistence
 │
 ├── components/
 │   ├── auth/
@@ -636,6 +723,54 @@ function ConversationTabs({ conversations }: { conversations: string[] }) {
     </>
   );
 }
+```
+
+---
+
+## StreamManager Architecture
+
+The `StreamManager` singleton (`lib/xmtp/StreamManager.ts`) manages all XMTP data loading and streaming **outside React lifecycle**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  StreamManager (Singleton)                                   │
+├─────────────────────────────────────────────────────────────┤
+│  Responsibilities:                                           │
+│  ├─ Load conversations on init                              │
+│  ├─ Stream new conversations                                │
+│  ├─ Load messages when conversation opened                  │
+│  ├─ Stream new messages per conversation                    │
+│  ├─ Manage conversation metadata (preview, timestamp)       │
+│  └─ Batch updates to Jotai store                            │
+├─────────────────────────────────────────────────────────────┤
+│  Key Design:                                                 │
+│  ├─ Single source of truth for streams                      │
+│  ├─ Survives React component mount/unmount                  │
+│  ├─ Uses shared Jotai store (not React Provider)            │
+│  ├─ Batches updates via queueMicrotask()                    │
+│  └─ Metadata stored in Map (not atoms) for performance      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Metadata Versioning
+
+Conversation metadata (last message preview, timestamp) is stored in a `Map` for performance, not in Jotai atoms. To trigger React re-renders when metadata changes:
+
+```typescript
+// stores/conversations.ts
+export const conversationMetadataVersionAtom = atom<number>(0);
+
+// StreamManager increments version when metadata changes
+private incrementMetadataVersion(): void {
+  const current = store.get(conversationMetadataVersionAtom);
+  store.set(conversationMetadataVersionAtom, current + 1);
+}
+
+// hooks/useConversations.ts subscribes to version
+const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
+const metadata = useMemo(() => {
+  return streamManager.getAllConversationMetadata();
+}, [conversationIds, metadataVersion]); // Re-fetch when version changes
 ```
 
 ---
@@ -1385,6 +1520,10 @@ If migrating from Next.js 15, note these changes:
 10. **Use View Transitions** - smooth conversation switching animations
 11. **Use Activity for tab-like UIs** - maintains state when switching conversations
 12. **proxy.ts runs on Node.js** - can use Node APIs unlike old Edge middleware
+13. **Use `AnyClient` type alias** - `Client<any>` for codecs with generic content types
+14. **Filter unsupported content types** - return `null` from `getMessageText()`, never show placeholder text
+15. **Use shared Jotai store** - `stores/index.ts` exports `store` for use outside React (StreamManager)
+16. **Batch atom updates** - use `queueMicrotask()` to batch multiple store updates
 
 ---
 
@@ -1453,7 +1592,7 @@ const AVATAR_COLORS = [
 
 ### ConversationItem Selected State
 
-- Background: `#005CFF` (hover: `#0052E0`)
+- Background: `#3B82F6` (hover: `#2563EB`) - Tailwind blue-500/600
 - Text: white, secondary text: `white/70`
 - Unread badge: inverted (white bg, blue text)
 
@@ -1480,6 +1619,9 @@ const AVATAR_COLORS = [
 5. **LRU cache** - Evict old messages from memory (max 1000)
 6. **Optimistic updates** - Show pending messages immediately
 7. **XMTP insertedAtNs** - Use for pagination (stable ordering vs sentAtNs)
+8. **StreamManager singleton** - XMTP streaming outside React lifecycle
+9. **Session caching** - localStorage cache for instant reconnection
+10. **Content type filtering** - Hide read receipts, reactions, unsupported types from message list
 
 ---
 
