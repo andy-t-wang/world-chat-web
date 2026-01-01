@@ -74,7 +74,7 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
     );
   }
 
-  return <span className="text-[#717680]">{lastMessage || ''}</span>;
+  return <span className="text-[#717680] italic">{lastMessage || 'New conversation'}</span>;
 }
 
 export function ConversationItem(props: ConversationItemProps) {

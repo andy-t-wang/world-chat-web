@@ -1,111 +1,63 @@
 /**
  * Message State Store
- * Manages messages with granular subscriptions using atomFamily
+ * Simplified approach using Maps instead of atomFamily to avoid multi-instance issues
  */
 
 import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage, PaginationState } from '@/types/messages';
 import { LRUCache } from '@/lib/utils/lru';
 import { CACHE } from '@/config/constants';
 
 /**
- * Individual message atoms - granular updates
- * Each message has its own atom, so updating one message
- * only re-renders the component subscribed to that specific message
+ * Message IDs per conversation
+ * Map from conversationId -> array of message IDs
  */
-export const messageAtomFamily = atomFamily((messageId: string) =>
-  atom<DecodedMessage | null>(null)
-);
-
-/**
- * Message IDs per conversation (just strings, not full messages)
- * This enables O(1) updates when new messages arrive
- */
-export const conversationMessageIdsAtom = atomFamily((conversationId: string) =>
-  atom<string[]>([])
-);
+export const allConversationMessageIdsAtom = atom<Map<string, string[]>>(new Map());
 
 /**
  * Pagination state per conversation
- * Tracks loading state and cursor for infinite scroll
+ * Map from conversationId -> pagination state
  */
-export const conversationPaginationAtom = atomFamily((conversationId: string) =>
-  atom<PaginationState>({
+export const allConversationPaginationAtom = atom<Map<string, PaginationState>>(new Map());
+
+/**
+ * Pending messages per conversation
+ * Map from conversationId -> pending messages
+ */
+export const allPendingMessagesAtom = atom<Map<string, PendingMessage[]>>(new Map());
+
+/**
+ * Helper function to get message IDs for a conversation
+ */
+export function getMessageIds(messageIdsMap: Map<string, string[]>, conversationId: string): string[] {
+  return messageIdsMap.get(conversationId) ?? [];
+}
+
+/**
+ * Helper function to get pagination for a conversation
+ */
+export function getPagination(paginationMap: Map<string, PaginationState>, conversationId: string): PaginationState {
+  return paginationMap.get(conversationId) ?? {
     hasMore: true,
-    oldestInsertedAtNs: null,
+    oldestMessageNs: null,
     isLoading: false,
-  })
-);
+  };
+}
 
 /**
- * Pending (optimistic) messages per conversation
- * Shows messages immediately while they're being sent
+ * Helper function to get pending messages for a conversation
  */
-export const pendingMessagesAtom = atomFamily((conversationId: string) =>
-  atom<PendingMessage[]>([])
-);
-
-/**
- * Combined message IDs (pending + confirmed) for a conversation
- * Pending messages appear at the end (most recent)
- */
-export const allMessageIdsAtom = atomFamily((conversationId: string) =>
-  atom((get) => {
-    const confirmedIds = get(conversationMessageIdsAtom(conversationId));
-    const pending = get(pendingMessagesAtom(conversationId));
-    const pendingIds = pending.map((p) => p.id);
-    // Pending messages come first (newest), then confirmed
-    return [...pendingIds, ...confirmedIds];
-  })
-);
-
-/**
- * Message count for a conversation
- */
-export const messageCountAtom = atomFamily((conversationId: string) =>
-  atom((get) => {
-    return get(allMessageIdsAtom(conversationId)).length;
-  })
-);
+export function getPendingMessages(pendingMap: Map<string, PendingMessage[]>, conversationId: string): PendingMessage[] {
+  return pendingMap.get(conversationId) ?? [];
+}
 
 /**
  * LRU cache for messages in memory
- * Automatically evicts old messages when limit is reached
  */
 export const messageCache = new LRUCache<string, DecodedMessage>(
-  CACHE.MAX_MESSAGES_IN_MEMORY,
-  (messageId) => {
-    // Clean up atom when evicted from cache
-    // Note: atomFamily.remove is called on cache eviction
-    messageAtomFamily.remove(messageId);
-  }
+  CACHE.MAX_MESSAGES_IN_MEMORY
 );
-
-/**
- * Add a message to the store
- * Updates both the atom and the LRU cache
- */
-export function addMessageToStore(
-  message: DecodedMessage,
-  conversationId: string,
-  setMessageIds: (updater: (prev: string[]) => string[]) => void
-): void {
-  // Set the message in its individual atom
-  const messageAtom = messageAtomFamily(message.id);
-  // Note: In actual usage, you'd use set() from useSetAtom
-  // This is a helper pattern - actual usage is in hooks
-
-  // Add to LRU cache
-  messageCache.set(message.id, message);
-
-  // Prepend to message IDs list
-  setMessageIds((prev) => {
-    if (prev.includes(message.id)) return prev;
-    return [message.id, ...prev];
-  });
-}
 
 /**
  * Create a pending message for optimistic updates
@@ -124,9 +76,47 @@ export function createPendingMessage(
   };
 }
 
-/**
- * Derived atom: Check if a conversation has any pending messages
- */
+// Legacy exports for compatibility (these are now no-ops or simple wrappers)
+// TODO: Remove these after updating all consumers
+
+import { atomFamily } from 'jotai/utils';
+
+// Keep atomFamily for now but they're secondary to the Map-based approach
+export const messageAtomFamily = atomFamily((messageId: string) =>
+  atom<DecodedMessage | null>(null)
+);
+
+export const conversationMessageIdsAtom = atomFamily((conversationId: string) =>
+  atom<string[]>([])
+);
+
+export const conversationPaginationAtom = atomFamily((conversationId: string) =>
+  atom<PaginationState>({
+    hasMore: true,
+    oldestMessageNs: null,
+    isLoading: false,
+  })
+);
+
+export const pendingMessagesAtom = atomFamily((conversationId: string) =>
+  atom<PendingMessage[]>([])
+);
+
+export const allMessageIdsAtom = atomFamily((conversationId: string) =>
+  atom((get) => {
+    const confirmedIds = get(conversationMessageIdsAtom(conversationId));
+    const pending = get(pendingMessagesAtom(conversationId));
+    const pendingIds = pending.map((p) => p.id);
+    return [...pendingIds, ...confirmedIds];
+  })
+);
+
+export const messageCountAtom = atomFamily((conversationId: string) =>
+  atom((get) => {
+    return get(allMessageIdsAtom(conversationId)).length;
+  })
+);
+
 export const hasPendingMessagesAtom = atomFamily((conversationId: string) =>
   atom((get) => {
     const pending = get(pendingMessagesAtom(conversationId));
@@ -134,9 +124,6 @@ export const hasPendingMessagesAtom = atomFamily((conversationId: string) =>
   })
 );
 
-/**
- * Derived atom: Check if a conversation has failed messages
- */
 export const hasFailedMessagesAtom = atomFamily((conversationId: string) =>
   atom((get) => {
     const pending = get(pendingMessagesAtom(conversationId));
@@ -144,11 +131,18 @@ export const hasFailedMessagesAtom = atomFamily((conversationId: string) =>
   })
 );
 
-/**
- * Reset messages for a conversation
- * Useful when leaving a conversation or on error
- */
+export function addMessageToStore(
+  message: DecodedMessage,
+  conversationId: string,
+  setMessageIds: (updater: (prev: string[]) => string[]) => void
+): void {
+  messageCache.set(message.id, message);
+  setMessageIds((prev) => {
+    if (prev.includes(message.id)) return prev;
+    return [message.id, ...prev];
+  });
+}
+
 export function resetConversationMessages(conversationId: string): void {
-  // This would be called with the appropriate setters in a hook
-  // Clears message IDs and pagination state
+  // No-op for now
 }

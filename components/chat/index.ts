@@ -6,3 +6,4 @@ export { NewChatButton } from './NewChatButton';
 export { Sidebar } from './Sidebar';
 export { MessagePanel } from './MessagePanel';
 export { EmptyState } from './EmptyState';
+export { NewConversationModal } from './NewConversationModal';

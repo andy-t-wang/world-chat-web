@@ -18,7 +18,7 @@ export interface PendingMessage {
 /** Message pagination state */
 export interface PaginationState {
   hasMore: boolean;
-  oldestInsertedAtNs: bigint | null;
+  oldestMessageNs: bigint | null;
   isLoading: boolean;
 }
 

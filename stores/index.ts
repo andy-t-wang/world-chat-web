@@ -3,6 +3,14 @@
  * Central export point for all Jotai atoms
  */
 
+import { createStore } from 'jotai';
+
+/**
+ * Shared Jotai store instance
+ * Used by both React Provider and StreamManager to avoid multiple instance issues
+ */
+export const store = createStore();
+
 // Client state
 export {
   xmtpClientAtom,
@@ -26,6 +34,13 @@ export {
   createPendingMessage,
   hasPendingMessagesAtom,
   hasFailedMessagesAtom,
+  // New Map-based atoms
+  allConversationMessageIdsAtom,
+  allConversationPaginationAtom,
+  allPendingMessagesAtom,
+  getMessageIds,
+  getPagination,
+  getPendingMessages,
 } from './messages';
 
 // Conversation state

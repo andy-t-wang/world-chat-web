@@ -1,41 +1,107 @@
 'use client';
 
+import { useEffect, useState, useMemo, memo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAccount } from 'wagmi';
 import { useAtomValue } from 'jotai';
 import { Sidebar, MessagePanel, EmptyState } from '@/components/chat';
+import { NewConversationModal } from '@/components/chat/NewConversationModal';
 import { selectedConversationIdAtom } from '@/stores/ui';
+import { useXmtpClient } from '@/hooks/useXmtpClient';
+import { useConversationMetadata } from '@/hooks/useConversations';
+import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 
-// Demo data - would come from store in production
-const DEMO_CONVERSATIONS: Record<string, { name: string; avatarUrl?: string; isVerified: boolean }> = {
-  '1': { name: 'Dave', isVerified: true },
-  '2': { name: 'Ethan Carter', isVerified: true },
-  '3': { name: 'Alex', isVerified: true },
-  '4': { name: 'Munichers', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=munichers', isVerified: true },
-  '5': { name: 'Tiago', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=tiago', isVerified: true },
-  '6': { name: 'Mr. Strickland', avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=strickland', isVerified: true },
-  '7': { name: 'Peter', isVerified: true },
-};
+// Memoized MessagePanel wrapper to prevent unnecessary re-renders
+const MemoizedMessagePanel = memo(MessagePanel);
 
 export default function ChatPage() {
+  const router = useRouter();
+  const { isConnected, isConnecting } = useAccount();
+  const { client, isInitializing, isReady, error: xmtpError } = useXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
-  const selectedConversation = selectedId ? DEMO_CONVERSATIONS[selectedId] : null;
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+
+  // Get conversation metadata from StreamManager (no loading needed)
+  const conversationMetadata = useConversationMetadata(selectedId);
+
+  // Redirect to home if not connected
+  useEffect(() => {
+    if (!isConnecting && !isConnected) {
+      router.push('/');
+    }
+  }, [isConnected, isConnecting, router]);
+
+  // Show loading while checking wallet connection
+  if (isConnecting || !isConnected) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+      </div>
+    );
+  }
+
+  // Show XMTP initialization state
+  if (isInitializing) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
+            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
+            <span className="text-[#717680]">Setting up secure messaging...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if XMTP initialization failed
+  if (xmtpError) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
+          <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
+            <AlertCircle className="w-8 h-8 text-red-500" />
+          </div>
+          <h2 className="text-lg font-semibold text-[#181818]">Connection Failed</h2>
+          <p className="text-[#717680]">{xmtpError.message}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex w-full h-full">
-      {/* Left Sidebar */}
-      <Sidebar onNewChat={() => console.log('New chat clicked')} />
+    <>
+      <div className="flex w-full h-full">
+        {/* Left Sidebar */}
+        <Sidebar onNewChat={() => setIsNewChatOpen(true)} />
 
-      {/* Right Panel */}
-      {selectedConversation ? (
-        <MessagePanel
-          conversationId={selectedId!}
-          name={selectedConversation.name}
-          avatarUrl={selectedConversation.avatarUrl}
-          isVerified={selectedConversation.isVerified}
-          subtitle="Online"
-        />
-      ) : (
-        <EmptyState />
-      )}
-    </div>
+        {/* Right Panel */}
+        {selectedId && conversationMetadata ? (
+          <MemoizedMessagePanel
+            key={selectedId}
+            conversationId={selectedId}
+            peerAddress={conversationMetadata.peerAddress}
+            isVerified={true}
+          />
+        ) : (
+          <EmptyState />
+        )}
+      </div>
+
+      {/* New Conversation Modal */}
+      <NewConversationModal
+        isOpen={isNewChatOpen}
+        onClose={() => setIsNewChatOpen(false)}
+      />
+    </>
   );
 }

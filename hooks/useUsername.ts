@@ -1,14 +1,17 @@
 /**
  * Username Hook
  * React hook for fetching and displaying World App usernames
+ *
+ * Simplified implementation that:
+ * 1. Uses localStorage-backed cache for persistence
+ * 2. Uses React state only for the local component
+ * 3. Avoids global Jotai state to prevent cascading re-renders
  */
 
 'use client';
 
-import { useEffect } from 'react';
-import { useAtom, useSetAtom } from 'jotai';
-import { usernameAtomFamily, queriedAddressesAtom } from '@/stores/usernames';
-import { resolveAddress, resolveAddresses, getCachedUsername } from '@/lib/username/service';
+import { useState, useEffect, useCallback } from 'react';
+import { resolveAddress, getCachedUsername } from '@/lib/username/service';
 import type { UsernameRecord } from '@/types/username';
 
 interface UseUsernameResult {
@@ -25,6 +28,12 @@ interface UseUsernameResult {
 }
 
 /**
+ * MODULE-LEVEL tracking to prevent duplicate fetches
+ */
+const inFlightAddresses = new Set<string>();
+const fetchPromises = new Map<string, Promise<UsernameRecord | null>>();
+
+/**
  * Truncate an address to a display-friendly format
  */
 function truncateAddress(address: string): string {
@@ -34,49 +43,90 @@ function truncateAddress(address: string): string {
 
 /**
  * Hook to get username data for a single address
+ *
+ * Uses a simple pattern:
+ * 1. Check cache synchronously on mount
+ * 2. If not cached, fetch and update local state only
+ * 3. No global state = no cascading re-renders
  */
 export function useUsername(address: string | null | undefined): UseUsernameResult {
   const normalizedAddress = address?.toLowerCase() ?? '';
-  const [state, setState] = useAtom(usernameAtomFamily(normalizedAddress));
-  const setQueriedAddresses = useSetAtom(queriedAddressesAtom);
+
+  // Initialize state from cache (synchronous, no re-render)
+  const [state, setState] = useState<{
+    record: UsernameRecord | null;
+    isLoading: boolean;
+    error: Error | null;
+  }>(() => {
+    if (!address) {
+      return { record: null, isLoading: false, error: null };
+    }
+    // Check cache synchronously
+    const cached = getCachedUsername(address);
+    if (cached !== undefined) {
+      return { record: cached, isLoading: false, error: null };
+    }
+    // Not cached, will need to fetch
+    return { record: null, isLoading: true, error: null };
+  });
 
   useEffect(() => {
-    if (!address) return;
+    if (!address || !normalizedAddress) {
+      setState({ record: null, isLoading: false, error: null });
+      return;
+    }
 
     // Check if already cached
     const cached = getCachedUsername(address);
     if (cached !== undefined) {
-      setState({
-        record: cached,
-        isLoading: false,
-        error: null,
+      setState({ record: cached, isLoading: false, error: null });
+      return;
+    }
+
+    // Check if another component is already fetching this address
+    const existingPromise = fetchPromises.get(normalizedAddress);
+    if (existingPromise) {
+      // Wait for the existing fetch
+      existingPromise.then((record) => {
+        setState({ record, isLoading: false, error: null });
+      }).catch((error) => {
+        setState({
+          record: null,
+          isLoading: false,
+          error: error instanceof Error ? error : new Error('Failed to fetch'),
+        });
       });
       return;
     }
 
-    // Skip if already loading
-    if (state.isLoading) return;
+    // Prevent duplicate fetches
+    if (inFlightAddresses.has(normalizedAddress)) {
+      return;
+    }
 
-    // Fetch username
+    // Start the fetch
+    inFlightAddresses.add(normalizedAddress);
     setState((prev) => ({ ...prev, isLoading: true }));
 
-    resolveAddress(address)
+    const fetchPromise = resolveAddress(address);
+    fetchPromises.set(normalizedAddress, fetchPromise);
+
+    fetchPromise
       .then((record) => {
-        setState({
-          record,
-          isLoading: false,
-          error: null,
-        });
-        setQueriedAddresses((prev: Set<string>) => new Set([...prev, normalizedAddress]));
+        setState({ record, isLoading: false, error: null });
       })
       .catch((error) => {
         setState({
           record: null,
           isLoading: false,
-          error: error instanceof Error ? error : new Error('Failed to fetch username'),
+          error: error instanceof Error ? error : new Error('Failed to fetch'),
         });
+      })
+      .finally(() => {
+        inFlightAddresses.delete(normalizedAddress);
+        fetchPromises.delete(normalizedAddress);
       });
-  }, [address, normalizedAddress, state.isLoading, setState, setQueriedAddresses]);
+  }, [address, normalizedAddress]);
 
   return {
     record: state.record,
@@ -85,39 +135,6 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
     displayName: state.record?.username ?? (address ? truncateAddress(address) : ''),
     profilePicture: state.record?.minimized_profile_picture_url ?? state.record?.profile_picture_url ?? null,
   };
-}
-
-/**
- * Hook to batch-fetch usernames for multiple addresses
- * More efficient for conversation lists
- */
-export function useBatchUsernames(addresses: string[]): void {
-  const setQueriedAddresses = useSetAtom(queriedAddressesAtom);
-
-  useEffect(() => {
-    if (addresses.length === 0) return;
-
-    // Filter to only addresses we haven't queried yet
-    const newAddresses = addresses.filter((addr) => {
-      const cached = getCachedUsername(addr);
-      return cached === undefined;
-    });
-
-    if (newAddresses.length === 0) return;
-
-    resolveAddresses(newAddresses).then(() => {
-      setQueriedAddresses((prev: Set<string>) => {
-        const next = new Set(prev);
-        for (const addr of newAddresses) {
-          next.add(addr.toLowerCase());
-        }
-        return next;
-      });
-
-      // Update individual atoms with results
-      // The atoms will be populated via the cache on next render
-    });
-  }, [addresses, setQueriedAddresses]);
 }
 
 /**

@@ -12,6 +12,117 @@ pnpm exec tsc --noEmit  # Type check
 
 Whenever you need to reference the XMTP docs use this: https://github.com/xmtp/docs-xmtp-org/blob/main/llms/llms-chat-apps.txt
 
+---
+
+## XMTP Browser SDK API Reference (@xmtp/browser-sdk v5.3.0)
+
+### Key Differences from WorkerConversations
+
+The `Client` class (from `Client.create()`) uses `Conversations` which has **async** methods, NOT `WorkerConversations` which has sync methods.
+
+### Client Initialization
+
+```typescript
+import { Client } from '@xmtp/browser-sdk';
+
+const client = await Client.create(signer, {
+  env: 'production', // or 'dev'
+  appVersion: 'MyApp/1.0.0',
+});
+```
+
+### Conversations API
+
+```typescript
+// Sync conversations from network (required before list)
+await client.conversations.sync();
+
+// List all conversations - returns Promise<(Dm | Group)[]>
+const conversations = await client.conversations.list();
+
+// Get single conversation by ID - returns Promise<Dm | Group | undefined>
+const conversation = await client.conversations.getConversationById(id);
+
+// Create new DM
+const dm = await client.conversations.newDmWithIdentifier({
+  identifier: address.toLowerCase(),
+  identifierKind: 'Ethereum',
+});
+
+// Stream new conversations - returns Promise<AsyncStreamProxy>
+const stream = await client.conversations.stream();
+for await (const conversation of stream) {
+  console.log('New conversation:', conversation.id);
+}
+// Call stream.end() to stop
+```
+
+### Dm vs Group
+
+```typescript
+// Check if conversation is a DM
+function isDm(conv: unknown): conv is { peerInboxId(): Promise<string> } {
+  return typeof (conv as any).peerInboxId === 'function';
+}
+
+// DM-specific: get peer inbox ID (async!)
+if (isDm(conversation)) {
+  const peerInboxId = await conversation.peerInboxId();
+}
+
+// Both Dm and Group have:
+const members = await conversation.members();
+// members[].inboxId, members[].accountIdentifiers[].identifier
+```
+
+### Messages API
+
+```typescript
+// Sync conversation
+await conversation.sync();
+
+// Load messages - returns Promise<DecodedMessage[]>
+const messages = await conversation.messages({
+  limit: BigInt(30),
+  direction: SortDirection.Descending,
+});
+
+// Send message - returns Promise<string> (message ID)
+const messageId = await conversation.send('Hello!');
+
+// Stream new messages - returns Promise<AsyncStreamProxy>
+const stream = await conversation.stream();
+for await (const message of stream) {
+  console.log('New message:', message.id, message.content);
+}
+// Call stream.end() to stop
+```
+
+### Stream Pattern
+
+All streams return `Promise<AsyncStreamProxy<T>>` which is an async iterable with `end()` method:
+
+```typescript
+let streamProxy: AsyncStreamProxy | null = null;
+
+// Start stream
+streamProxy = await conversation.stream();
+for await (const item of streamProxy) {
+  // Handle item
+}
+
+// Cleanup (in useEffect return)
+streamProxy?.end();
+```
+
+### Important Notes
+
+1. **Use Webpack, not Turbopack**: `pnpm dev` uses `--webpack` flag due to WASM loading issues with Turbopack
+2. **All list/stream methods are async**: Always `await` them
+3. **`peerInboxId()` is async**: Returns `Promise<string>`, only on `Dm` class
+4. **Stream cleanup**: Call `stream.end()` not `stream.close()`
+5. **COOP/COEP headers required**: For SharedArrayBuffer support
+
 ## Tech Stack
 
 | Technology | Purpose |
@@ -275,6 +386,66 @@ useBatchUsernames(conversationAddresses);
 
 ---
 
+## Wallet & XMTP Integration
+
+### Wallet Connection (wagmi)
+
+```typescript
+// lib/wagmi/config.ts - Wallet connectors configuration
+// Supports: injected (MetaMask, etc.), Coinbase Wallet, WalletConnect
+
+// components/providers/WagmiProvider.tsx - Wraps app with wagmi + react-query
+// components/auth/ConnectWallet.tsx - Wallet connection UI
+```
+
+### XMTP Client Lifecycle
+
+```typescript
+// hooks/useXmtpClient.ts
+const { client, isInitializing, isReady, error } = useXmtpClient();
+
+// Auto-initializes when wallet connects
+// Creates XMTP signer from viem WalletClient
+// Stores client in Jotai atom for global access
+```
+
+### Creating Conversations
+
+```typescript
+// Use newDmWithIdentifier for creating DMs by address
+const identifier: Identifier = {
+  identifier: address.toLowerCase(),
+  identifierKind: 'Ethereum',
+};
+const conversation = await client.conversations.newDmWithIdentifier(identifier);
+
+// Check if address can receive messages first
+const { canMessage } = useCanMessage();
+const canReceive = await canMessage(address);
+```
+
+### App Flow
+
+```
+Landing Page (/)
+  → Connect Wallet
+  → Redirect to /chat
+  → Initialize XMTP client (shows "Setting up secure messaging...")
+  → Load conversations
+  → Ready to chat
+```
+
+### Key Hooks
+
+| Hook | Purpose |
+|------|---------|
+| `useXmtpClient()` | XMTP client lifecycle management |
+| `useCanMessage()` | Check if address has XMTP enabled |
+| `useConversations()` | Load and stream conversations |
+| `useConversation(id)` | Get single conversation by ID |
+
+---
+
 ## Directory Structure
 
 ```
@@ -308,7 +479,9 @@ useBatchUsernames(conversationAddresses);
 │   └── ui.ts               # UI state (selection, modals, toasts)
 │
 ├── hooks/
-│   └── useUsername.ts      # Username lookup hook
+│   ├── useUsername.ts      # Username lookup hook
+│   ├── useXmtpClient.ts    # XMTP client lifecycle
+│   └── useConversations.ts # Conversation management
 │
 ├── types/
 │   ├── xmtp.ts             # XMTP type extensions
@@ -318,8 +491,15 @@ useBatchUsernames(conversationAddresses);
 ├── lib/
 │   ├── utils/
 │   │   └── lru.ts          # LRU cache for memory management
-│   └── username/
-│       └── service.ts      # Username API client with caching
+│   ├── username/
+│   │   └── service.ts      # Username API client with caching
+│   └── wagmi/
+│       └── config.ts       # Wallet connectors configuration
+│
+├── components/
+│   ├── auth/
+│   │   └── ConnectWallet.tsx   # Wallet connection UI
+│   ├── chat/                   # Chat components (see below)
 │
 ├── config/
 │   └── constants.ts              # App constants ✅

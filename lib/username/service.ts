@@ -1,6 +1,10 @@
 /**
  * World App Username Service
  * Fetches and caches username records from the World App Username API
+ *
+ * Uses a two-layer cache:
+ * 1. In-memory LRU cache for fast access
+ * 2. localStorage for persistence across page reloads
  */
 
 import { USERNAME_API } from '@/config/constants';
@@ -12,11 +16,92 @@ interface CacheEntry {
   timestamp: number;
 }
 
+const STORAGE_KEY = 'worldchat_usernames';
+const STORAGE_VERSION = 1;
+
+interface StorageData {
+  version: number;
+  entries: Record<string, CacheEntry>;
+}
+
 /** Singleton cache for username records */
 const usernameCache = new LRUCache<string, CacheEntry>(USERNAME_API.MAX_CACHE_SIZE);
 
 /** Pending requests to deduplicate concurrent fetches */
 const pendingRequests = new Map<string, Promise<UsernameRecord | null>>();
+
+/** Flag to track if we've loaded from localStorage */
+let storageLoaded = false;
+
+/**
+ * Load cached usernames from localStorage on first access
+ */
+function loadFromStorage(): void {
+  if (storageLoaded || typeof window === 'undefined') return;
+  storageLoaded = true;
+
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return;
+
+    const data: StorageData = JSON.parse(stored);
+    if (data.version !== STORAGE_VERSION) {
+      // Clear outdated cache format
+      localStorage.removeItem(STORAGE_KEY);
+      return;
+    }
+
+    const now = Date.now();
+    let validCount = 0;
+
+    for (const [address, entry] of Object.entries(data.entries)) {
+      // Only load entries that haven't expired
+      if (now - entry.timestamp < USERNAME_API.CACHE_TTL_MS) {
+        usernameCache.set(address, entry);
+        validCount++;
+      }
+    }
+
+    console.log(`[Username] Loaded ${validCount} cached usernames from storage`);
+  } catch (error) {
+    console.error('[Username] Failed to load from storage:', error);
+    localStorage.removeItem(STORAGE_KEY);
+  }
+}
+
+/**
+ * Save current cache to localStorage (debounced)
+ */
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function saveToStorage(): void {
+  if (typeof window === 'undefined') return;
+
+  // Debounce saves to avoid excessive writes
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    try {
+      const entries: Record<string, CacheEntry> = {};
+      const now = Date.now();
+
+      // Only save valid entries
+      usernameCache.forEach((entry, address) => {
+        if (now - entry.timestamp < USERNAME_API.CACHE_TTL_MS) {
+          entries[address] = entry;
+        }
+      });
+
+      const data: StorageData = {
+        version: STORAGE_VERSION,
+        entries,
+      };
+
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('[Username] Failed to save to storage:', error);
+    }
+  }, 1000); // Save after 1 second of no activity
+}
 
 /**
  * Normalize address to lowercase for cache key consistency
@@ -36,6 +121,9 @@ function isCacheValid(entry: CacheEntry): boolean {
  * Resolve a single address to a username record
  */
 export async function resolveAddress(address: string): Promise<UsernameRecord | null> {
+  // Ensure localStorage cache is loaded
+  loadFromStorage();
+
   const normalizedAddress = normalizeAddress(address);
 
   // Check cache first
@@ -57,6 +145,7 @@ export async function resolveAddress(address: string): Promise<UsernameRecord | 
       if (response.status === 404) {
         // Cache null result for addresses without usernames
         usernameCache.set(normalizedAddress, { record: null, timestamp: Date.now() });
+        saveToStorage();
         return null;
       }
 
@@ -68,6 +157,7 @@ export async function resolveAddress(address: string): Promise<UsernameRecord | 
           if (redirectResponse.ok) {
             const record = await redirectResponse.json() as UsernameRecord;
             usernameCache.set(normalizedAddress, { record, timestamp: Date.now() });
+            saveToStorage();
             return record;
           }
         }
@@ -80,6 +170,7 @@ export async function resolveAddress(address: string): Promise<UsernameRecord | 
 
       const record = await response.json() as UsernameRecord;
       usernameCache.set(normalizedAddress, { record, timestamp: Date.now() });
+      saveToStorage();
       return record;
     } catch (error) {
       console.error(`Failed to resolve address ${address}:`, error);
@@ -98,6 +189,9 @@ export async function resolveAddress(address: string): Promise<UsernameRecord | 
  * More efficient for conversation lists
  */
 export async function resolveAddresses(addresses: string[]): Promise<Map<string, UsernameRecord | null>> {
+  // Ensure localStorage cache is loaded
+  loadFromStorage();
+
   const results = new Map<string, UsernameRecord | null>();
   const uncachedAddresses: Address[] = [];
 
@@ -150,6 +244,9 @@ export async function resolveAddresses(addresses: string[]): Promise<Map<string,
       usernameCache.set(normalizedAddress, { record, timestamp: Date.now() });
       results.set(normalizedAddress, record);
     }
+
+    // Persist to localStorage
+    saveToStorage();
   } catch (error) {
     console.error('Failed to batch resolve addresses:', error);
 
@@ -214,12 +311,19 @@ export function getAvatarUrl(username: string, options?: { minimized?: boolean; 
 export function clearUsernameCache(): void {
   usernameCache.clear();
   pendingRequests.clear();
+  storageLoaded = false;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem(STORAGE_KEY);
+  }
 }
 
 /**
  * Get a cached username record without fetching
  */
 export function getCachedUsername(address: string): UsernameRecord | null | undefined {
+  // Ensure localStorage cache is loaded
+  loadFromStorage();
+
   const cached = usernameCache.get(normalizeAddress(address));
   if (cached && isCacheValid(cached)) {
     return cached.record;

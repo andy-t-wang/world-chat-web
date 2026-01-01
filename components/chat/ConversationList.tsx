@@ -5,108 +5,87 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
 import { ChatRequestsBanner } from './ChatRequestsBanner';
-import {
-  filteredConversationIdsAtom,
-  conversationMetadataAtom,
-} from '@/stores/conversations';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { VIRTUALIZATION } from '@/config/constants';
+import { useConversations } from '@/hooks/useConversations';
+import { Loader2 } from 'lucide-react';
 
 interface ConversationListProps {
   requestCount?: number;
   onRequestsClick?: () => void;
 }
 
-// Demo data for initial UI development
-// Using mock wallet addresses - in production these come from XMTP conversations
-const DEMO_CONVERSATIONS: ConversationItemProps[] = [
-  {
-    id: '1',
-    peerAddress: '0x1234567890123456789012345678901234567890',
-    name: 'Dave', // Override name for demo (normally fetched from username API)
-    isVerified: true,
-    lastMessage: 'Ok!',
-    timestamp: '16:14',
-    isPinned: true,
-  },
-  {
-    id: '2',
-    peerAddress: '0x2345678901234567890123456789012345678901',
-    name: 'Ethan Carter',
-    isVerified: true,
-    lastMessage: 'I mean he wrecked it!',
-    timestamp: '16:14',
-    unreadCount: 2,
-    isMuted: true,
-  },
-  {
-    id: '3',
-    peerAddress: '0x3456789012345678901234567890123456789012',
-    name: 'Alex',
-    isVerified: true,
-    isTyping: true,
-    typingUser: 'Alex',
-    timestamp: '16:14',
-  },
-  {
-    id: '4',
-    peerAddress: '0x4567890123456789012345678901234567890123',
-    name: 'Munichers',
-    isVerified: true,
-    isTyping: true,
-    typingUser: 'Pal',
-    timestamp: '11:23',
-    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=munichers',
-  },
-  {
-    id: '5',
-    peerAddress: '0x5678901234567890123456789012345678901234',
-    name: 'Tiago',
-    isVerified: true,
-    lastMessageType: 'reaction',
-    reactionEmoji: '🔥',
-    reactionTarget: "That's good ad...",
-    timestamp: '16:14',
-    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=tiago',
-  },
-  {
-    id: '6',
-    peerAddress: '0x6789012345678901234567890123456789012345',
-    name: 'Mr. Strickland',
-    isVerified: true,
-    lastMessageType: 'deleted',
-    timestamp: '16:14',
-    avatarUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=strickland',
-  },
-  {
-    id: '7',
-    peerAddress: '0x7890123456789012345678901234567890123456',
-    name: 'Peter',
-    isVerified: true,
-    lastMessageType: 'image',
-    lastMessage: '1 photo, 1 video',
-    timestamp: '14',
-  },
-];
-
 export function ConversationList({
-  requestCount = 2,
+  requestCount = 0,
   onRequestsClick
 }: ConversationListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
 
-  // In production, this would come from the store
-  // const conversationIds = useAtomValue(filteredConversationIdsAtom);
-  const conversations = DEMO_CONVERSATIONS;
+  // Use conversations hook - it handles all loading and provides metadata
+  const { conversationIds, metadata, isLoading } = useConversations();
+
+  // Format timestamp for display
+  const formatTimestamp = (ns: bigint): string => {
+    if (ns === BigInt(0)) return '';
+    const date = new Date(Number(ns / BigInt(1_000_000)));
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    if (isToday) {
+      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    }
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  // Build conversation props from data
+  const getConversationProps = (id: string): ConversationItemProps | null => {
+    const data = metadata.get(id);
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      peerAddress: data.peerAddress,
+      lastMessage: data.lastMessagePreview ?? undefined,
+      timestamp: formatTimestamp(data.lastActivityNs),
+      isVerified: true, // TODO: Check verification status
+    };
+  };
 
   const virtualizer = useVirtualizer({
-    count: conversations.length,
+    count: conversationIds.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => VIRTUALIZATION.CONVERSATION_ITEM_HEIGHT,
     overscan: VIRTUALIZATION.OVERSCAN_COUNT,
   });
+
+  // Show loading state
+  if (isLoading && conversationIds.length === 0) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center">
+        <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
+        <p className="text-sm text-[#717680] mt-2">Loading conversations...</p>
+      </div>
+    );
+  }
+
+  // Show empty state
+  if (!isLoading && conversationIds.length === 0) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center px-6 text-center">
+        <p className="text-[#717680]">No conversations yet</p>
+        <p className="text-sm text-[#9BA3AE] mt-1">Start a new conversation to begin chatting</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -129,10 +108,36 @@ export function ConversationList({
           }}
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
-            const conversation = conversations[virtualRow.index];
+            const id = conversationIds[virtualRow.index];
+            const props = getConversationProps(id);
+
+            // Skip rendering if data not loaded yet
+            if (!props) {
+              return (
+                <div
+                  key={id}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: virtualRow.size,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  className="flex items-center px-4"
+                >
+                  <div className="w-10 h-10 rounded-full bg-gray-100 animate-pulse" />
+                  <div className="ml-3 flex-1">
+                    <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-gray-100 rounded animate-pulse mt-1" />
+                  </div>
+                </div>
+              );
+            }
+
             return (
               <div
-                key={conversation.id}
+                key={id}
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -143,9 +148,9 @@ export function ConversationList({
                 }}
               >
                 <ConversationItem
-                  {...conversation}
-                  isSelected={selectedId === conversation.id}
-                  onClick={() => setSelectedId(conversation.id)}
+                  {...props}
+                  isSelected={selectedId === id}
+                  onClick={() => setSelectedId(id)}
                 />
               </div>
             );
@@ -155,3 +160,4 @@ export function ConversationList({
     </div>
   );
 }
+
