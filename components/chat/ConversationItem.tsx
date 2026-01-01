@@ -33,7 +33,7 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
   if (isTyping) {
     return (
-      <span className="text-[#717680] italic">
+      <span className="italic">
         {typingUser ? `${typingUser} is typing...` : 'typing...'}
       </span>
     );
@@ -41,7 +41,7 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
   if (lastMessageType === 'deleted') {
     return (
-      <span className="flex items-center gap-1 text-[#717680]">
+      <span className="flex items-center gap-1">
         <Ban className="w-3.5 h-3.5" />
         You deleted this message
       </span>
@@ -50,7 +50,7 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
   if (lastMessageType === 'reaction' && reactionEmoji) {
     return (
-      <span className="text-[#717680]">
+      <span>
         You reacted {reactionEmoji} to "{reactionTarget}"
       </span>
     );
@@ -58,7 +58,7 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
   if (lastMessageType === 'image') {
     return (
-      <span className="flex items-center gap-1 text-[#717680]">
+      <span className="flex items-center gap-1">
         <Image className="w-3.5 h-3.5" />
         {lastMessage || '1 photo'}
       </span>
@@ -67,14 +67,14 @@ function formatPreview(props: ConversationItemProps): React.ReactNode {
 
   if (lastMessageType === 'video') {
     return (
-      <span className="flex items-center gap-1 text-[#717680]">
+      <span className="flex items-center gap-1">
         <Video className="w-3.5 h-3.5" />
         {lastMessage || '1 video'}
       </span>
     );
   }
 
-  return <span className="text-[#717680] italic">{lastMessage || 'New conversation'}</span>;
+  return <span>{lastMessage || 'New conversation'}</span>;
 }
 
 export function ConversationItem(props: ConversationItemProps) {
@@ -105,7 +105,7 @@ export function ConversationItem(props: ConversationItemProps) {
         w-full flex items-center gap-3 px-4 py-2.5
         transition-colors duration-150 text-left
         ${isSelected
-          ? 'bg-[#005CFF] hover:bg-[#0052E0]'
+          ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
           : 'hover:bg-gray-50 active:bg-gray-100'
         }
       `}
@@ -150,7 +150,7 @@ export function ConversationItem(props: ConversationItemProps) {
             )}
             {unreadCount > 0 && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
-                isSelected ? 'bg-white text-[#005CFF]' : 'bg-[#005CFF] text-white'
+                isSelected ? 'bg-white text-[#3B82F6]' : 'bg-[#3B82F6] text-white'
               }`}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>

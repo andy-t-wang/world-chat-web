@@ -182,7 +182,8 @@ export function MessagePanel({
       }
     }
 
-    return '[Unsupported message type]';
+    // Filter out unsupported message types (welcome messages, etc.)
+    return null;
   };
 
   return (
