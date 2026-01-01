@@ -10,9 +10,12 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { resolveAddress, getCachedUsername } from '@/lib/username/service';
 import type { UsernameRecord } from '@/types/username';
+
+// Debug counter for hook tracking
+let useUsernameCallCount = 0;
 
 interface UseUsernameResult {
   /** The username record if found */
@@ -50,6 +53,12 @@ function truncateAddress(address: string): string {
  * 3. No global state = no cascading re-renders
  */
 export function useUsername(address: string | null | undefined): UseUsernameResult {
+  const callId = ++useUsernameCallCount;
+  const renderCountRef = useRef(0);
+  renderCountRef.current++;
+
+  console.log(`[useUsername#${callId}] Hook called (render ${renderCountRef.current}) for ${address?.slice(0, 10) ?? 'null'}`);
+
   const normalizedAddress = address?.toLowerCase() ?? '';
 
   // Initialize state from cache (synchronous, no re-render)
@@ -59,19 +68,25 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
     error: Error | null;
   }>(() => {
     if (!address) {
+      console.log(`[useUsername#${callId}] Initial state: no address`);
       return { record: null, isLoading: false, error: null };
     }
     // Check cache synchronously
     const cached = getCachedUsername(address);
     if (cached !== undefined) {
+      console.log(`[useUsername#${callId}] Initial state: cached=${cached?.username ?? 'null'}`);
       return { record: cached, isLoading: false, error: null };
     }
     // Not cached, will need to fetch
+    console.log(`[useUsername#${callId}] Initial state: not cached, will fetch`);
     return { record: null, isLoading: true, error: null };
   });
 
   useEffect(() => {
+    console.log(`[useUsername#${callId}] useEffect triggered for ${address?.slice(0, 10) ?? 'null'}`);
+
     if (!address || !normalizedAddress) {
+      console.log(`[useUsername#${callId}] No address, resetting state`);
       setState({ record: null, isLoading: false, error: null });
       return;
     }
@@ -79,6 +94,7 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
     // Check if already cached
     const cached = getCachedUsername(address);
     if (cached !== undefined) {
+      console.log(`[useUsername#${callId}] Found in cache: ${cached?.username ?? 'null'}`);
       setState({ record: cached, isLoading: false, error: null });
       return;
     }
@@ -86,10 +102,13 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
     // Check if another component is already fetching this address
     const existingPromise = fetchPromises.get(normalizedAddress);
     if (existingPromise) {
+      console.log(`[useUsername#${callId}] Waiting for existing fetch`);
       // Wait for the existing fetch
       existingPromise.then((record) => {
+        console.log(`[useUsername#${callId}] Existing fetch resolved: ${record?.username ?? 'null'}`);
         setState({ record, isLoading: false, error: null });
       }).catch((error) => {
+        console.log(`[useUsername#${callId}] Existing fetch failed`);
         setState({
           record: null,
           isLoading: false,
@@ -101,10 +120,12 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
 
     // Prevent duplicate fetches
     if (inFlightAddresses.has(normalizedAddress)) {
+      console.log(`[useUsername#${callId}] Already in-flight, skipping`);
       return;
     }
 
     // Start the fetch
+    console.log(`[useUsername#${callId}] Starting fetch for ${address.slice(0, 10)}`);
     inFlightAddresses.add(normalizedAddress);
     setState((prev) => ({ ...prev, isLoading: true }));
 
@@ -113,9 +134,11 @@ export function useUsername(address: string | null | undefined): UseUsernameResu
 
     fetchPromise
       .then((record) => {
+        console.log(`[useUsername#${callId}] Fetch complete: ${record?.username ?? 'null'}`);
         setState({ record, isLoading: false, error: null });
       })
       .catch((error) => {
+        console.log(`[useUsername#${callId}] Fetch failed: ${error}`);
         setState({
           record: null,
           isLoading: false,

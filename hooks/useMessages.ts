@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useState, useMemo } from 'react';
+import { useEffect, useCallback, useState, useMemo, useRef } from 'react';
 import { useAtomValue, useAtom } from 'jotai';
 import {
   allConversationMessageIdsAtom,
@@ -11,6 +11,9 @@ import {
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage, PaginationState } from '@/types/messages';
+
+// Debug counter for hook invocation tracking
+let useMessagesCallCount = 0;
 
 const DEFAULT_PAGINATION: PaginationState = {
   hasMore: true,
@@ -34,10 +37,18 @@ const loadedConversations = new Set<string>();
  * - Provides send/retry actions that delegate to StreamManager
  */
 export function useMessages(conversationId: string | null) {
+  const callId = ++useMessagesCallCount;
+  const renderCountRef = useRef(0);
+  renderCountRef.current++;
+
+  console.log(`[useMessages#${callId}] Hook called (render ${renderCountRef.current}) for ${conversationId?.slice(0, 8) ?? 'null'}`);
+
   // Subscribe to the full Maps - React will only re-render when Maps change
   const messageIdsMap = useAtomValue(allConversationMessageIdsAtom);
   const paginationMap = useAtomValue(allConversationPaginationAtom);
   const [pendingMessagesMap, setPendingMessagesMap] = useAtom(allPendingMessagesAtom);
+
+  console.log(`[useMessages#${callId}] Maps loaded: messageIdsMap.size=${messageIdsMap.size}, paginationMap.size=${paginationMap.size}`);
 
   // Derive values for this specific conversation
   const messageIds = useMemo(
@@ -73,33 +84,42 @@ export function useMessages(conversationId: string | null) {
   const [isInitialLoading, setIsInitialLoading] = useState(() => {
     // If already loaded or loading, don't show loading state
     if (!conversationId) return false;
-    return !loadedConversations.has(conversationId) && !loadingConversations.has(conversationId);
+    const initial = !loadedConversations.has(conversationId) && !loadingConversations.has(conversationId);
+    console.log(`[useMessages#${callId}] Initial isInitialLoading=${initial}`);
+    return initial;
   });
 
   // Load messages when conversation opens
   useEffect(() => {
+    console.log(`[useMessages#${callId}] useEffect triggered for ${conversationId?.slice(0, 8) ?? 'null'}`);
+
     if (!conversationId) {
+      console.log(`[useMessages#${callId}] No conversationId, setting isInitialLoading=false`);
       setIsInitialLoading(false);
       return;
     }
 
     // Use MODULE-LEVEL guards to prevent duplicate loads across instances
     if (loadedConversations.has(conversationId)) {
+      console.log(`[useMessages#${callId}] Already loaded, setting isInitialLoading=false`);
       setIsInitialLoading(false);
       return;
     }
 
     if (loadingConversations.has(conversationId)) {
+      console.log(`[useMessages#${callId}] Already loading, skipping`);
       // Another instance is already loading, just wait
       return;
     }
 
     // Mark as loading
+    console.log(`[useMessages#${callId}] Starting load for ${conversationId.slice(0, 8)}`);
     loadingConversations.add(conversationId);
     setIsInitialLoading(true);
 
     // Tell StreamManager to load messages for this conversation
     streamManager.loadMessagesForConversation(conversationId).finally(() => {
+      console.log(`[useMessages#${callId}] Load complete for ${conversationId.slice(0, 8)}`);
       loadingConversations.delete(conversationId);
       loadedConversations.add(conversationId);
       setIsInitialLoading(false);

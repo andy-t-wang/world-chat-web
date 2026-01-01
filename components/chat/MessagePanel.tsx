@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAtomValue } from 'jotai';
 import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
@@ -12,6 +12,9 @@ import { xmtpClientAtom } from '@/stores/client';
 import { VIRTUALIZATION } from '@/config/constants';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage } from '@/types/messages';
+
+// Debug counter for render tracking
+let messagePanelRenderCount = 0;
 
 interface MessagePanelProps {
   conversationId: string;
@@ -33,14 +36,22 @@ export function MessagePanel({
   isVerified = false,
   subtitle,
 }: MessagePanelProps) {
+  messagePanelRenderCount++;
+  console.log(`[MessagePanel] Render #${messagePanelRenderCount} for ${conversationId.slice(0, 8)}...`);
+
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
-  const { displayName } = useUsername(peerAddress);
+
+  console.log(`[MessagePanel] About to call useUsername for ${peerAddress.slice(0, 10)}...`);
+  const { displayName, isLoading: usernameLoading } = useUsername(peerAddress);
+  console.log(`[MessagePanel] useUsername returned: displayName=${displayName}, isLoading=${usernameLoading}`);
+
   const name = nameOverride ?? displayName;
   const client = useAtomValue(xmtpClientAtom);
 
   // Use messages hook
+  console.log(`[MessagePanel] About to call useMessages for ${conversationId.slice(0, 8)}...`);
   const {
     messageIds,
     pendingMessages,
@@ -52,27 +63,34 @@ export function MessagePanel({
     retryMessage,
     getMessage,
   } = useMessages(conversationId);
+  console.log(`[MessagePanel] useMessages returned: messageIds.length=${messageIds.length}, isLoading=${isLoading}, isInitialLoading=${isInitialLoading}`);
 
   // Get own inbox ID for determining message direction
   const ownInboxId = client?.inboxId ?? '';
 
-  // Combine pending and real messages for display
+  // Combine pending and real messages for display - MEMOIZED to prevent re-renders
   // Messages are in reverse chronological order (newest first)
   // We need to reverse for display so oldest is at top
-  const allItems: Array<{ type: 'message' | 'pending'; id: string }> = [
-    ...pendingMessages.map((p) => ({ type: 'pending' as const, id: p.id })),
-    ...messageIds.map((id) => ({ type: 'message' as const, id })),
-  ];
+  const displayItems = useMemo(() => {
+    const allItems: Array<{ type: 'message' | 'pending'; id: string }> = [
+      ...pendingMessages.map((p) => ({ type: 'pending' as const, id: p.id })),
+      ...messageIds.map((id) => ({ type: 'message' as const, id })),
+    ];
+    // Reverse so oldest is first (for natural reading order)
+    return [...allItems].reverse();
+  }, [pendingMessages, messageIds]);
 
-  // Reverse so oldest is first (for natural reading order)
-  const displayItems = [...allItems].reverse();
+  // Memoize virtualizer callbacks to prevent re-renders
+  const getScrollElement = useCallback(() => parentRef.current, []);
+  const estimateSize = useCallback(() => VIRTUALIZATION.MESSAGE_ROW_HEIGHT, []);
+  const getItemKey = useCallback((index: number) => displayItems[index]?.id ?? index, [displayItems]);
 
   const virtualizer = useVirtualizer({
     count: displayItems.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => VIRTUALIZATION.MESSAGE_ROW_HEIGHT,
+    getScrollElement,
+    estimateSize,
     overscan: VIRTUALIZATION.OVERSCAN_COUNT,
-    getItemKey: (index) => displayItems[index].id,
+    getItemKey,
   });
 
   // Scroll to bottom on new messages

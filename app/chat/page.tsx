@@ -14,15 +14,24 @@ import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
 const MemoizedMessagePanel = memo(MessagePanel);
 
+// Debug counter for render tracking
+let chatPageRenderCount = 0;
+
 export default function ChatPage() {
+  chatPageRenderCount++;
+  console.log(`[ChatPage] Render #${chatPageRenderCount}`);
+
   const router = useRouter();
   const { isConnected, isConnecting } = useAccount();
   const { client, isInitializing, isReady, error: xmtpError } = useXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
 
+  console.log(`[ChatPage] selectedId=${selectedId}, isConnected=${isConnected}, isInitializing=${isInitializing}`);
+
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
+  console.log(`[ChatPage] conversationMetadata=`, conversationMetadata ? 'exists' : 'null');
 
   // Redirect to home if not connected
   useEffect(() => {

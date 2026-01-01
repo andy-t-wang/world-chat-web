@@ -215,15 +215,19 @@ class XMTPStreamManager {
     if (!this.updateScheduled) return;
     this.updateScheduled = false;
 
+    console.log(`[StreamManager] flushUpdates: messageUpdates=${this.pendingMessageUpdates.size}, paginationUpdates=${this.pendingPaginationUpdates.size}`);
+
     // Batch message ID updates
     if (this.pendingMessageUpdates.size > 0) {
       const current = store.get(allConversationMessageIdsAtom);
       const newMap = new Map(current);
       for (const [id, ids] of this.pendingMessageUpdates) {
+        console.log(`[StreamManager] Setting messageIds for ${id.slice(0, 8)}: ${ids.length} messages`);
         newMap.set(id, ids);
       }
       this.pendingMessageUpdates.clear();
       store.set(allConversationMessageIdsAtom, newMap);
+      console.log(`[StreamManager] Updated allConversationMessageIdsAtom`);
     }
 
     // Batch pagination updates
@@ -231,10 +235,12 @@ class XMTPStreamManager {
       const current = store.get(allConversationPaginationAtom);
       const newMap = new Map(current);
       for (const [id, pagination] of this.pendingPaginationUpdates) {
+        console.log(`[StreamManager] Setting pagination for ${id.slice(0, 8)}: isLoading=${pagination.isLoading}, hasMore=${pagination.hasMore}`);
         newMap.set(id, pagination);
       }
       this.pendingPaginationUpdates.clear();
       store.set(allConversationPaginationAtom, newMap);
+      console.log(`[StreamManager] Updated allConversationPaginationAtom`);
     }
   }
 
