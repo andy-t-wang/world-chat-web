@@ -45,6 +45,11 @@ const CONTENT_TYPE_READ_RECEIPT = 'readReceipt';
 const CONTENT_TYPE_REACTION = 'reaction';
 const CONTENT_TYPE_REPLY = 'reply';
 
+// Message loading limits
+const INITIAL_MESSAGE_LIMIT = 20;  // Fast initial load
+const LOAD_MORE_LIMIT = 50;        // Larger batch when scrolling
+const PREVIEW_SEARCH_LIMIT = 10;   // Messages to search for displayable preview
+
 // Check if a message is a special type that shouldn't be displayed as text
 function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
   const typeId = message.contentType?.typeId;
@@ -184,7 +189,7 @@ class XMTPStreamManager {
       // Get last message preview (newest first)
       // Fetch a few messages to find the first displayable one (skip read receipts, reactions)
       const messages = await conv.messages({
-        limit: BigInt(10),
+        limit: BigInt(PREVIEW_SEARCH_LIMIT),
         direction: SortDirection.Descending,
       });
 
@@ -353,9 +358,10 @@ class XMTPStreamManager {
       }
 
       // Sync and load messages (descending = newest first for initial load)
+      // Only load 20 initially for performance - more loaded on scroll
       await conv.sync();
       const messages = await conv.messages({
-        limit: BigInt(50),
+        limit: BigInt(INITIAL_MESSAGE_LIMIT),
         direction: SortDirection.Descending,
       });
 
@@ -368,7 +374,7 @@ class XMTPStreamManager {
 
       this.setMessageIds(conversationId, ids);
       this.setPagination(conversationId, {
-        hasMore: messages.length === 50,
+        hasMore: messages.length === INITIAL_MESSAGE_LIMIT,
         // Track oldest message for pagination (last item in descending order)
         oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : null,
         isLoading: false,
@@ -406,7 +412,7 @@ class XMTPStreamManager {
     try {
       // Load older messages (before our oldest) in descending order
       const messages = await conv.messages({
-        limit: BigInt(50),
+        limit: BigInt(LOAD_MORE_LIMIT),
         sentBeforeNs: pagination.oldestMessageNs ?? undefined,
         direction: SortDirection.Descending,
       });
@@ -425,7 +431,7 @@ class XMTPStreamManager {
       // Append to end (older messages go after current ones in our descending list)
       this.setMessageIds(conversationId, [...currentIds, ...newIds]);
       this.setPagination(conversationId, {
-        hasMore: messages.length === 50,
+        hasMore: messages.length === LOAD_MORE_LIMIT,
         // Update oldest to the last message in this batch
         oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : pagination.oldestMessageNs,
         isLoading: false,
