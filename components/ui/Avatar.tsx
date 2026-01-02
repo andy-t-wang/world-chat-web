@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Users } from 'lucide-react';
 import { useUsername } from '@/hooks/useUsername';
 
 interface MemberPreview {
@@ -26,17 +25,38 @@ interface AvatarProps {
   memberPreviews?: MemberPreview[];
 }
 
-// Color palette for letter avatars - mapped from Figma design tokens
+// Color palette for letter avatars - mapped from Figma UI Kit 4.0
 const AVATAR_COLORS = [
+  { bg: '#FDD3CF', text: '#F2280D' }, // Red (Error)
+  { bg: '#FFDECC', text: '#FF5A00' }, // Orange (Carrot)
   { bg: '#CCF3D9', text: '#00C230' }, // Green (Success)
-  { bg: '#CCE5FF', text: '#005CFF' }, // Blue (Info)
-  { bg: '#FFE5CC', text: '#FF8C00' }, // Orange
-  { bg: '#FFCCCC', text: '#FF3333' }, // Red
-  { bg: '#E5CCFF', text: '#9933FF' }, // Purple
-  { bg: '#CCFFFF', text: '#00CCCC' }, // Cyan
-  { bg: '#FFFFCC', text: '#CCCC00' }, // Yellow
-  { bg: '#FFCCE5', text: '#FF3399' }, // Pink
+  { bg: '#CCE0FF', text: '#005CFF' }, // Blue (Info)
+  { bg: '#E7CCFF', text: '#8600FF' }, // Violet (Purple)
+  { bg: '#FFEDCC', text: '#FFAE00' }, // Yellow (Warning)
+  { bg: '#EBECEF', text: '#717680' }, // Gray
 ] as const;
+
+/**
+ * Get deterministic color based on name/address hash
+ * Same input always produces same color
+ */
+function getColorFromName(name: string): (typeof AVATAR_COLORS)[number] {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+/**
+ * Check if a profile picture URL is a default/placeholder image
+ * Simple rule: if URL ends in .png, it's a default
+ * Real profile pictures don't end in .png (they're UUIDs or other formats)
+ */
+function isDefaultProfilePicture(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return url.toLowerCase().endsWith('.png');
+}
 
 const SIZE_MAP = {
   sm: { container: 32, text: 14 },  // Small for message avatars (32px per Figma)
@@ -52,23 +72,19 @@ function getInitials(name: string): string {
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
 
-function getColorFromName(name: string): (typeof AVATAR_COLORS)[number] {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
 // Mini avatar for group stacked display
 function MiniAvatar({ address, size }: { address: string; size: number }) {
   const { displayName, profilePicture } = useUsername(address);
   const [imgError, setImgError] = useState(false);
   const displayLabel = displayName ?? address.slice(0, 6);
   const initials = getInitials(displayLabel);
-  const colors = getColorFromName(displayLabel);
 
-  if (profilePicture && !imgError) {
+  // Don't show default profile pictures (wallet address as filename)
+  const hasValidPicture = profilePicture &&
+    !imgError &&
+    !isDefaultProfilePicture(profilePicture, address);
+
+  if (hasValidPicture) {
     return (
       <div
         className="rounded-full overflow-hidden border-2 border-white"
@@ -84,18 +100,19 @@ function MiniAvatar({ address, size }: { address: string; size: number }) {
     );
   }
 
+  // No profile picture - use default gray
   return (
     <div
       className="rounded-full flex items-center justify-center border-2 border-white"
       style={{
         width: size,
         height: size,
-        backgroundColor: colors.bg,
+        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
       }}
     >
       <span
         className="font-light leading-none"
-        style={{ color: colors.text, fontSize: size * 0.4 }}
+        style={{ color: DEFAULT_AVATAR_COLOR.text, fontSize: size * 0.4 }}
       >
         {initials}
       </span>
@@ -176,10 +193,9 @@ function GroupAvatar({
     );
   }
 
-  // Fallback: group icon or initials
+  // Fallback: gray circle with initials (no icon)
   const displayLabel = groupName ?? 'Group';
   const initials = getInitials(displayLabel);
-  const colors = getColorFromName(displayLabel);
 
   return (
     <div
@@ -187,23 +203,15 @@ function GroupAvatar({
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: colors.bg,
+        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
       }}
     >
-      {groupName ? (
-        <span
-          className="font-light leading-none"
-          style={{ color: colors.text, fontSize: dimensions.text }}
-        >
-          {initials}
-        </span>
-      ) : (
-        <Users
-          className="opacity-80"
-          style={{ color: colors.text }}
-          size={dimensions.text}
-        />
-      )}
+      <span
+        className="font-light leading-none"
+        style={{ color: DEFAULT_AVATAR_COLOR.text, fontSize: dimensions.text }}
+      >
+        {initials}
+      </span>
     </div>
   );
 }
@@ -238,11 +246,13 @@ export function Avatar({
   // Use provided name, or fall back to username/address from hook
   const displayLabel = name ?? displayName ?? '';
   const initials = useMemo(() => getInitials(displayLabel), [displayLabel]);
-  const colors = useMemo(() => getColorFromName(displayLabel), [displayLabel]);
   const dimensions = SIZE_MAP[size];
 
   // Priority: explicit imageUrl > profile picture from API
-  const avatarUrl = imageUrl ?? (imgError ? null : profilePicture);
+  // But skip default profile pictures (wallet address as filename)
+  const candidateUrl = imageUrl ?? (imgError ? null : profilePicture);
+  const isDefault = isDefaultProfilePicture(candidateUrl, address);
+  const avatarUrl = isDefault ? null : candidateUrl;
 
   if (avatarUrl) {
     return (
@@ -260,19 +270,20 @@ export function Avatar({
     );
   }
 
+  // No profile picture - use default gray with initials only
   return (
     <div
       className={`relative shrink-0 rounded-full flex items-center justify-center ${className}`}
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: colors.bg,
+        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
       }}
     >
       <span
         className="font-light leading-none"
         style={{
-          color: colors.text,
+          color: DEFAULT_AVATAR_COLOR.text,
           fontSize: dimensions.text,
         }}
       >

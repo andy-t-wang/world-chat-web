@@ -26,7 +26,6 @@ export interface ConversationItemProps {
   memberCount?: number;
   /** Member previews for group avatars */
   memberPreviews?: MemberPreview[];
-  isVerified?: boolean;
   lastMessage?: string | null;
   lastMessageType?: 'text' | 'image' | 'video' | 'deleted' | 'reaction';
   reactionEmoji?: string;
@@ -99,7 +98,6 @@ export function ConversationItem(props: ConversationItemProps) {
     groupName,
     memberCount,
     memberPreviews,
-    isVerified = false,
     timestamp,
     unreadCount = 0,
     isPinned = false,
@@ -109,7 +107,10 @@ export function ConversationItem(props: ConversationItemProps) {
   } = props;
 
   // For DMs: Fetch username and profile picture from World App Username API
-  const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
+  const { displayName, profilePicture } = useUsername(conversationType === 'dm' ? peerAddress : null);
+
+  // User is verified if they have a profile_picture_url (even if it's a default one)
+  const isVerified = conversationType === 'dm' && profilePicture !== null;
 
   // Determine display name based on conversation type
   const name = conversationType === 'group'

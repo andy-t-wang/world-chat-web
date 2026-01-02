@@ -73,11 +73,10 @@ export function ConversationList({
       };
     }
 
-    // DM props
+    // DM props - isVerified is derived from useUsername in ConversationItem
     return {
       ...baseProps,
       peerAddress: data.peerAddress,
-      isVerified: true, // TODO: Check verification status
     };
   };
 
