@@ -1,8 +1,76 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Search, SquarePen, X } from 'lucide-react';
+import { useAtom } from 'jotai';
+import { Search, SquarePen, X, Settings, Link2, Link2Off } from 'lucide-react';
 import { ConversationList } from './ConversationList';
+import { linkPreviewEnabledAtom } from '@/stores/settings';
+
+// Global settings dropdown component
+function GlobalSettingsDropdown() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+        title="Settings"
+      >
+        <Settings className="w-5 h-5 text-[#181818]" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider">
+            Privacy
+          </div>
+          <button
+            onClick={() => setLinkPreviewEnabled(!linkPreviewEnabled)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+          >
+            {linkPreviewEnabled ? (
+              <Link2 className="w-5 h-5 text-[#00C230]" />
+            ) : (
+              <Link2Off className="w-5 h-5 text-[#9BA3AE]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[#181818]">Link Previews</p>
+              <p className="text-[12px] text-[#717680]">
+                {linkPreviewEnabled ? 'URLs will be fetched for previews' : 'URLs won\'t be fetched'}
+              </p>
+            </div>
+            <div
+              className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
+                linkPreviewEnabled ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  linkPreviewEnabled ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface SidebarProps {
   onNewChat?: () => void;
@@ -40,7 +108,10 @@ export function Sidebar({ onNewChat }: SidebarProps) {
       {/* Header */}
       <header className="shrink-0 px-4 py-3 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
+            <GlobalSettingsDropdown />
+          </div>
           <button
             onClick={onNewChat}
             className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"

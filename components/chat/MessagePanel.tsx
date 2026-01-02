@@ -5,10 +5,12 @@ import { useAtomValue } from 'jotai';
 import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
+import { MessageText, MessageLinkPreview } from './MessageContent';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
 import { readReceiptVersionAtom, reactionsVersionAtom } from '@/stores/messages';
+import { linkPreviewEnabledAtom } from '@/stores/settings';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 
@@ -156,6 +158,7 @@ export function MessagePanel({
 
   const client = useAtomValue(xmtpClientAtom);
   const _readReceiptVersion = useAtomValue(readReceiptVersionAtom);
+  const linkPreviewEnabled = useAtomValue(linkPreviewEnabledAtom);
 
   const {
     messageIds,
@@ -588,29 +591,31 @@ export function MessagePanel({
                   return (
                     <div
                       key={item.id}
-                      className={`flex justify-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                     >
                       <div className="max-w-[300px]">
                         <div
                           className={`bg-[#005CFF] px-3 py-2 ${senderRadius} cursor-pointer`}
                           onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
                         >
-                          <p className="text-white text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
+                          <MessageText text={text} isOwnMessage={true} />
                         </div>
                         <MessageReactions messageId={item.id} isOwnMessage={true} />
-                        {isLastInGroup && (
-                          <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                            <span className="text-[11px] text-[#9BA3AE]">
-                              {formatTime(msg.sentAtNs)}
-                            </span>
-                            {isRead ? (
-                              <span className="text-[11px] text-[#00C230] font-medium">Read</span>
-                            ) : (
-                              <span className="text-[11px] text-[#9BA3AE]">Sent</span>
-                            )}
-                          </div>
-                        )}
                       </div>
+                      {/* Link preview outside the bubble */}
+                      {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={true} />}
+                      {isLastInGroup && (
+                        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+                          <span className="text-[11px] text-[#9BA3AE]">
+                            {formatTime(msg.sentAtNs)}
+                          </span>
+                          {isRead ? (
+                            <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                          ) : (
+                            <span className="text-[11px] text-[#9BA3AE]">Sent</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 }
@@ -634,10 +639,10 @@ export function MessagePanel({
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-end gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    className={`flex items-start gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                   >
                     {/* Avatar - only show on last message of group, otherwise spacer */}
-                    <div className="w-8 h-8 shrink-0 flex items-end">
+                    <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
                       {isLastInGroup && (
                         <Avatar
                           address={senderAddress}
@@ -645,18 +650,22 @@ export function MessagePanel({
                         />
                       )}
                     </div>
-                    <div className="max-w-[300px] flex flex-col">
+                    <div className="flex flex-col">
                       {/* Sender name - show on first message in group for all incoming messages */}
                       {isFirstInGroup && (
                         <SenderName address={senderAddress} />
                       )}
-                      <div
-                        className={`bg-white px-3 py-2 ${recipientRadius} cursor-pointer`}
-                        onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
-                      >
-                        <p className="text-[#181818] text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
+                      <div className="max-w-[300px]">
+                        <div
+                          className={`bg-white px-3 py-2 ${recipientRadius} cursor-pointer`}
+                          onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
+                        >
+                          <MessageText text={text} isOwnMessage={false} />
+                        </div>
+                        <MessageReactions messageId={item.id} isOwnMessage={false} />
                       </div>
-                      <MessageReactions messageId={item.id} isOwnMessage={false} />
+                      {/* Link preview outside the bubble */}
+                      {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={false} />}
                       {isLastInGroup && (
                         <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1">
                           {formatTime(msg.sentAtNs)}
