@@ -202,7 +202,27 @@ export function MessagePanel({
       return content?.content ? `Reacted ${content.content}` : null;
     }
 
-    const content = msg.content;
+    let content = msg.content;
+
+    // If content is undefined, try to decode from encodedContent
+    if (content === undefined || content === null) {
+      const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
+      if (encodedContent?.content) {
+        try {
+          const decoded = new TextDecoder().decode(encodedContent.content);
+          // Try parsing as JSON first (for structured content)
+          try {
+            content = JSON.parse(decoded);
+          } catch {
+            // Not JSON, use as plain string
+            content = decoded;
+          }
+        } catch {
+          // Failed to decode
+        }
+      }
+    }
+
     if (typeof content === 'string') return content;
     if (content && typeof content === 'object') {
       if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
@@ -216,6 +236,13 @@ export function MessagePanel({
         }
       }
     }
+
+    // Fallback: try to get fallback text from the message
+    const fallback = (msg as { fallback?: string }).fallback;
+    if (fallback && typeof fallback === 'string') {
+      return fallback;
+    }
+
     return null;
   }, []);
 
@@ -266,18 +293,45 @@ export function MessagePanel({
       if (typeId === 'readReceipt') continue;
 
       // Check if has displayable content
-      const content = msg.content;
+      let content = msg.content;
+
+      // If content is undefined, try to decode from encodedContent
+      if (content === undefined || content === null) {
+        const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
+        if (encodedContent?.content) {
+          try {
+            const decoded = new TextDecoder().decode(encodedContent.content);
+            try {
+              content = JSON.parse(decoded);
+            } catch {
+              content = decoded;
+            }
+          } catch {
+            // Failed to decode
+          }
+        }
+      }
+
       let hasDisplayableContent = false;
-      if (typeof content === 'string') {
+
+      // String content (basic text messages)
+      if (typeof content === 'string' && content.length > 0) {
         hasDisplayableContent = true;
       } else if (content && typeof content === 'object') {
+        // Text content in object form
         if ('text' in content) hasDisplayableContent = true;
+        // Reply content (nested)
         else if ('content' in content) hasDisplayableContent = true;
-        // Transaction references have txHash
+        // Transaction references - our format
         else if ('txHash' in content) hasDisplayableContent = true;
+        // Transaction references - XMTP format (World App)
+        else if ('reference' in content) hasDisplayableContent = true;
       }
+
+      // Always show reactions and transaction references by typeId
       if (typeId === 'reaction') hasDisplayableContent = true;
       if (typeId === 'transactionReference') hasDisplayableContent = true;
+
       if (!hasDisplayableContent) continue;
 
       const date = new Date(Number(msg.sentAtNs / BigInt(1_000_000)));
