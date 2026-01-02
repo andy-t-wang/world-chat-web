@@ -40,6 +40,11 @@ export const readReceiptsAtom = atom<Map<string, bigint>>(new Map());
 export const readReceiptVersionAtom = atom<number>(0);
 
 /**
+ * Version counter to trigger re-renders when unread counts change
+ */
+export const unreadVersionAtom = atom<number>(0);
+
+/**
  * Helper function to get message IDs for a conversation
  */
 export function getMessageIds(messageIdsMap: Map<string, string[]>, conversationId: string): string[] {

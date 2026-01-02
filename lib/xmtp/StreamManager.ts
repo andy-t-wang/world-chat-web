@@ -23,6 +23,8 @@ import {
   messageCache,
   readReceiptsAtom,
   readReceiptVersionAtom,
+  unreadVersionAtom,
+  selectedConversationIdAtom,
 } from '@/stores';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
@@ -50,6 +52,7 @@ interface ConversationMetadata {
   // Common
   lastMessagePreview: string;
   lastActivityNs: bigint;
+  unreadCount: number;
 }
 
 // Check if a conversation is a DM
@@ -70,6 +73,10 @@ const PREVIEW_SEARCH_LIMIT = 10;   // Messages to search for displayable preview
 // Stream restart configuration
 const STREAM_RESTART_DELAY_MS = 2000;  // Wait before restarting crashed stream
 const MAX_STREAM_RESTARTS = 5;          // Max restart attempts before giving up
+
+// localStorage key for persisting last-read timestamps
+const LAST_READ_TIMESTAMPS_KEY = 'xmtp-last-read-timestamps';
+const MAX_MESSAGES_FOR_UNREAD_COUNT = 50; // Only count first N messages per conversation
 
 // Check if a message is a special type that shouldn't be displayed as text
 function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
@@ -122,6 +129,9 @@ class XMTPStreamManager {
   private conversationStreamRestarts = 0;
   private messageStreamRestarts = new Map<string, number>();
 
+  // Track when user last read each conversation (for unread counts)
+  private lastReadTimestamps = new Map<string, bigint>();
+
   /**
    * Initialize the manager with an XMTP client
    *
@@ -137,6 +147,9 @@ class XMTPStreamManager {
 
     this.client = client;
 
+    // Load persisted last-read timestamps
+    this.loadLastReadTimestamps();
+
     // Phase 1: Load from local cache (instant)
     await this.loadConversationsFromCache();
 
@@ -145,6 +158,71 @@ class XMTPStreamManager {
 
     // Phase 3: One-time background sync to catch up
     this.performInitialSync();
+  }
+
+  /**
+   * Load last-read timestamps from localStorage
+   */
+  private loadLastReadTimestamps(): void {
+    try {
+      const stored = localStorage.getItem(LAST_READ_TIMESTAMPS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, string>;
+        for (const [conversationId, timestampStr] of Object.entries(parsed)) {
+          this.lastReadTimestamps.set(conversationId, BigInt(timestampStr));
+        }
+        console.log(`[StreamManager] Loaded ${this.lastReadTimestamps.size} last-read timestamps`);
+      }
+    } catch (error) {
+      console.error('[StreamManager] Failed to load last-read timestamps:', error);
+    }
+  }
+
+  /**
+   * Save last-read timestamps to localStorage
+   */
+  private saveLastReadTimestamps(): void {
+    try {
+      const data: Record<string, string> = {};
+      for (const [conversationId, timestamp] of this.lastReadTimestamps) {
+        data[conversationId] = timestamp.toString();
+      }
+      localStorage.setItem(LAST_READ_TIMESTAMPS_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('[StreamManager] Failed to save last-read timestamps:', error);
+    }
+  }
+
+  /**
+   * Mark a conversation as read (user is viewing it)
+   * Updates lastReadTimestamp to now and triggers UI update
+   */
+  markConversationAsRead(conversationId: string): void {
+    const nowNs = BigInt(Date.now()) * 1_000_000n;
+    this.lastReadTimestamps.set(conversationId, nowNs);
+    this.saveLastReadTimestamps();
+
+    // Update metadata to reflect 0 unread
+    const metadata = this.conversationMetadata.get(conversationId);
+    if (metadata && metadata.unreadCount > 0) {
+      metadata.unreadCount = 0;
+      // Batch both updates together to prevent multiple re-renders
+      // Use a single microtask to ensure React batches them
+      const unreadVersion = store.get(unreadVersionAtom);
+      const metadataVersion = store.get(conversationMetadataVersionAtom);
+      store.set(unreadVersionAtom, unreadVersion + 1);
+      store.set(conversationMetadataVersionAtom, metadataVersion + 1);
+    }
+
+    console.log('[StreamManager] Marked conversation as read:', conversationId);
+  }
+
+  /**
+   * Get unread count for a conversation
+   */
+  getUnreadCount(conversationId: string): number {
+    const metadata = this.conversationMetadata.get(conversationId);
+    return metadata?.unreadCount ?? 0;
   }
 
   // Track if initial sync has been done
@@ -351,6 +429,7 @@ class XMTPStreamManager {
     let memberPreviews: MemberPreview[] | undefined;
     let lastMessagePreview = '';
     let lastActivityNs = BigInt(0);
+    let unreadCount = 0;
 
     try {
       if (isDm(conv)) {
@@ -384,34 +463,38 @@ class XMTPStreamManager {
         await conv.sync();
       }
 
-      // Get last message preview (newest first)
-      // Fetch a few messages to find the first displayable one (skip read receipts, reactions)
+      // Fetch messages for preview and unread count
       const messages = await conv.messages({
-        limit: BigInt(PREVIEW_SEARCH_LIMIT),
+        limit: BigInt(MAX_MESSAGES_FOR_UNREAD_COUNT),
         direction: SortDirection.Descending,
       });
 
-      // Find first message with displayable content
-      if (messages.length > 0) {
-        console.log(`[StreamManager] Found ${messages.length} messages for preview in ${conv.id}, first:`, {
-          id: messages[0].id,
-          contentType: messages[0].contentType?.typeId,
-          content: typeof messages[0].content === 'string' ? messages[0].content.slice(0, 50) : typeof messages[0].content,
-        });
-      } else {
-        console.log(`[StreamManager] No messages found for preview in ${conv.id}`);
-      }
+      // Get last read timestamp for this conversation
+      const lastReadTs = this.lastReadTimestamps.get(conv.id) ?? BigInt(0);
+      const ownInboxId = this.client?.inboxId;
 
+      // Find first displayable message for preview + count unread
       for (const msg of messages) {
-        const content = extractMessageContent(msg);
-        if (content) {
-          lastMessagePreview = content;
-          lastActivityNs = msg.sentAtNs;
-          break;
+        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+        // Skip read receipts
+        if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
+
+        // Count unread: messages from others that are newer than lastReadTs
+        if (msg.senderInboxId !== ownInboxId && msg.sentAtNs > lastReadTs) {
+          unreadCount++;
         }
-        // Still track activity time even for non-displayable messages
-        if (lastActivityNs === BigInt(0)) {
-          lastActivityNs = msg.sentAtNs;
+
+        // Find first displayable message for preview
+        if (!lastMessagePreview) {
+          const content = extractMessageContent(msg);
+          if (content) {
+            lastMessagePreview = content;
+            lastActivityNs = msg.sentAtNs;
+          } else if (lastActivityNs === BigInt(0)) {
+            // Still track activity time even for non-displayable messages
+            lastActivityNs = msg.sentAtNs;
+          }
         }
       }
     } catch (error) {
@@ -429,6 +512,7 @@ class XMTPStreamManager {
       memberPreviews,
       lastMessagePreview,
       lastActivityNs,
+      unreadCount,
     };
   }
 
@@ -823,6 +907,17 @@ class XMTPStreamManager {
             }
             // Always update activity time
             metadata.lastActivityNs = msg.sentAtNs;
+
+            // Increment unread count if message is from peer and conversation not selected
+            const isOwnMessage = msg.senderInboxId === this.client?.inboxId;
+            const selectedId = store.get(selectedConversationIdAtom);
+            if (!isOwnMessage && selectedId !== conversationId) {
+              metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
+              // Trigger unread UI update
+              const version = store.get(unreadVersionAtom);
+              store.set(unreadVersionAtom, version + 1);
+            }
+
             // Notify UI of metadata change
             this.incrementMetadataVersion();
           }

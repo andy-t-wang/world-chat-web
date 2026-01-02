@@ -1,14 +1,18 @@
 'use client';
 
 import { useAtomValue } from 'jotai';
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, useEffect } from 'react';
 import {
   conversationIdsAtom,
   isLoadingConversationsAtom,
   conversationsErrorAtom,
   conversationMetadataVersionAtom,
 } from '@/stores/conversations';
+import { unreadVersionAtom } from '@/stores/messages';
 import { streamManager } from '@/lib/xmtp/StreamManager';
+
+// Debug render counter
+let metadataHookRenderCount = 0;
 
 /**
  * Member preview for group avatars
@@ -35,6 +39,7 @@ export interface ConversationMetadata {
   // Common
   lastMessagePreview: string;
   lastActivityNs: bigint;
+  unreadCount: number;
 }
 
 /**
@@ -49,6 +54,8 @@ export function useConversations() {
   const error = useAtomValue(conversationsErrorAtom);
   // Subscribe to metadata version to re-render when any metadata changes
   const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
+  // Subscribe to unread version to re-render when unread counts change
+  const unreadVersion = useAtomValue(unreadVersionAtom);
 
   // Cache metadata reference to avoid creating new Map on every render
   const metadataRef = useRef<Map<string, ConversationMetadata>>(new Map());
@@ -57,7 +64,7 @@ export function useConversations() {
     // Get fresh metadata from StreamManager
     metadataRef.current = streamManager.getAllConversationMetadata();
     return metadataRef.current;
-  }, [conversationIds, metadataVersion]); // Refresh when list or metadata changes
+  }, [conversationIds, metadataVersion, unreadVersion]); // Refresh when list, metadata, or unread changes
 
   return {
     conversationIds,
@@ -76,6 +83,9 @@ export function useConversationMetadata(conversationId: string | null): Conversa
   const conversationIds = useAtomValue(conversationIdsAtom);
   // Subscribe to metadata version to re-render when metadata changes
   const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
+
+  metadataHookRenderCount++;
+  console.log(`[useConversationMetadata] Render #${metadataHookRenderCount}, id=${conversationId?.slice(0,8)}, version=${metadataVersion}`);
 
   // Memoize the result to prevent unnecessary re-renders
   const metadata = useMemo(() => {

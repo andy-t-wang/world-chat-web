@@ -18,6 +18,10 @@ const DEFAULT_PAGINATION: PaginationState = {
   isLoading: false,
 };
 
+// Stable empty arrays to prevent new references
+const EMPTY_MESSAGE_IDS: string[] = [];
+const EMPTY_PENDING_MESSAGES: PendingMessage[] = [];
+
 /**
  * MODULE-LEVEL guard to prevent duplicate loads across component instances
  * Similar to the pattern used in useUsername
@@ -39,9 +43,9 @@ export function useMessages(conversationId: string | null) {
   const paginationMap = useAtomValue(allConversationPaginationAtom);
   const [pendingMessagesMap, setPendingMessagesMap] = useAtom(allPendingMessagesAtom);
 
-  // Derive values for this specific conversation
+  // Derive values for this specific conversation - use stable empty arrays
   const messageIds = useMemo(
-    () => (conversationId ? messageIdsMap.get(conversationId) ?? [] : []),
+    () => (conversationId ? messageIdsMap.get(conversationId) ?? EMPTY_MESSAGE_IDS : EMPTY_MESSAGE_IDS),
     [messageIdsMap, conversationId]
   );
 
@@ -51,7 +55,7 @@ export function useMessages(conversationId: string | null) {
   );
 
   const pendingMessages = useMemo(
-    () => (conversationId ? pendingMessagesMap.get(conversationId) ?? [] : []),
+    () => (conversationId ? pendingMessagesMap.get(conversationId) ?? EMPTY_PENDING_MESSAGES : EMPTY_PENDING_MESSAGES),
     [pendingMessagesMap, conversationId]
   );
 

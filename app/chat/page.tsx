@@ -31,6 +31,11 @@ export default function ChatPage() {
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
 
+  // Debug: track renders
+  const renderCount = useRef(0);
+  renderCount.current++;
+  console.log(`[ChatPage] Render #${renderCount.current}, selectedId=${selectedId}, hasMetadata=${!!conversationMetadata}`);
+
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
     if (hasXmtpClient) {

@@ -59,6 +59,7 @@ export function ConversationList({
       conversationType: data.conversationType,
       lastMessage: data.lastMessagePreview ?? undefined,
       timestamp: formatTimestamp(data.lastActivityNs),
+      unreadCount: data.unreadCount ?? 0,
     };
 
     // Add type-specific props

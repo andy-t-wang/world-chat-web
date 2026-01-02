@@ -151,15 +151,29 @@ export function ConversationItem(props: ConversationItemProps) {
         {/* User/Group Info */}
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
           {/* Name Row */}
+          {/* Unread: bold name, Read: medium weight */}
           <div className="flex items-center gap-1">
-            <span className={`text-[15px] font-medium truncate max-w-[160px] ${isSelected ? 'text-white' : 'text-[#181818]'}`}>
+            <span className={`text-[15px] truncate max-w-[160px] ${
+              isSelected
+                ? 'text-white font-medium'
+                : unreadCount > 0
+                  ? 'text-[#181818] font-semibold'
+                  : 'text-[#181818] font-medium'
+            }`}>
               {name}
             </span>
             {isVerified && conversationType === 'dm' && <VerificationBadge size="sm" />}
           </div>
 
           {/* Preview Row - show subtitle for groups if no last message, otherwise show preview */}
-          <div className={`text-[14px] leading-[1.3] truncate ${isSelected ? 'text-white/70' : 'text-[#717680]'}`}>
+          {/* Unread: dark text + semibold, Read: gray text + normal weight */}
+          <div className={`text-[14px] leading-[1.3] truncate ${
+            isSelected
+              ? 'text-white/70'
+              : unreadCount > 0
+                ? 'text-[#181818] font-semibold'
+                : 'text-[#717680]'
+          }`}>
             {props.lastMessage ? formatPreview(props) : (subtitle || formatPreview(props))}
           </div>
         </div>
@@ -183,7 +197,7 @@ export function ConversationItem(props: ConversationItemProps) {
             )}
             {unreadCount > 0 && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
-                isSelected ? 'bg-white text-[#3B82F6]' : 'bg-[#3B82F6] text-white'
+                isSelected ? 'bg-white text-[#181818]' : 'bg-[#181818] text-white'
               }`}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>

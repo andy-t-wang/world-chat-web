@@ -10,10 +10,8 @@ import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
 import { readReceiptVersionAtom } from '@/stores/messages';
-import { VIRTUALIZATION } from '@/config/constants';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
-import type { PendingMessage } from '@/types/messages';
 
 interface MemberPreview {
   inboxId: string;
@@ -26,31 +24,33 @@ function GroupMessageSender({ address }: { address: string | undefined }) {
   const name = displayName ?? (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Unknown');
 
   return (
-    <span className="text-xs font-medium text-[#005CFF] ml-1 mb-1 block">
+    <span className="text-xs font-medium text-[#005CFF] mb-0.5 block">
       {name}
     </span>
   );
 }
 
+// Display item types for rendering
+type DisplayItem =
+  | { type: 'date-separator'; date: string; id: string }
+  | { type: 'message'; id: string; isFirstInGroup: boolean; isLastInGroup: boolean; showAvatar: boolean }
+  | { type: 'pending'; id: string };
+
 interface MessagePanelProps {
   conversationId: string;
-  /** Type of conversation */
   conversationType: 'dm' | 'group';
-  /** Peer's wallet address for username/avatar lookup (DMs) */
   peerAddress?: string;
-  /** Override display name */
   name?: string;
-  /** Override avatar URL */
   avatarUrl?: string | null;
   isVerified?: boolean;
   subtitle?: string;
-  /** Group name (for groups) */
   groupName?: string;
-  /** Member count (for groups) */
   memberCount?: number;
-  /** Member previews for group avatar */
   memberPreviews?: MemberPreview[];
 }
+
+// Debug render counter
+let messagePanelRenderCount = 0;
 
 export function MessagePanel({
   conversationId,
@@ -64,29 +64,24 @@ export function MessagePanel({
   memberCount,
   memberPreviews,
 }: MessagePanelProps) {
+  messagePanelRenderCount++;
+  console.log(`[MessagePanel] Render #${messagePanelRenderCount}, id=${conversationId?.slice(0,8)}, type=${conversationType}`);
+
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // For DMs: Fetch username from World App Username API
   const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
-
-  // Determine display name based on conversation type
   const name = conversationType === 'group'
     ? (groupName || 'Group Chat')
     : (nameOverride ?? displayName);
-
-  // Subtitle for groups (member count)
   const groupSubtitle = conversationType === 'group' && memberCount
     ? `${memberCount} members`
     : undefined;
 
   const client = useAtomValue(xmtpClientAtom);
-
-  // Subscribe to read receipt updates to trigger re-renders
   const _readReceiptVersion = useAtomValue(readReceiptVersionAtom);
 
-  // Use messages hook
   const {
     messageIds,
     pendingMessages,
@@ -99,31 +94,163 @@ export function MessagePanel({
     getMessage,
   } = useMessages(conversationId);
 
-  // Get own inbox ID for determining message direction
   const ownInboxId = client?.inboxId ?? '';
 
-  // Combine pending and real messages for display - MEMOIZED to prevent re-renders
-  // Messages are in reverse chronological order (newest first)
-  // We need to reverse for display so oldest is at top
-  const displayItems = useMemo(() => {
-    const allItems: Array<{ type: 'message' | 'pending'; id: string }> = [
-      ...pendingMessages.map((p) => ({ type: 'pending' as const, id: p.id })),
-      ...messageIds.map((id) => ({ type: 'message' as const, id })),
-    ];
-    // Reverse so oldest is first (for natural reading order)
-    return [...allItems].reverse();
-  }, [pendingMessages, messageIds]);
+  // Check if message should be displayed
+  const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
+    const typeId = (msg.contentType as { typeId?: string })?.typeId;
+    if (typeId === 'readReceipt') return false;
+    return true;
+  }, []);
 
-  // Memoize virtualizer callbacks to prevent re-renders
+  // Extract message text content
+  const getMessageText = useCallback((msg: DecodedMessage): string | null => {
+    const typeId = (msg.contentType as { typeId?: string })?.typeId;
+    if (typeId === 'readReceipt') return null;
+    if (typeId === 'reaction') {
+      const content = msg.content as { content?: string } | undefined;
+      return content?.content ? `Reacted ${content.content}` : null;
+    }
+
+    const content = msg.content;
+    if (typeof content === 'string') return content;
+    if (content && typeof content === 'object') {
+      if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
+        return (content as { text: string }).text;
+      }
+      if ('content' in content) {
+        const nested = (content as { content: unknown }).content;
+        if (typeof nested === 'string') return nested;
+        if (nested && typeof nested === 'object' && 'text' in nested) {
+          return (nested as { text: string }).text;
+        }
+      }
+    }
+    return null;
+  }, []);
+
+  // Format date for separator
+  const formatDateSeparator = useCallback((ns: bigint): string => {
+    const date = new Date(Number(ns / BigInt(1_000_000)));
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    if (isToday) return 'Today';
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+    return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  }, []);
+
+  // Get date key for grouping
+  const getDateKey = useCallback((ns: bigint): string => {
+    const date = new Date(Number(ns / BigInt(1_000_000)));
+    return date.toDateString();
+  }, []);
+
+  // Build grouped display items with date separators
+  // Note: We build a simplified structure here and compute details at render time
+  // to avoid getMessage instability in dependencies
+  const displayItems = useMemo((): DisplayItem[] => {
+    const items: DisplayItem[] = [];
+
+    // First, collect valid message data
+    const reversedIds = [...messageIds].reverse();
+    const messageData: Array<{ id: string; senderId: string; dateKey: string; sentAtNs: bigint }> = [];
+
+    for (const id of reversedIds) {
+      const msg = getMessage(id);
+      if (!msg) continue;
+
+      const typeId = (msg.contentType as { typeId?: string })?.typeId;
+      if (typeId === 'readReceipt') continue;
+
+      // Check if has displayable text
+      const content = msg.content;
+      let hasText = false;
+      if (typeof content === 'string') {
+        hasText = true;
+      } else if (content && typeof content === 'object') {
+        if ('text' in content) hasText = true;
+        else if ('content' in content) hasText = true;
+      }
+      if (typeId === 'reaction') hasText = true;
+      if (!hasText) continue;
+
+      const date = new Date(Number(msg.sentAtNs / BigInt(1_000_000)));
+      messageData.push({
+        id,
+        senderId: msg.senderInboxId,
+        dateKey: date.toDateString(),
+        sentAtNs: msg.sentAtNs,
+      });
+    }
+
+    // Build display items with grouping
+    const fiveMinutesNs = BigInt(5 * 60) * BigInt(1_000_000_000);
+
+    for (let i = 0; i < messageData.length; i++) {
+      const curr = messageData[i];
+      const prev = i > 0 ? messageData[i - 1] : null;
+      const next = i < messageData.length - 1 ? messageData[i + 1] : null;
+
+      // Add date separator if date changed
+      if (!prev || prev.dateKey !== curr.dateKey) {
+        items.push({
+          type: 'date-separator',
+          date: formatDateSeparator(curr.sentAtNs),
+          id: `date-${curr.dateKey}`,
+        });
+      }
+
+      // Determine if first/last in group
+      const isFirstInGroup = !prev ||
+        prev.senderId !== curr.senderId ||
+        prev.dateKey !== curr.dateKey ||
+        curr.sentAtNs - prev.sentAtNs > fiveMinutesNs;
+
+      const isLastInGroup = !next ||
+        next.senderId !== curr.senderId ||
+        next.dateKey !== curr.dateKey ||
+        next.sentAtNs - curr.sentAtNs > fiveMinutesNs;
+
+      const isOwnMessage = curr.senderId === ownInboxId;
+
+      items.push({
+        type: 'message',
+        id: curr.id,
+        isFirstInGroup,
+        isLastInGroup,
+        showAvatar: isFirstInGroup && !isOwnMessage,
+      });
+    }
+
+    // Add pending messages at the end
+    for (const pending of pendingMessages) {
+      items.push({ type: 'pending', id: pending.id });
+    }
+
+    return items;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageIds.join(','), pendingMessages.length, ownInboxId]);
+
+  // Virtualizer callbacks - memoize to prevent infinite re-renders
   const getScrollElement = useCallback(() => parentRef.current, []);
-  const estimateSize = useCallback(() => VIRTUALIZATION.MESSAGE_ROW_HEIGHT, []);
+  const estimateSize = useCallback((index: number) => {
+    const item = displayItems[index];
+    if (item.type === 'date-separator') return 40;
+    if (item.type === 'pending') return 60;
+    return 50; // Estimated message height
+  }, [displayItems]);
   const getItemKey = useCallback((index: number) => displayItems[index]?.id ?? index, [displayItems]);
 
+  // Virtualizer setup
   const virtualizer = useVirtualizer({
     count: displayItems.length,
     getScrollElement,
     estimateSize,
-    overscan: VIRTUALIZATION.OVERSCAN_COUNT,
+    overscan: 10,
     getItemKey,
   });
 
@@ -134,23 +261,35 @@ export function MessagePanel({
     }
   }, [displayItems.length]);
 
-  // Send read receipt when conversation is opened/viewed
+  // Mark conversation as read - only run once when messages first load
+  // Track which conversation was marked to handle conversation switches correctly
+  const markedConversationRef = useRef<string | null>(null);
+  const hasMessages = messageIds.length > 0;
+
   useEffect(() => {
-    if (conversationId && messageIds.length > 0) {
-      // Small delay to ensure messages are loaded
-      const timer = setTimeout(() => {
-        streamManager.sendReadReceipt(conversationId);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [conversationId, messageIds.length > 0]);
+    // Only mark if we have a conversation with messages, and haven't already marked THIS conversation
+    if (!conversationId || !hasMessages) return;
+    if (markedConversationRef.current === conversationId) return;
+
+    // Mark this conversation as read
+    markedConversationRef.current = conversationId;
+
+    // Use queueMicrotask to batch with other updates and avoid mid-render state changes
+    queueMicrotask(() => {
+      streamManager.markConversationAsRead(conversationId);
+    });
+
+    const timer = setTimeout(() => {
+      streamManager.sendReadReceipt(conversationId);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [conversationId, hasMessages]);
 
   // Load more when scrolling to top
   const handleScroll = useCallback(() => {
     if (!parentRef.current) return;
     const { scrollTop } = parentRef.current;
-
-    // Load more when near the top
     if (scrollTop < 100 && hasMore && !isLoading) {
       loadMore();
     }
@@ -158,11 +297,9 @@ export function MessagePanel({
 
   const handleSend = async () => {
     if (!message.trim() || isSending) return;
-
     const content = message.trim();
     setMessage('');
     setIsSending(true);
-
     try {
       await sendMessage(content);
     } catch (error) {
@@ -187,60 +324,15 @@ export function MessagePanel({
     }
   };
 
-  // Format timestamp using user's locale (12h vs 24h based on locale)
   const formatTime = (ns: bigint): string => {
     const date = new Date(Number(ns / BigInt(1_000_000)));
     return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   };
 
-  // Check if message should be displayed (filter out read receipts, etc.)
-  const shouldDisplayMessage = (message: DecodedMessage): boolean => {
-    const typeId = (message.contentType as { typeId?: string })?.typeId;
-    // Filter out read receipts - they shouldn't appear as messages
-    if (typeId === 'readReceipt') return false;
-    return true;
-  };
-
-  // Extract message text content
-  const getMessageText = (message: DecodedMessage): string | null => {
-    const typeId = (message.contentType as { typeId?: string })?.typeId;
-
-    // Skip read receipts entirely
-    if (typeId === 'readReceipt') return null;
-
-    // Handle reactions - show emoji
-    if (typeId === 'reaction') {
-      const content = message.content as { content?: string; action?: string } | undefined;
-      if (content?.content) {
-        return `Reacted ${content.content}`;
-      }
-      return null;
-    }
-
-    const content = message.content;
-
-    if (typeof content === 'string') {
-      return content;
-    }
-
-    if (content && typeof content === 'object') {
-      // Handle text content
-      if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
-        return (content as { text: string }).text;
-      }
-      // Handle reply content (has nested content object)
-      if ('content' in content) {
-        const nestedContent = (content as { content: unknown }).content;
-        if (typeof nestedContent === 'string') return nestedContent;
-        if (nestedContent && typeof nestedContent === 'object' && 'text' in nestedContent) {
-          return (nestedContent as { text: string }).text;
-        }
-      }
-    }
-
-    // Filter out unsupported message types (welcome messages, etc.)
-    return null;
-  };
+  // Calculate content height for proper alignment
+  const totalSize = virtualizer.getTotalSize();
+  const containerHeight = parentRef.current?.clientHeight ?? 0;
+  const needsSpacer = totalSize < containerHeight;
 
   return (
     <div className="flex-1 flex flex-col bg-white">
@@ -248,13 +340,7 @@ export function MessagePanel({
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
           {conversationType === 'group' ? (
-            <Avatar
-              isGroup
-              groupName={groupName}
-              imageUrl={avatarUrl}
-              memberPreviews={memberPreviews}
-              size="sm"
-            />
+            <Avatar isGroup groupName={groupName} imageUrl={avatarUrl} memberPreviews={memberPreviews} size="sm" />
           ) : (
             <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
           )}
@@ -268,7 +354,6 @@ export function MessagePanel({
             )}
           </div>
         </div>
-
         <div className="flex items-center gap-1">
           <button className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
             <Search className="w-5 h-5 text-[#717680]" />
@@ -283,9 +368,8 @@ export function MessagePanel({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto p-4 bg-[#F5F5F5]"
+        className="flex-1 overflow-auto bg-[#F5F5F5]"
       >
-        {/* Loading indicator */}
         {isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
@@ -297,50 +381,82 @@ export function MessagePanel({
         ) : (
           <div
             style={{
-              height: virtualizer.getTotalSize(),
-              position: 'relative',
+              height: needsSpacer ? '100%' : totalSize,
+              minHeight: '100%',
+              display: 'flex',
+              flexDirection: 'column',
             }}
           >
+            {/* Spacer to push messages to bottom when few messages */}
+            {needsSpacer && <div style={{ flex: 1 }} />}
+
             {/* Load more indicator */}
             {isLoading && hasMore && (
-              <div className="absolute top-0 left-0 right-0 flex justify-center py-2">
+              <div className="flex justify-center py-2">
                 <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
               </div>
             )}
 
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const item = displayItems[virtualRow.index];
+            {/* Virtualized messages */}
+            <div
+              style={{
+                height: totalSize,
+                position: 'relative',
+              }}
+            >
+              {virtualizer.getVirtualItems().map((virtualRow) => {
+                const item = displayItems[virtualRow.index];
 
-              if (item.type === 'pending') {
-                const pending = pendingMessages.find((p) => p.id === item.id);
-                if (!pending) return null;
+                // Date separator
+                if (item.type === 'date-separator') {
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="flex items-center justify-center py-2"
+                    >
+                      <span className="px-3 py-1 bg-white/80 rounded-full text-xs text-[#717680] font-medium shadow-sm">
+                        {item.date}
+                      </span>
+                    </div>
+                  );
+                }
 
-                return (
-                  <div
-                    key={item.id}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    className="flex justify-end py-1"
-                  >
-                    <div className="max-w-[70%]">
-                      <div className={`rounded-2xl rounded-tr-md px-4 py-2 ${
-                        pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]/70'
-                      }`}>
-                        <p className={pending.status === 'failed' ? 'text-red-800' : 'text-white'}>
-                          {pending.content}
-                        </p>
-                      </div>
-                      <div className="flex justify-end items-center gap-2 mt-1">
-                        {pending.status === 'sending' && (
-                          <Loader2 className="w-3 h-3 text-[#9BA3AE] animate-spin" />
-                        )}
+                // Pending message
+                if (item.type === 'pending') {
+                  const pending = pendingMessages.find((p) => p.id === item.id);
+                  if (!pending) return null;
+
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className="flex justify-end px-4 py-0.5"
+                    >
+                      <div className="max-w-[70%]">
+                        <div className={`rounded-2xl rounded-tr-md px-4 py-2 ${
+                          pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]/70'
+                        }`}>
+                          <p className={pending.status === 'failed' ? 'text-red-800' : 'text-white'}>
+                            {pending.content}
+                          </p>
+                        </div>
                         {pending.status === 'failed' && (
-                          <>
+                          <div className="flex justify-end items-center gap-2 mt-1">
                             <AlertCircle className="w-3 h-3 text-red-500" />
                             <span className="text-xs text-red-500">Failed</span>
                             <button
@@ -350,30 +466,67 @@ export function MessagePanel({
                               <RotateCcw className="w-3 h-3" />
                               Retry
                             </button>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                );
-              }
+                  );
+                }
 
-              // Real message
-              const msg = getMessage(item.id);
-              if (!msg) return null;
+                // Regular message
+                const msg = getMessage(item.id);
+                if (!msg) return null;
 
-              // Filter out read receipts and other non-displayable messages
-              if (!shouldDisplayMessage(msg)) return null;
+                const isOwnMessage = msg.senderInboxId === ownInboxId;
+                const text = getMessageText(msg);
+                if (text === null) return null;
 
-              const isOwnMessage = msg.senderInboxId === ownInboxId;
-              const text = getMessageText(msg);
+                const { isFirstInGroup, isLastInGroup, showAvatar } = item;
 
-              // Skip messages with no text content (e.g., reactions handled elsewhere)
-              if (text === null) return null;
+                if (isOwnMessage) {
+                  const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
 
-              if (isOwnMessage) {
-                // Check if message was read by peer
-                const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: virtualRow.size,
+                        transform: `translateY(${virtualRow.start}px)`,
+                      }}
+                      className={`flex justify-end px-4 ${isFirstInGroup ? 'pt-2' : 'pt-0.5'} ${isLastInGroup ? 'pb-1' : 'pb-0.5'}`}
+                    >
+                      <div className="max-w-[70%]">
+                        <div className={`bg-[#005CFF] px-4 py-2 ${
+                          isFirstInGroup && isLastInGroup ? 'rounded-2xl rounded-tr-md' :
+                          isFirstInGroup ? 'rounded-2xl rounded-tr-md rounded-br-lg' :
+                          isLastInGroup ? 'rounded-2xl rounded-tr-lg rounded-br-md' :
+                          'rounded-2xl rounded-r-lg'
+                        }`}>
+                          <p className="text-white whitespace-pre-wrap break-words">{text}</p>
+                        </div>
+                        {isLastInGroup && (
+                          <div className="flex justify-end items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] text-[#9BA3AE]">
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                            {isRead && (
+                              <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Incoming message
+                const senderAddress = conversationType === 'group'
+                  ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                  : peerAddress;
 
                 return (
                   <div
@@ -383,69 +536,46 @@ export function MessagePanel({
                       top: 0,
                       left: 0,
                       width: '100%',
+                      height: virtualRow.size,
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
-                    className="flex justify-end py-1"
+                    className={`flex items-end gap-2 px-4 ${isFirstInGroup ? 'pt-2' : 'pt-0.5'} ${isLastInGroup ? 'pb-1' : 'pb-0.5'}`}
                   >
+                    {/* Avatar - only show on first message of group, otherwise spacer */}
+                    <div className="w-8 shrink-0 flex items-end">
+                      {showAvatar && (
+                        <Avatar
+                          address={senderAddress}
+                          name={conversationType === 'dm' ? nameOverride : undefined}
+                          imageUrl={conversationType === 'dm' ? avatarUrl : undefined}
+                          size="sm"
+                          className="w-7 h-7"
+                        />
+                      )}
+                    </div>
                     <div className="max-w-[70%]">
-                      <div className="bg-[#005CFF] rounded-2xl rounded-tr-md px-4 py-2">
-                        <p className="text-white whitespace-pre-wrap break-words">{text}</p>
+                      {/* Sender name - only show on first message of group in group chats */}
+                      {conversationType === 'group' && isFirstInGroup && (
+                        <GroupMessageSender address={senderAddress} />
+                      )}
+                      <div className={`bg-white px-4 py-2 shadow-sm ${
+                        isFirstInGroup && isLastInGroup ? 'rounded-2xl rounded-tl-md' :
+                        isFirstInGroup ? 'rounded-2xl rounded-tl-md rounded-bl-lg' :
+                        isLastInGroup ? 'rounded-2xl rounded-tl-lg rounded-bl-md' :
+                        'rounded-2xl rounded-l-lg'
+                      }`}>
+                        <p className="text-[#181818] whitespace-pre-wrap break-words">{text}</p>
                       </div>
-                      <div className="flex justify-end items-center gap-1.5">
-                        <span className="text-xs text-[#9BA3AE] mt-1">
+                      {isLastInGroup && (
+                        <span className="text-[11px] text-[#9BA3AE] mt-0.5 ml-1 block">
                           {formatTime(msg.sentAtNs)}
                         </span>
-                        {isRead && (
-                          <span className="text-xs text-[#00C230] mt-1 font-medium">
-                            Read
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
                   </div>
                 );
-              }
-
-              // Incoming message
-              // For groups, find sender address from member previews
-              const senderAddress = conversationType === 'group'
-                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                : peerAddress;
-
-              return (
-                <div
-                  key={item.id}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  className="flex gap-2 py-1"
-                >
-                  <Avatar
-                    address={senderAddress}
-                    name={conversationType === 'dm' ? nameOverride : undefined}
-                    imageUrl={conversationType === 'dm' ? avatarUrl : undefined}
-                    size="sm"
-                    className="shrink-0 mt-1"
-                  />
-                  <div className="max-w-[70%]">
-                    {/* Show sender name for group messages */}
-                    {conversationType === 'group' && (
-                      <GroupMessageSender address={senderAddress} />
-                    )}
-                    <div className="bg-white rounded-2xl rounded-tl-md px-4 py-2 shadow-sm">
-                      <p className="text-[#181818] whitespace-pre-wrap break-words">{text}</p>
-                    </div>
-                    <span className="text-xs text-[#9BA3AE] mt-1 ml-2">
-                      {formatTime(msg.sentAtNs)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -456,7 +586,6 @@ export function MessagePanel({
           <button className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors shrink-0">
             <Paperclip className="w-5 h-5 text-[#717680]" />
           </button>
-
           <div className="flex-1 relative">
             <textarea
               value={message}
@@ -464,29 +593,16 @@ export function MessagePanel({
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               rows={1}
-              className="
-                w-full px-4 py-2.5 pr-12
-                bg-[#F5F5F5] rounded-xl
-                text-[#181818] placeholder-[#9BA3AE]
-                outline-none focus:ring-2 focus:ring-[#005CFF]/20
-                resize-none max-h-32
-                transition-shadow
-              "
+              className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-xl text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
             />
             <button className="absolute right-3 top-1/2 -translate-y-1/2">
               <Smile className="w-5 h-5 text-[#9BA3AE] hover:text-[#717680] transition-colors" />
             </button>
           </div>
-
           <button
             onClick={handleSend}
             disabled={!message.trim() || isSending}
-            className="
-              w-10 h-10 flex items-center justify-center rounded-lg
-              bg-[#005CFF] hover:bg-[#0052E0]
-              disabled:bg-gray-200 disabled:cursor-not-allowed
-              transition-colors shrink-0
-            "
+            className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             {isSending ? (
               <Loader2 className="w-5 h-5 text-white animate-spin" />

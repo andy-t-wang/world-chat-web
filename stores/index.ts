@@ -44,6 +44,8 @@ export {
   // Read receipt tracking
   readReceiptsAtom,
   readReceiptVersionAtom,
+  // Unread tracking
+  unreadVersionAtom,
 } from './messages';
 
 // Conversation state
