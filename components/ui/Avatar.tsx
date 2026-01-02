@@ -39,9 +39,9 @@ const AVATAR_COLORS = [
 ] as const;
 
 const SIZE_MAP = {
-  sm: { container: 44, text: 16 },  // Increased from 36
-  md: { container: 52, text: 22 },
-  lg: { container: 72, text: 28 },
+  sm: { container: 28, text: 12 },  // Small for message avatars
+  md: { container: 44, text: 16 },  // Medium for conversation list
+  lg: { container: 52, text: 22 },  // Large for headers
 } as const;
 
 function getInitials(name: string): string {

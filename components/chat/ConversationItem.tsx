@@ -140,10 +140,10 @@ export function ConversationItem(props: ConversationItemProps) {
           groupName={groupName}
           imageUrl={avatarUrl}
           memberPreviews={memberPreviews}
-          size="sm"
+          size="md"
         />
       ) : (
-        <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+        <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="md" />
       )}
 
       {/* Content */}

@@ -322,9 +322,9 @@ export function MessagePanel({
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
           {conversationType === 'group' ? (
-            <Avatar isGroup groupName={groupName} imageUrl={avatarUrl} memberPreviews={memberPreviews} size="sm" />
+            <Avatar isGroup groupName={groupName} imageUrl={avatarUrl} memberPreviews={memberPreviews} size="md" />
           ) : (
-            <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="sm" />
+            <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="md" />
           )}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
@@ -486,7 +486,7 @@ export function MessagePanel({
                   ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
                   : peerAddress;
 
-                // Recipient bubble: all corners 16px except bottom-left is 8px (pointing to sender)
+                // Recipient bubble: all corners 16px except bottom-left is 4px (pointing to sender)
                 const recipientRadius = isFirstInGroup && isLastInGroup
                   ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
                   : isFirstInGroup
@@ -498,21 +498,18 @@ export function MessagePanel({
                 return (
                   <div
                     key={item.id}
-                    className={`flex items-end gap-2 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    className={`flex items-end gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                   >
                     {/* Avatar - only show on last message of group, otherwise spacer */}
-                    <div className="w-8 shrink-0 flex items-end">
+                    <div className="w-7 h-7 shrink-0 flex items-end">
                       {isLastInGroup && (
                         <Avatar
                           address={senderAddress}
-                          name={conversationType === 'dm' ? nameOverride : undefined}
-                          imageUrl={conversationType === 'dm' ? avatarUrl : undefined}
                           size="sm"
-                          className="w-7 h-7"
                         />
                       )}
                     </div>
-                    <div className="max-w-[300px]">
+                    <div className="max-w-[300px] flex flex-col">
                       {/* Sender name - only show on first message of group in group chats */}
                       {conversationType === 'group' && isFirstInGroup && (
                         <GroupMessageSender address={senderAddress} />
@@ -521,7 +518,7 @@ export function MessagePanel({
                         <p className="text-[#181818] text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
                       </div>
                       {isLastInGroup && (
-                        <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1 block">
+                        <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1">
                           {formatTime(msg.sentAtNs)}
                         </span>
                       )}

@@ -44,7 +44,7 @@ export function ChatHeader({
           className="rounded-full hover:opacity-80 transition-opacity"
           aria-label="Profile"
         >
-          <Avatar name={userName} imageUrl={userAvatarUrl} size="sm" />
+          <Avatar name={userName} imageUrl={userAvatarUrl} size="md" />
         </button>
       </div>
 
