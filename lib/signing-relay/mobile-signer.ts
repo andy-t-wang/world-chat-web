@@ -94,6 +94,7 @@ export class MobileSigner {
         break;
 
       case 'sign_request':
+        console.log('[MobileSigner] Received sign_request:', message.requestId);
         if (!this.isAuthenticated) {
           console.warn('[MobileSigner] Ignoring sign_request - not authenticated');
           this.sendMessage({
@@ -103,6 +104,7 @@ export class MobileSigner {
           });
           return;
         }
+        console.log('[MobileSigner] Processing sign_request...');
         await this.handleSignRequest(message.requestId, message.message, message.timestamp);
         break;
 

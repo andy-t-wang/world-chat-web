@@ -2,14 +2,13 @@
 
 import { useEffect, useState, memo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
 import { useAtomValue } from 'jotai';
 import { Sidebar, MessagePanel, EmptyState } from '@/components/chat';
 import { NewConversationModal } from '@/components/chat/NewConversationModal';
 import { selectedConversationIdAtom } from '@/stores/ui';
-import { useXmtpClient } from '@/hooks/useXmtpClient';
+import { clientStateAtom } from '@/stores/client';
 import { useConversationMetadata } from '@/hooks/useConversations';
-import { wasConnected } from '@/lib/auth/session';
+import { hasQRSession } from '@/lib/auth/session';
 import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
@@ -17,29 +16,46 @@ const MemoizedMessagePanel = memo(MessagePanel);
 
 export default function ChatPage() {
   const router = useRouter();
-  const { isConnected, isConnecting, isReconnecting } = useAccount();
-  const { client, isInitializing, isReady, isRestoringSession, error: xmtpError } = useXmtpClient();
+  const clientState = useAtomValue(clientStateAtom);
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-  const [hadPreviousSession] = useState(() => wasConnected());
+  const [hasSession] = useState(() => hasQRSession());
+
+  // Track if we've given state time to settle (prevents race condition redirect)
+  const [isStateSettled, setIsStateSettled] = useState(false);
+
+  const hasXmtpClient = clientState.client !== null;
 
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
 
-  // Redirect to home only if definitively not connected (not just reconnecting)
+  // Give state time to settle before allowing redirect (prevents race condition)
   useEffect(() => {
-    // Don't redirect if we had a previous session and might be reconnecting
-    if (hadPreviousSession && (isConnecting || isReconnecting)) {
-      return;
-    }
-    // Only redirect if we're sure there's no connection
-    if (!isConnecting && !isReconnecting && !isConnected && !hadPreviousSession) {
-      router.push('/');
-    }
-  }, [isConnected, isConnecting, isReconnecting, hadPreviousSession, router]);
+    const timer = setTimeout(() => {
+      setIsStateSettled(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
-  // Show loading while reconnecting
-  if ((isConnecting || isReconnecting || !isConnected) && hadPreviousSession) {
+  // Redirect to home if no client available
+  useEffect(() => {
+    if (!isStateSettled) return;
+    if (hasXmtpClient) return;
+    if (clientState.isInitializing) return;
+
+    // If we have a session flag but no client, the page was reloaded
+    // XMTP client is in-memory only, so we need to re-login
+    if (hasSession && !hasXmtpClient) {
+      console.log('[ChatPage] Session exists but no client - page was reloaded, redirecting to login');
+    } else {
+      console.log('[ChatPage] No session found, redirecting to login');
+    }
+    router.push('/');
+  }, [isStateSettled, hasXmtpClient, hasSession, clientState.isInitializing, router]);
+
+  // Show loading only while state is settling (brief moment on navigation)
+  // Don't show loading forever if session exists but client doesn't (reload case)
+  if (!isStateSettled) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
@@ -47,34 +63,17 @@ export default function ChatPage() {
     );
   }
 
-  // Not connected and no previous session - redirect handled by useEffect
-  if (!isConnected) {
+  // Not connected - redirect handled by useEffect
+  if (!hasXmtpClient && !clientState.isInitializing) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
-      </div>
-    );
-  }
-
-  // Show XMTP initialization state (skip full loading screen for returning users)
-  if (isInitializing && !isRestoringSession) {
-    return (
-      <div className="flex w-full h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
-            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
-            <span className="text-[#717680]">Setting up secure messaging...</span>
-          </div>
-        </div>
       </div>
     );
   }
 
   // Show error if XMTP initialization failed
-  if (xmtpError) {
+  if (clientState.error) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
@@ -82,7 +81,7 @@ export default function ChatPage() {
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
           <h2 className="text-lg font-semibold text-[#181818]">Connection Failed</h2>
-          <p className="text-[#717680]">{xmtpError.message}</p>
+          <p className="text-[#717680]">{clientState.error.message}</p>
           <button
             onClick={() => window.location.reload()}
             className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"

@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useState, useCallback, Suspense } from 'react';
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Loader2, Check, Smartphone, X, Shield, KeyRound } from 'lucide-react';
+import { MiniKit } from '@worldcoin/minikit-js';
 import { MobileSigner } from '@/lib/signing-relay';
 
 type SignState =
+  | 'initializing'
   | 'connecting'
   | 'authenticating'
   | 'ready'
@@ -17,47 +19,36 @@ function SignPageContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('session');
 
-  const [state, setState] = useState<SignState>('connecting');
+  const [state, setState] = useState<SignState>('initializing');
   const [currentMessage, setCurrentMessage] = useState<string | null>(null);
   const [signCount, setSignCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [signer, setSigner] = useState<MobileSigner | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const signerRef = useRef<MobileSigner | null>(null);
 
   // Sign message using MiniKit
   const signMessage = useCallback(async (message: string): Promise<string> => {
-    // Check if MiniKit is available (we're inside World App)
-    if (typeof window !== 'undefined' && (window as any).MiniKit) {
-      const MiniKit = (window as any).MiniKit;
-
-      if (!MiniKit.isInstalled()) {
-        throw new Error('MiniKit not installed');
-      }
-
-      const { finalPayload } = await MiniKit.commandsAsync.signMessage({
-        message,
-      });
-
-      if (finalPayload.status !== 'success') {
-        throw new Error('User rejected signing');
-      }
-
-      return finalPayload.signature;
+    if (!MiniKit.isInstalled()) {
+      throw new Error('Please open this page in World App');
     }
 
-    // MiniKit not available - must be opened in World App
-    throw new Error('Please open this page in World App');
-  }, []);
+    const { finalPayload } = await MiniKit.commandsAsync.signMessage({
+      message,
+    });
 
-  // Get wallet address from MiniKit
-  const getWalletAddress = useCallback((): string | null => {
-    if (typeof window !== 'undefined' && (window as any).MiniKit) {
-      const MiniKit = (window as any).MiniKit;
-      return MiniKit.walletAddress || null;
+    if (finalPayload.status !== 'success') {
+      throw new Error('User rejected signing');
     }
-    return null;
-  }, []);
 
-  // Connect to the signing session
+    // Get wallet address from the signature response
+    if (finalPayload.address && !walletAddress) {
+      setWalletAddress(finalPayload.address);
+    }
+
+    return finalPayload.signature;
+  }, [walletAddress]);
+
+  // Initialize MiniKit and connect
   useEffect(() => {
     if (!sessionId) {
       setError('No session ID provided');
@@ -65,34 +56,59 @@ function SignPageContent() {
       return;
     }
 
-    let mobileSigner: MobileSigner | null = null;
+    // Install MiniKit
+    MiniKit.install();
 
-    const connect = async () => {
+    // Wait a moment for MiniKit to initialize
+    const initTimer = setTimeout(async () => {
+      if (!MiniKit.isInstalled()) {
+        setError('Please open this link in World App');
+        setState('error');
+        return;
+      }
+
+      // Get wallet address first using wallet auth
+      setState('authenticating');
       try {
-        // Get wallet address from MiniKit (SEC-009: no dev placeholder)
-        const walletAddress = getWalletAddress();
+        const nonce = crypto.randomUUID();
+        const { finalPayload } = await MiniKit.commandsAsync.walletAuth({
+          nonce,
+          statement: 'Sign in to World Chat',
+          expirationTime: new Date(Date.now() + 1000 * 60 * 60), // 1 hour
+        });
 
-        if (!walletAddress) {
-          setError('World App wallet not available. Please open this link in World App.');
+        if (finalPayload.status !== 'success' || !finalPayload.address) {
+          setError('Wallet authentication cancelled');
           setState('error');
           return;
         }
 
-        mobileSigner = new MobileSigner(
-          sessionId,
-          walletAddress,
+        const address = finalPayload.address;
+
+        setWalletAddress(address);
+        connectToSession(address);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Wallet auth failed');
+        setState('error');
+      }
+    }, 500);
+
+    async function connectToSession(address: string) {
+      setState('connecting');
+
+      try {
+        const mobileSigner = new MobileSigner(
+          sessionId!,
+          address,
           async (message) => {
             setCurrentMessage(message);
-            setState('signing');
             const signature = await signMessage(message);
             setSignCount((c) => c + 1);
-            setState('ready');
             setCurrentMessage(null);
             return signature;
           },
           {
             onConnected: () => {
-              // Connected but not authenticated yet
               setState('authenticating');
             },
             onAuthChallenge: (challenge) => {
@@ -121,20 +137,19 @@ function SignPageContent() {
           }
         );
 
-        setSigner(mobileSigner);
+        signerRef.current = mobileSigner;
         await mobileSigner.connect();
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Connection failed');
         setState('error');
       }
-    };
-
-    connect();
+    }
 
     return () => {
-      mobileSigner?.cleanup();
+      clearTimeout(initTimer);
+      signerRef.current?.cleanup();
     };
-  }, [sessionId, signMessage, getWalletAddress]);
+  }, [sessionId, signMessage]);
 
   // No session ID
   if (!sessionId) {
@@ -171,6 +186,13 @@ function SignPageContent() {
 
         {/* Status */}
         <div className="bg-[#F5F5F5] rounded-xl p-6 mb-6">
+          {state === 'initializing' && (
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-10 h-10 text-[#005CFF] animate-spin" />
+              <p className="text-sm text-[#717680]">Initializing...</p>
+            </div>
+          )}
+
           {state === 'connecting' && (
             <div className="flex flex-col items-center gap-3">
               <Loader2 className="w-10 h-10 text-[#005CFF] animate-spin" />
@@ -188,14 +210,6 @@ function SignPageContent() {
                 <br />
                 Approve the signature to continue.
               </p>
-              {currentMessage && (
-                <div className="w-full mt-2 p-3 bg-white rounded-lg">
-                  <p className="text-xs text-[#9BA3AE] mb-1">Verification message:</p>
-                  <p className="text-xs text-[#181818] font-mono break-all line-clamp-2">
-                    {currentMessage.slice(0, 50)}...
-                  </p>
-                </div>
-              )}
             </div>
           )}
 
@@ -209,6 +223,11 @@ function SignPageContent() {
                 <br />
                 Approve signing requests as they appear.
               </p>
+              {walletAddress && (
+                <p className="text-xs text-[#9BA3AE] font-mono">
+                  {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                </p>
+              )}
               {signCount > 0 && (
                 <p className="text-xs text-[#9BA3AE]">
                   Signed {signCount} message{signCount !== 1 ? 's' : ''}
@@ -227,7 +246,7 @@ function SignPageContent() {
                 <div className="w-full mt-2 p-3 bg-white rounded-lg">
                   <p className="text-xs text-[#9BA3AE] mb-1">Message to sign:</p>
                   <p className="text-xs text-[#181818] font-mono break-all line-clamp-3">
-                    {currentMessage}
+                    {currentMessage.slice(0, 100)}...
                   </p>
                 </div>
               )}

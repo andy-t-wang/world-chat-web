@@ -9,7 +9,7 @@
  */
 
 import type { Dm, Group } from '@xmtp/browser-sdk';
-import { SortDirection } from '@xmtp/browser-sdk';
+import { SortDirection, ConsentState } from '@xmtp/browser-sdk';
 import type { AnyClient } from '@/types/xmtp';
 import {
   store,

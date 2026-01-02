@@ -1,1 +1,1 @@
-export { ConnectWallet } from './ConnectWallet';
+export { QRLogin } from './QRLogin';

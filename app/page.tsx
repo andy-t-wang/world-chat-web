@@ -1,61 +1,111 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
-import { ConnectWallet } from '@/components/auth/ConnectWallet';
-import { QRLogin } from '@/components/auth/QRLogin';
+import { QRCodeSVG } from 'qrcode.react';
+import Image from 'next/image';
 import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
-import { wasConnected } from '@/lib/auth/session';
-import { MessageCircle, Shield, Zap, Loader2, Smartphone, Wallet } from 'lucide-react';
+import { RemoteSigner, generateSessionId } from '@/lib/signing-relay';
+import { MessageCircle, Shield, Zap, Loader2, Smartphone, KeyRound, X, RefreshCw } from 'lucide-react';
 
-type LoginMethod = 'wallet' | 'qr';
+const MINI_APP_ID = process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || 'app_your_app_id';
+
+type LoginState =
+  | 'generating'
+  | 'waiting_for_scan'
+  | 'mobile_connected'
+  | 'authenticating'
+  | 'initializing_xmtp'
+  | 'signing'
+  | 'success'
+  | 'error';
 
 export default function Home() {
   const router = useRouter();
-  const { isConnected, isReconnecting } = useAccount();
-  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  const [hadPreviousSession, setHadPreviousSession] = useState(false);
-  const [loginMethod, setLoginMethod] = useState<LoginMethod>('wallet');
-  const [isQRLoggingIn, setIsQRLoggingIn] = useState(false);
+  const [state, setState] = useState<LoginState>('generating');
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const signerRef = useRef<RemoteSigner | null>(null);
   const { initializeWithRemoteSigner } = useQRXmtpClient();
 
-  // Check for previous session on mount
-  useEffect(() => {
-    const previouslyConnected = wasConnected();
-    setHadPreviousSession(previouslyConnected);
-    // Give wagmi a moment to reconnect if there was a previous session
-    if (!previouslyConnected) {
-      setIsCheckingAuth(false);
+  const qrUrl = sessionId
+    ? `https://worldcoin.org/mini-app?app_id=${MINI_APP_ID}&path=${encodeURIComponent(`/sign?session=${sessionId}`)}`
+    : null;
+
+  const startSession = async () => {
+    // Cleanup any existing session
+    signerRef.current?.cleanup();
+
+    setState('generating');
+    setError(null);
+    setConnectedAddress(null);
+
+    try {
+      const newSessionId = generateSessionId();
+      setSessionId(newSessionId);
+
+      const signer = new RemoteSigner(newSessionId, {
+        onMobileConnected: (address) => {
+          setConnectedAddress(address);
+          setState('mobile_connected');
+        },
+        onAuthenticating: () => {
+          setState('authenticating');
+        },
+        onAuthenticated: (address) => {
+          setConnectedAddress(address);
+        },
+        onSigningRequest: () => {
+          setState('signing');
+        },
+        onSigningComplete: () => {
+          // Stay in current state, don't change
+        },
+        onError: (err) => {
+          setError(err.message);
+          setState('error');
+        },
+      });
+
+      signerRef.current = signer;
+      setState('waiting_for_scan');
+
+      // Wait for mobile to connect and authenticate
+      await signer.connect();
+
+      // Mobile authenticated, now initialize XMTP
+      setState('initializing_xmtp');
+
+      try {
+        await initializeWithRemoteSigner(signer.getSigner());
+        setState('success');
+
+        // Small delay to show success, then navigate
+        setTimeout(() => {
+          router.push('/chat');
+        }, 500);
+      } catch (xmtpError) {
+        console.error('XMTP initialization failed:', xmtpError);
+        setError(xmtpError instanceof Error ? xmtpError.message : 'Failed to initialize messaging');
+        setState('error');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to connect');
+      setState('error');
     }
+  };
+
+  const handleRetry = () => {
+    signerRef.current?.cleanup();
+    startSession();
+  };
+
+  // Auto-start on mount
+  useEffect(() => {
+    startSession();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Redirect to chat when connected
-  useEffect(() => {
-    if (isConnected) {
-      router.push('/chat');
-    } else if (hadPreviousSession && !isReconnecting) {
-      // Previous session but couldn't reconnect - show login
-      setIsCheckingAuth(false);
-    }
-  }, [isConnected, isReconnecting, hadPreviousSession, router]);
-
-  // Show loading while checking auth or reconnecting
-  if (isCheckingAuth && hadPreviousSession) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
-            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
-          </div>
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
-            <span className="text-[#717680]">Reconnecting...</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-gray-50 flex flex-col">
@@ -77,11 +127,11 @@ export default function Home() {
             <h1 className="text-4xl font-bold text-[#181818] mb-4">
               Private messaging,
               <br />
-              <span className="text-[#005CFF]">powered by Web3</span>
+              <span className="text-[#005CFF]">powered by World</span>
             </h1>
             <p className="text-[#717680] text-lg">
-              End-to-end encrypted conversations with anyone, anywhere.
-              Connect your wallet to get started.
+              End-to-end encrypted conversations with verified humans.
+              Scan with World App to get started.
             </p>
           </div>
 
@@ -104,56 +154,117 @@ export default function Home() {
             />
           </div>
 
-          {/* Login Method Toggle */}
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setLoginMethod('wallet')}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors ${
-                loginMethod === 'wallet'
-                  ? 'bg-[#005CFF] text-white border-[#005CFF]'
-                  : 'bg-white text-[#717680] border-gray-200 hover:border-[#005CFF]'
-              }`}
-            >
-              <Wallet className="w-5 h-5" />
-              <span className="font-medium">Browser Wallet</span>
-            </button>
-            <button
-              onClick={() => setLoginMethod('qr')}
-              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors ${
-                loginMethod === 'qr'
-                  ? 'bg-[#005CFF] text-white border-[#005CFF]'
-                  : 'bg-white text-[#717680] border-gray-200 hover:border-[#005CFF]'
-              }`}
-            >
-              <Smartphone className="w-5 h-5" />
-              <span className="font-medium">World App</span>
-            </button>
-          </div>
-
           {/* Login Content */}
           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-            {loginMethod === 'wallet' ? (
-              <ConnectWallet onConnect={() => router.push('/chat')} />
-            ) : isQRLoggingIn ? (
-              <div className="flex flex-col items-center gap-4 py-8">
-                <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
-                <p className="text-[#717680]">Setting up secure messaging...</p>
+            <div className="flex flex-col items-center">
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-6">
+                <Smartphone className="w-6 h-6 text-[#005CFF]" />
+                <h2 className="text-lg font-semibold text-[#181818]">
+                  Login with World App
+                </h2>
               </div>
-            ) : (
-              <QRLogin
-                onSuccess={async (signer) => {
-                  setIsQRLoggingIn(true);
-                  try {
-                    await initializeWithRemoteSigner(signer);
-                    router.push('/chat');
-                  } catch (error) {
-                    console.error('QR login failed:', error);
-                    setIsQRLoggingIn(false);
-                  }
-                }}
-                onCancel={() => setLoginMethod('wallet')}
-              />
-            )}
+
+              {/* QR Code or Status */}
+              <div className="w-64 h-64 flex items-center justify-center mb-6 bg-[#F5F5F5] rounded-xl">
+                {state === 'generating' && (
+                  <Loader2 className="w-8 h-8 text-[#717680] animate-spin" />
+                )}
+
+                {state === 'waiting_for_scan' && qrUrl && (
+                  <QRCodeSVG
+                    value={qrUrl}
+                    size={240}
+                    level="M"
+                    includeMargin
+                    className="rounded-lg"
+                  />
+                )}
+
+                {state === 'mobile_connected' && (
+                  <div className="flex flex-col items-center gap-3">
+                    <Image
+                      src="/human-badge.svg"
+                      alt="Verified Human"
+                      width={64}
+                      height={64}
+                    />
+                    <p className="text-sm text-[#717680]">Mobile connected!</p>
+                  </div>
+                )}
+
+                {state === 'authenticating' && (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-16 h-16 rounded-full bg-[#005CFF]/10 flex items-center justify-center">
+                      <KeyRound className="w-8 h-8 text-[#005CFF]" />
+                    </div>
+                    <p className="text-sm text-[#717680] text-center">
+                      Verifying wallet...
+                      <br />
+                      <span className="text-xs text-[#9BA3AE]">Approve in World App</span>
+                    </p>
+                  </div>
+                )}
+
+                {(state === 'initializing_xmtp' || state === 'signing') && (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+                    <p className="text-sm text-[#717680] text-center">
+                      {state === 'signing' ? 'Approve in World App...' : 'Setting up messaging...'}
+                    </p>
+                    <p className="text-xs text-[#9BA3AE] text-center">
+                      Keep World App open
+                    </p>
+                  </div>
+                )}
+
+                {state === 'success' && (
+                  <div className="flex flex-col items-center gap-3">
+                    <Image
+                      src="/human-badge.svg"
+                      alt="Verified Human"
+                      width={64}
+                      height={64}
+                    />
+                    <p className="text-sm text-[#717680]">Welcome!</p>
+                  </div>
+                )}
+
+                {state === 'error' && (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                      <X className="w-8 h-8 text-red-600" />
+                    </div>
+                    <p className="text-sm text-red-600 text-center px-4">{error}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Address */}
+              {connectedAddress && state !== 'error' && (
+                <p className="text-xs text-[#9BA3AE] mb-4 font-mono">
+                  {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
+                </p>
+              )}
+
+              {/* Instructions */}
+              {state === 'waiting_for_scan' && (
+                <p className="text-sm text-[#717680] text-center mb-4">
+                  Scan this QR code with World App to login
+                </p>
+              )}
+
+              {/* Retry button */}
+              {state === 'error' && (
+                <button
+                  onClick={handleRetry}
+                  className="flex items-center justify-center gap-2 px-6 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Retry
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </main>
