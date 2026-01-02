@@ -127,6 +127,11 @@ class XMTPStreamManager {
 
   /**
    * Load all conversations from XMTP
+   *
+   * Strategy: Show UI fast with local data, sync in background
+   * 1. List from local cache (instant)
+   * 2. Show UI
+   * 3. Background sync updates metadata
    */
   private async loadConversations(): Promise<void> {
     if (!this.client || this.conversationsLoaded) return;
@@ -136,23 +141,20 @@ class XMTPStreamManager {
     store.set(conversationsErrorAtom, null);
 
     try {
-      // Only sync allowed conversations for performance
-      // This prevents loading spam/unknown conversations
-      await this.client.conversations.syncAll([ConsentState.Allowed]);
-
-      // Only list conversations with allowed consent state
-      const conversations = await this.client.conversations.list({
+      // PHASE 1: Load from local cache FIRST (no network, instant)
+      // This shows stale data but gives instant UI
+      const localConversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed],
       });
 
       const ids: string[] = [];
 
-      for (const conv of conversations) {
+      for (const conv of localConversations) {
         this.conversations.set(conv.id, conv);
         ids.push(conv.id);
 
-        // Build metadata
-        const metadata = await this.buildConversationMetadata(conv);
+        // Build metadata from LOCAL cache only (no sync)
+        const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
       }
 
@@ -165,14 +167,76 @@ class XMTPStreamManager {
       });
 
       store.set(conversationIdsAtom, ids);
-      // Notify that metadata has been updated
       this.incrementMetadataVersion();
-      console.log(`[StreamManager] Loaded ${ids.length} allowed conversations`);
+      store.set(isLoadingConversationsAtom, false);
+
+      console.log(`[StreamManager] Loaded ${ids.length} conversations from local cache`);
+
+      // PHASE 2: Background sync (non-blocking)
+      // This fetches new data from network and updates UI
+      this.backgroundSync();
+
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
-    } finally {
       store.set(isLoadingConversationsAtom, false);
+    }
+  }
+
+  /**
+   * Background sync - runs after UI is shown
+   * Syncs conversations from network and updates metadata
+   */
+  private async backgroundSync(): Promise<void> {
+    if (!this.client) return;
+
+    try {
+      console.log('[StreamManager] Starting background sync...');
+      const startTime = Date.now();
+
+      // Sync all allowed conversations from network
+      await this.client.conversations.syncAll([ConsentState.Allowed]);
+
+      // Re-list to get any new conversations
+      const conversations = await this.client.conversations.list({
+        consentStates: [ConsentState.Allowed],
+      });
+
+      let newCount = 0;
+      const currentIds = store.get(conversationIdsAtom);
+      const newIds = [...currentIds];
+
+      for (const conv of conversations) {
+        const isNew = !this.conversations.has(conv.id);
+        this.conversations.set(conv.id, conv);
+
+        if (isNew) {
+          newIds.unshift(conv.id); // Prepend new conversations
+          newCount++;
+        }
+
+        // Rebuild metadata with synced data (but still don't sync individual convs)
+        const metadata = await this.buildConversationMetadata(conv, false);
+        this.conversationMetadata.set(conv.id, metadata);
+      }
+
+      // Sort and update
+      newIds.sort((a, b) => {
+        const metaA = this.conversationMetadata.get(a);
+        const metaB = this.conversationMetadata.get(b);
+        if (!metaA || !metaB) return 0;
+        return Number(metaB.lastActivityNs - metaA.lastActivityNs);
+      });
+
+      store.set(conversationIdsAtom, newIds);
+      this.incrementMetadataVersion();
+
+      const duration = Date.now() - startTime;
+      console.log(`[StreamManager] Background sync complete in ${duration}ms, ${newCount} new conversations`);
+
+    } catch (error) {
+      console.error('[StreamManager] Background sync error:', error);
+      // Don't set error state - UI is already showing, this is just a refresh
     }
   }
 
@@ -186,8 +250,10 @@ class XMTPStreamManager {
 
   /**
    * Build metadata for a conversation
+   * @param conv - The conversation
+   * @param shouldSync - Whether to sync before fetching messages (false for fast local load)
    */
-  private async buildConversationMetadata(conv: Conversation): Promise<ConversationMetadata> {
+  private async buildConversationMetadata(conv: Conversation, shouldSync: boolean = true): Promise<ConversationMetadata> {
     let conversationType: 'dm' | 'group' = 'dm';
     let peerAddress = '';
     let peerInboxId = '';
@@ -225,6 +291,11 @@ class XMTPStreamManager {
         }));
       }
 
+      // Only sync if requested (skip for fast local load)
+      if (shouldSync) {
+        await conv.sync();
+      }
+
       // Get last message preview (newest first)
       // Fetch a few messages to find the first displayable one (skip read receipts, reactions)
       const messages = await conv.messages({
@@ -233,6 +304,16 @@ class XMTPStreamManager {
       });
 
       // Find first message with displayable content
+      if (messages.length > 0) {
+        console.log(`[StreamManager] Found ${messages.length} messages for preview in ${conv.id}, first:`, {
+          id: messages[0].id,
+          contentType: messages[0].contentType?.typeId,
+          content: typeof messages[0].content === 'string' ? messages[0].content.slice(0, 50) : typeof messages[0].content,
+        });
+      } else {
+        console.log(`[StreamManager] No messages found for preview in ${conv.id}`);
+      }
+
       for (const msg of messages) {
         const content = extractMessageContent(msg);
         if (content) {
@@ -289,7 +370,8 @@ class XMTPStreamManager {
           console.log('[StreamManager] New allowed conversation:', conv.id);
 
           this.conversations.set(conv.id, conv);
-          const metadata = await this.buildConversationMetadata(conv);
+          // New streamed conversations - sync to get initial messages
+          const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
           // Prepend to list
