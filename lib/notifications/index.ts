@@ -12,7 +12,7 @@ let permissionRequested = false;
 /**
  * Check if the browser tab is currently visible
  */
-function isTabVisible(): boolean {
+export function isTabVisible(): boolean {
   if (typeof document === 'undefined') return true;
   return document.visibilityState === 'visible';
 }

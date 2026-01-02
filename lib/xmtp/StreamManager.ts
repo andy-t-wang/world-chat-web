@@ -28,7 +28,7 @@ import {
 } from '@/stores';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
-import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount } from '@/lib/notifications';
+import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible } from '@/lib/notifications';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -133,6 +133,9 @@ class XMTPStreamManager {
   // Track when user last read each conversation (for unread counts)
   private lastReadTimestamps = new Map<string, bigint>();
 
+  // Track messages received while tab is hidden (for tab title)
+  private hiddenTabMessageCount = 0;
+
   /**
    * Initialize the manager with an XMTP client
    *
@@ -155,6 +158,9 @@ class XMTPStreamManager {
     requestNotificationPermission().catch(() => {
       // Ignore permission errors
     });
+
+    // Listen for tab visibility changes to reset hidden tab count
+    this.setupVisibilityListener();
 
     // Phase 1: Load from local cache (instant)
     await this.loadConversationsFromCache();
@@ -250,8 +256,32 @@ class XMTPStreamManager {
    */
   private updateTabTitle(): void {
     queueMicrotask(() => {
-      const total = this.getTotalUnreadCount();
-      updateTitleWithUnreadCount(total);
+      // Use the greater of: total unread OR messages received while hidden
+      const totalUnread = this.getTotalUnreadCount();
+      const count = Math.max(totalUnread, this.hiddenTabMessageCount);
+      updateTitleWithUnreadCount(count);
+    });
+  }
+
+  /**
+   * Reset hidden tab message count (call when tab becomes visible)
+   */
+  resetHiddenTabCount(): void {
+    this.hiddenTabMessageCount = 0;
+    this.updateTabTitle();
+  }
+
+  /**
+   * Set up listener for tab visibility changes
+   */
+  private setupVisibilityListener(): void {
+    if (typeof document === 'undefined') return;
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        // Tab became visible - reset hidden message count
+        this.resetHiddenTabCount();
+      }
     });
   }
 
@@ -931,28 +961,41 @@ class XMTPStreamManager {
             }
             metadata.lastActivityNs = msg.sentAtNs;
 
-            // Increment unread count if message is from peer and conversation not selected
+            // Handle unread count and notifications for peer messages
             const isOwnMessage = msg.senderInboxId === this.client?.inboxId;
             const selectedId = store.get(selectedConversationIdAtom);
-            if (!isOwnMessage && selectedId !== conversationId) {
-              metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
-              const version = store.get(unreadVersionAtom);
-              store.set(unreadVersionAtom, version + 1);
+            const isSelected = selectedId === conversationId;
+            const tabVisible = isTabVisible();
 
-              // Show browser notification
-              const senderName = metadata.conversationType === 'group'
-                ? metadata.groupName || 'Group'
-                : metadata.peerAddress
-                  ? `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`
-                  : 'Someone';
-              showMessageNotification({
-                conversationId,
-                senderName,
-                messagePreview: content || 'New message',
-                avatarUrl: metadata.groupImageUrl,
-              });
+            if (!isOwnMessage) {
+              // Increment unread only if not viewing this conversation
+              if (!isSelected) {
+                metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
+                const version = store.get(unreadVersionAtom);
+                store.set(unreadVersionAtom, version + 1);
+              }
 
-              this.updateTabTitle();
+              // Show notification and update title if tab not visible
+              if (!tabVisible) {
+                // Track messages received while tab is hidden
+                this.hiddenTabMessageCount++;
+
+                const senderName = metadata.conversationType === 'group'
+                  ? metadata.groupName || 'Group'
+                  : metadata.peerAddress
+                    ? `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`
+                    : 'Someone';
+                showMessageNotification({
+                  conversationId,
+                  senderName,
+                  messagePreview: content || 'New message',
+                  avatarUrl: metadata.groupImageUrl,
+                });
+                this.updateTabTitle();
+              } else if (!isSelected) {
+                // Tab visible but different conversation - still update title
+                this.updateTabTitle();
+              }
             }
 
             this.incrementMetadataVersion();
