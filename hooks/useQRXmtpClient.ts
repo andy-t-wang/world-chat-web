@@ -150,7 +150,9 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       console.log('[QRXmtpClient] InboxId:', xmtpClient.inboxId);
 
       // Update cache timestamp
-      cacheSession(cachedSession.address, xmtpClient.inboxId);
+      if (xmtpClient.inboxId) {
+        cacheSession(cachedSession.address, xmtpClient.inboxId);
+      }
 
       dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
       await streamManager.initialize(xmtpClient);

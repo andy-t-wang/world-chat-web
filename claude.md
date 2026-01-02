@@ -10,173 +10,68 @@ pnpm dev        # http://localhost:3000 → redirects to /chat
 pnpm exec tsc --noEmit  # Type check
 ```
 
-Whenever you need to reference the XMTP docs use this: https://github.com/xmtp/docs-xmtp-org/blob/main/llms/llms-chat-apps.txt
+XMTP docs: https://github.com/xmtp/docs-xmtp-org/blob/main/llms/llms-chat-apps.txt
 
 ---
-
-## XMTP Browser SDK API Reference (@xmtp/browser-sdk v5.3.0)
-
-### Key Differences from WorkerConversations
-
-The `Client` class (from `Client.create()`) uses `Conversations` which has **async** methods, NOT `WorkerConversations` which has sync methods.
-
-### Client Initialization
-
-```typescript
-import { Client } from '@xmtp/browser-sdk';
-import { ReactionCodec } from '@xmtp/content-type-reaction';
-import { ReplyCodec } from '@xmtp/content-type-reply';
-import { ReadReceiptCodec } from '@xmtp/content-type-read-receipt';
-
-const client = await Client.create(signer, {
-  env: 'production', // or 'dev'
-  appVersion: 'WorldChat/1.0.0',
-  codecs: [new ReactionCodec(), new ReplyCodec(), new ReadReceiptCodec()],
-});
-```
-
-### Content Types
-
-The app registers these content type codecs:
-
-| Codec | Package | Purpose |
-|-------|---------|---------|
-| `ReactionCodec` | `@xmtp/content-type-reaction` | Emoji reactions to messages |
-| `ReplyCodec` | `@xmtp/content-type-reply` | Threaded replies |
-| `ReadReceiptCodec` | `@xmtp/content-type-read-receipt` | Read receipt signals |
-
-### Content Type Filtering
-
-**Messages are filtered before display** to hide non-text content:
-
-```typescript
-// Content types that should NOT appear as messages
-const HIDDEN_CONTENT_TYPES = ['readReceipt', 'reaction'];
-
-// In MessagePanel, filter before rendering
-if (!shouldDisplayMessage(msg)) return null;  // Skip read receipts
-if (getMessageText(msg) === null) return null; // Skip unsupported types
-
-// In StreamManager, filter from conversation preview
-function extractMessageContent(message): string {
-  if (isSpecialContentType(message)) return ''; // Don't show in preview
-  // ... extract text content
-}
-```
-
-**Rule**: If a content type cannot be rendered as text, return `null` and skip rendering entirely. Never show "[Unsupported message type]".
-
-### Conversations API
-
-```typescript
-// Sync conversations from network (required before list)
-await client.conversations.sync();
-
-// List all conversations - returns Promise<(Dm | Group)[]>
-const conversations = await client.conversations.list();
-
-// Get single conversation by ID - returns Promise<Dm | Group | undefined>
-const conversation = await client.conversations.getConversationById(id);
-
-// Create new DM
-const dm = await client.conversations.newDmWithIdentifier({
-  identifier: address.toLowerCase(),
-  identifierKind: 'Ethereum',
-});
-
-// Stream new conversations - returns Promise<AsyncStreamProxy>
-const stream = await client.conversations.stream();
-for await (const conversation of stream) {
-  console.log('New conversation:', conversation.id);
-}
-// Call stream.end() to stop
-```
-
-### Dm vs Group
-
-```typescript
-// Check if conversation is a DM
-function isDm(conv: unknown): conv is { peerInboxId(): Promise<string> } {
-  return typeof (conv as any).peerInboxId === 'function';
-}
-
-// DM-specific: get peer inbox ID (async!)
-if (isDm(conversation)) {
-  const peerInboxId = await conversation.peerInboxId();
-}
-
-// Both Dm and Group have:
-const members = await conversation.members();
-// members[].inboxId, members[].accountIdentifiers[].identifier
-```
-
-### Messages API
-
-```typescript
-// Sync conversation
-await conversation.sync();
-
-// Load messages - returns Promise<DecodedMessage[]>
-const messages = await conversation.messages({
-  limit: BigInt(30),
-  direction: SortDirection.Descending,
-});
-
-// Send message - returns Promise<string> (message ID)
-const messageId = await conversation.send('Hello!');
-
-// Stream new messages - returns Promise<AsyncStreamProxy>
-const stream = await conversation.stream();
-for await (const message of stream) {
-  console.log('New message:', message.id, message.content);
-}
-// Call stream.end() to stop
-```
-
-### Stream Pattern
-
-All streams return `Promise<AsyncStreamProxy<T>>` which is an async iterable with `end()` method:
-
-```typescript
-let streamProxy: AsyncStreamProxy | null = null;
-
-// Start stream
-streamProxy = await conversation.stream();
-for await (const item of streamProxy) {
-  // Handle item
-}
-
-// Cleanup (in useEffect return)
-streamProxy?.end();
-```
-
-### Important Notes
-
-1. **Use Webpack, not Turbopack**: `pnpm dev` uses `--webpack` flag due to WASM loading issues with Turbopack
-2. **All list/stream methods are async**: Always `await` them
-3. **`peerInboxId()` is async**: Returns `Promise<string>`, only on `Dm` class
-4. **Stream cleanup**: Call `stream.end()` not `stream.close()`
-5. **COOP/COEP headers required**: For SharedArrayBuffer support
 
 ## Tech Stack
 
 | Technology | Purpose |
 |------------|---------|
-| **Next.js 16.1** | App framework (App Router, Turbopack) |
+| **Next.js 16.1** | App framework (App Router) |
 | **React 19.2** | UI library |
 | **TypeScript 5** | Type safety (target: ES2020) |
 | **Tailwind CSS 4** | Styling |
 | **Jotai** | Atomic state management |
 | **@tanstack/react-virtual** | List virtualization |
 | **@xmtp/browser-sdk** | E2EE messaging protocol |
-| **wagmi + viem** | Wallet connection |
+| **viem** | Ethereum utilities |
 | **lucide-react** | Icons |
+| **Supabase** | Signing relay (QR login) |
+
+---
+
+## XMTP Browser SDK Quick Reference
+
+### Key APIs
+
+| Operation | Method |
+|-----------|--------|
+| Create client | `Client.create(signer, { env: 'production', codecs })` |
+| Sync conversations | `client.conversations.syncAll([ConsentState.Allowed])` |
+| List conversations | `client.conversations.list({ consentStates: [ConsentState.Allowed] })` |
+| Get conversation | `client.conversations.getConversationById(id)` |
+| Create DM | `client.conversations.newDmWithIdentifier({ identifier, identifierKind: 'Ethereum' })` |
+| Stream conversations | `client.conversations.stream()` → `for await` + `.end()` |
+| Load messages | `conversation.messages({ limit: BigInt(30), direction: SortDirection.Descending })` |
+| Send message | `conversation.send('Hello!')` → returns message ID |
+| Stream messages | `conversation.stream()` → `for await` + `.end()` |
+| Check if DM | `typeof conv.peerInboxId === 'function'` |
+| Get peer inbox | `await dm.peerInboxId()` (async!) |
+
+### Content Type Codecs
+
+| Codec | Package |
+|-------|---------|
+| `ReactionCodec` | `@xmtp/content-type-reaction` |
+| `ReplyCodec` | `@xmtp/content-type-reply` |
+| `ReadReceiptCodec` | `@xmtp/content-type-read-receipt` |
+
+### Important Notes
+
+1. **Use Webpack, not Turbopack**: `pnpm dev` uses `--webpack` flag due to WASM issues
+2. **All list/stream methods are async**: Always `await` them
+3. **`peerInboxId()` is async**: Returns `Promise<string>`, only on `Dm` class
+4. **Stream cleanup**: Call `stream.end()` not `stream.close()`
+5. **Use `insertedAtNs` for pagination**: Provides stable ordering (not `sentAtNs`)
+6. **Filter content types**: Hide read receipts, reactions from message display
+7. **inboxId is primary identifier**: NOT wallet address
 
 ---
 
 ## Architecture
 
-### Layout Structure (Telegram-style)
+### Layout Structure
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -184,1712 +79,215 @@ streamProxy?.end();
 ├──────────────────┬──────────────────────────────────────────┤
 │    Sidebar       │           MessagePanel                   │
 │   (320-380px)    │         (flex-1)                         │
-│                  │                                          │
 │  ┌────────────┐  │  ┌────────────────────────────────────┐ │
 │  │ Search     │  │  │ Header (name, avatar, status)      │ │
 │  ├────────────┤  │  ├────────────────────────────────────┤ │
-│  │ Chat       │  │  │                                    │ │
-│  │ Requests   │  │  │ Messages Area (virtualized)        │ │
-│  ├────────────┤  │  │ - Incoming: white bg, left aligned │ │
-│  │            │  │  │ - Outgoing: blue bg, right aligned │ │
-│  │ Convo List │  │  │                                    │ │
-│  │ (virtual)  │  │  ├────────────────────────────────────┤ │
-│  │            │  │  │ Input (attach, text, emoji, send)  │ │
-│  └────────────┘  │  └────────────────────────────────────┘ │
-│                  │                                          │
-│  Selected =      │  No selection = EmptyState              │
-│  blue bg #005CFF │                                          │
+│  │ Convo List │  │  │ Messages Area (virtualized)        │ │
+│  │ (virtual)  │  │  │ - Incoming: white bg, left         │ │
+│  │            │  │  │ - Outgoing: blue bg, right         │ │
+│  └────────────┘  │  ├────────────────────────────────────┤ │
+│                  │  │ Input (text, send)                  │ │
+│  Selected =      │  └────────────────────────────────────┘ │
+│  blue bg #005CFF │  No selection = EmptyState              │
 └──────────────────┴──────────────────────────────────────────┘
 ```
 
 ### State Management (Jotai)
 
-Key atoms in `stores/`:
-
 | Atom | Purpose |
 |------|---------|
-| `selectedConversationIdAtom` | Currently selected conversation (drives MessagePanel) |
+| `selectedConversationIdAtom` | Currently selected conversation |
 | `conversationIdsAtom` | List of conversation IDs |
-| `conversationMetadataAtom(id)` | Metadata per conversation (preview, unread, etc.) |
 | `messageAtomFamily(id)` | Individual message data (granular updates) |
-| `conversationMessageIdsAtom(id)` | Message IDs per conversation |
-| `xmtpClientAtom` | XMTP client instance |
+| `clientStateAtom` | XMTP client state |
+
+### Application Layers
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              APPLICATION LAYERS                              │
+│  RENDERING LAYER                                                             │
+│  ├─ Virtualized lists (only visible items in DOM)                           │
+│  ├─ ~20-30 DOM nodes regardless of message count                            │
+│  └─ Optimistic UI updates (pending messages shown immediately)              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                              │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │  RENDERING LAYER                                                      │  │
-│   │  ├─ Virtualized lists (only visible items in DOM)                    │  │
-│   │  ├─ ~20-30 DOM nodes regardless of message count                     │  │
-│   │  └─ Optimistic UI updates                                            │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │  STATE LAYER (Jotai)                                                  │  │
-│   │  ├─ atomFamily for individual messages (granular subscriptions)      │  │
-│   │  ├─ Conversation atoms (metadata only)                               │  │
-│   │  ├─ Message ID lists per conversation (not full objects)             │  │
-│   │  └─ LRU cache eviction for memory management                         │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │  ENCRYPTION LAYER (Optional)                                          │  │
-│   │  ├─ Web Crypto API (AES-GCM-256)                                     │  │
-│   │  ├─ PBKDF2 key derivation from password                              │  │
-│   │  └─ Non-extractable CryptoKey objects                                │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │  PERSISTENCE LAYER                                                    │  │
-│   │  ├─ XMTP libxmtp handles primary storage (SQLite in OPFS)            │  │
-│   │  ├─ Optional Dexie.js cache for UI-specific data                     │  │
-│   │  └─ Reactions/replies index for fast lookups                         │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                    │                                         │
-│                                    ▼                                         │
-│   ┌──────────────────────────────────────────────────────────────────────┐  │
-│   │  XMTP PROTOCOL LAYER                                                  │  │
-│   │  ├─ MLS-based E2EE (handled by libxmtp)                              │  │
-│   │  ├─ History sync across devices                                       │  │
-│   │  ├─ Message streaming                                                 │  │
-│   │  └─ Consent management                                                │  │
-│   └──────────────────────────────────────────────────────────────────────┘  │
-│                                                                              │
+│  STATE LAYER (Jotai)                                                         │
+│  ├─ atomFamily for individual messages (granular subscriptions, O(1))       │
+│  ├─ Message ID lists per conversation (not full objects)                    │
+│  ├─ Conversation metadata in Map (not atoms) for performance                │
+│  └─ Metadata version atom triggers re-renders when needed                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  STREAMING LAYER (StreamManager singleton)                                   │
+│  ├─ Lives outside React lifecycle (survives mount/unmount)                  │
+│  ├─ Uses shared Jotai store directly (not React Provider)                   │
+│  ├─ Batches updates via queueMicrotask()                                    │
+│  └─ Single source of truth for all XMTP streams                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  PERSISTENCE LAYER                                                           │
+│  ├─ XMTP libxmtp handles storage (SQLite in OPFS)                           │
+│  ├─ Session cache in localStorage (address, inboxId)                        │
+│  └─ Consent state synced via XMTP                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  XMTP PROTOCOL LAYER                                                         │
+│  ├─ MLS-based E2EE (handled by libxmtp)                                     │
+│  ├─ History sync across devices                                              │
+│  └─ Consent management (Allowed/Unknown/Denied)                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+### Why This Architecture?
 
-## XMTP Identifier Architecture
+| Problem | Solution |
+|---------|----------|
+| New message re-renders entire list | `atomFamily` per message → O(1) update |
+| React unmount kills streams | StreamManager singleton outside React |
+| Metadata updates cause cascading renders | Store in Map, use version atom to trigger |
+| Large lists slow to render | Virtualization (only ~20-30 DOM nodes) |
+| User waits for send confirmation | Optimistic updates (show pending immediately) |
 
-### Source of Truth: inboxId (NOT address)
+### StreamManager Singleton
 
-**inboxId is the primary identifier** in XMTP. While wallet addresses are used for initial auth, they are NOT the source of truth:
-
-| Identifier | Purpose | Scope |
-|------------|---------|-------|
-| `inboxId` | Unique user identity | Per user (across all devices/wallets) |
-| `installationId` | Device/app instance | Per device installation |
-| `address` | Wallet address | Auth only, NOT conversation key |
-
-**Critical**: Multiple wallet addresses can map to a single inboxId. Always use inboxId for conversation and messaging operations.
-
-### DM Stitching
-
-When a user creates DMs from different installations, XMTP creates separate underlying MLS groups but **presents them as one unified conversation**:
-
-```
-User A (Installation 1) → DM to User B → MLS Group 1 (topic-1)
-User A (Installation 2) → DM to User B → MLS Group 2 (topic-2)
-
-UI displays: Single DM conversation (stitched from both topics)
-```
-
-**Push notification caveat**: Each DM can have multiple topics. You must subscribe to ALL topics via `allPushTopics()` or you'll miss notifications.
-
-### History Sync
-
-XMTP automatically syncs across devices using:
-
-1. **Sync Group**: Special MLS group containing all user's devices
-2. **Sync Worker**: Processes consent, archives, preferences
-3. **History Server**: Stores encrypted payloads with keys distributed via sync group
-
-What syncs: conversations, messages, consent state, HMAC keys.
-
-**Post-import state**: Imported conversations start **inactive** and **read-only**. Check `conversation.isActive()` before network operations. Conversations reactivate when existing members send a message.
-
-### State Mapping to Jotai
-
-```typescript
-// stores/client.ts - Use inboxId as primary identifier
-export const currentInboxIdAtom = atom<string | null>((get) => {
-  const client = get(xmtpClientAtom);
-  return client?.inboxId ?? null;  // NOT accountAddress
-});
-
-// DM creation - always use inboxId
-const dm = await client.conversations.findOrCreateDm(recipientInboxId);
-
-// Check if message is own (compare inboxId, not address)
-const isOwnMessage = message.senderInboxId === currentUserInboxId;
-
-// Conversation active check before operations
-if (!conversation.isActive()) {
-  // Show read-only UI, disable send
-}
-```
-
-### Message Ordering
-
-Use `insertedAtNs` (NOT `sentAtNs`) for pagination:
-
-```typescript
-// Messages may arrive out of order - insertedAtNs provides stable ordering
-const messages = await conversation.messages({
-  sortBy: 'INSERTED',
-  limit: 20,
-  insertedBeforeNs: lastMessage.insertedAtNs,
-});
-```
-
-### Consent States
-
-- Automatic consent when user creates or receives messages in a conversation
-- Consent syncs across devices via sync worker
-- Imported conversations start inactive until reactivated
+`lib/xmtp/StreamManager.ts` manages XMTP streaming **outside React lifecycle**:
+- Loads conversations on init (with consent filtering)
+- Streams new conversations and messages
+- Manages conversation metadata (preview, timestamp)
+- Uses shared Jotai store (`stores/index.ts`)
+- Batches updates via `queueMicrotask()`
 
 ---
 
-## World App Username API
+## QR Login / Signing Relay
 
-The app resolves wallet addresses to human-readable usernames and profile pictures via the World App Username API.
-
-### API Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v1/{address}` | Resolve single address → `UsernameRecord` |
-| `POST /api/v1/query` | Batch resolve addresses → `UsernameRecord[]` |
-| `GET /api/v1/search/{prefix}` | Search usernames (max 10 results) |
-| `GET /api/v1/avatar/{username}` | Redirect to profile picture |
-
-**Base URL**: `https://usernames.worldcoin.org`
-
-### UsernameRecord Schema
-
-```typescript
-interface UsernameRecord {
-  address: `0x${string}`;                    // Checksummed wallet address
-  username: string;                          // World App username
-  profile_picture_url: string | null;        // Full-size avatar
-  minimized_profile_picture_url: string | null; // Thumbnail avatar
-}
-```
-
-### Integration Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Component Layer                                             │
-│  ├─ Avatar (address prop → auto-fetches profile picture)    │
-│  ├─ ConversationItem (peerAddress → displays username)      │
-│  └─ MessageRow (senderAddress → shows sender name)          │
-├─────────────────────────────────────────────────────────────┤
-│  Hook Layer                                                  │
-│  ├─ useUsername(address) → { displayName, profilePicture }  │
-│  └─ useBatchUsernames(addresses[]) → prefetch for lists     │
-├─────────────────────────────────────────────────────────────┤
-│  Store Layer (Jotai)                                         │
-│  └─ usernameAtomFamily(address) → { record, isLoading }     │
-├─────────────────────────────────────────────────────────────┤
-│  Service Layer                                               │
-│  ├─ resolveAddress(address) → single lookup                 │
-│  ├─ resolveAddresses(addresses[]) → batch lookup            │
-│  └─ LRU cache (500 entries, 5min TTL)                       │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Usage Examples
-
-```typescript
-// In a component - automatic username/avatar lookup
-<Avatar address={peerAddress} size="md" />
-<ConversationItem peerAddress={peerAddress} lastMessage="Hello" />
-
-// Manual username lookup with hook
-const { displayName, profilePicture, isLoading } = useUsername(address);
-
-// Batch prefetch for conversation list
-useBatchUsernames(conversationAddresses);
-```
-
-### Key Files
-
-| File | Purpose |
-|------|---------|
-| `types/username.ts` | TypeScript types from OpenAPI spec |
-| `lib/username/service.ts` | API client with LRU caching |
-| `stores/usernames.ts` | Jotai atoms for username state |
-| `hooks/useUsername.ts` | React hook for components |
-
----
-
-## Wallet & XMTP Integration
-
-### Wallet Connection (wagmi)
-
-```typescript
-// lib/wagmi/config.ts - Wallet connectors configuration
-// Supports: injected (MetaMask, etc.), Coinbase Wallet, WalletConnect
-
-// Wagmi state is persisted to localStorage for instant reconnection
-export const wagmiConfig = createConfig({
-  // ...
-  storage: createStorage({
-    storage: typeof window !== 'undefined' ? window.localStorage : undefined,
-    key: 'wagmi-state',
-  }),
-});
-
-// lib/auth/session.ts - Check if user was previously connected
-export function wasConnected(): boolean {
-  const state = localStorage.getItem('wagmi-state');
-  return parsed?.state?.connections?.length > 0;
-}
-```
-
-### XMTP Session Caching
-
-**Goal**: Avoid "Setting up secure messaging..." screen for returning users.
-
-```typescript
-// hooks/useXmtpClient.ts
-
-// Session cache in localStorage (24h TTL)
-const XMTP_SESSION_KEY = 'xmtp-session-cache';
-
-interface SessionCache {
-  address: string;
-  inboxId: string;
-  timestamp: number;
-}
-
-// Check for cached session before showing loading UI
-const hasCachedSession = getCachedSession(address) !== null;
-
-// After successful client creation, cache the session
-if (xmtpClient.inboxId) {
-  cacheSession(address, xmtpClient.inboxId);
-}
-
-// Return isRestoringSession for UI optimization
-return {
-  isRestoringSession: hasCachedSession && clientState.isInitializing,
-};
-```
-
-**UI Behavior**:
-- New users: Show "Setting up secure messaging..." with spinner
-- Returning users: Skip loading screen, show conversations immediately
-
-### XMTP Client Lifecycle
-
-```typescript
-// hooks/useXmtpClient.ts
-const { client, isInitializing, isReady, error, isRestoringSession } = useXmtpClient();
-
-// Auto-initializes when wallet connects
-// Creates XMTP signer from viem WalletClient
-// Stores client in Jotai atom for global access
-// Caches session for faster subsequent loads
-```
-
-### Creating Conversations
-
-```typescript
-// Use newDmWithIdentifier for creating DMs by address
-const identifier: Identifier = {
-  identifier: address.toLowerCase(),
-  identifierKind: 'Ethereum',
-};
-const conversation = await client.conversations.newDmWithIdentifier(identifier);
-
-// Check if address can receive messages first
-const { canMessage } = useCanMessage();
-const canReceive = await canMessage(address);
-```
-
-### App Flow
-
-```
-Landing Page (/)
-  → Connect Wallet
-  → Redirect to /chat
-  → Initialize XMTP client (shows "Setting up secure messaging...")
-  → Load conversations
-  → Ready to chat
-```
-
-### Key Hooks
-
-| Hook | Purpose |
-|------|---------|
-| `useXmtpClient()` | XMTP client lifecycle management |
-| `useCanMessage()` | Check if address has XMTP enabled |
-| `useConversations()` | Load and stream conversations |
-| `useConversation(id)` | Get single conversation by ID |
-| `useQRXmtpClient()` | XMTP client with remote signer (QR login) |
-
----
-
-## QR Login / Signing Relay (World App)
-
-For users with World App wallets (Gnosis Safe), the web client supports QR-based login where signing requests are relayed to the mobile app.
-
-### Architecture
-
-```
-┌─────────────────┐                              ┌─────────────────┐
-│ Desktop Browser │                              │   World App     │
-│                 │      Supabase Realtime       │  (Sign Helper)  │
-│   QR Code ──────┼──────── Channel ─────────────┼──▶ Mini App     │
-│                 │      (session-{id})          │                 │
-│  Remote Signer ◀┼─────── Signatures ───────────┼── MiniKit.sign  │
-└─────────────────┘                              └─────────────────┘
-```
+For World App wallets (Gnosis Safe), signing requests relay via Supabase Realtime.
 
 ### Flow
 
 ```
 Desktop                    Supabase                   World App
-   │                          │                           │
    │  1. Show QR code         │                           │
    │  (worldcoin.org/mini-app?app_id=...&path=/sign?session=abc)
-   │                          │                           │
    │                          │     2. User scans QR      │
-   │                          │◀──────────────────────────│
-   │                          │                           │
-   │                          │     3. Opens /sign page   │
    │◀───── 4. mobile_connected ───────────────────────────│
-   │                          │                           │
    │──── 5. XMTP: sign msg ───▶                           │
    │                          │────── 6. sign_request ───▶│
-   │                          │                           │
-   │                          │  7. MiniKit.signMessage() │
-   │                          │                           │
-   │                          │◀───── 8. signature ───────│
-   │◀─── 9. signature ────────│                           │
-   │                          │                           │
-   │  10. XMTP client ready!  │                           │
+   │                          │◀───── 7. signature ───────│
+   │◀─── 8. signature ────────│                           │
+   │  9. XMTP client ready!   │                           │
 ```
 
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `lib/signing-relay/types.ts` | Type definitions for relay messages |
-| `lib/signing-relay/client.ts` | Supabase client + session ID generation |
-| `lib/signing-relay/remote-signer.ts` | Desktop: XMTP signer that relays to mobile |
-| `lib/signing-relay/mobile-signer.ts` | Mobile: Handles signing requests from desktop |
+| `lib/signing-relay/remote-signer.ts` | Desktop: XMTP signer relaying to mobile |
+| `lib/signing-relay/mobile-signer.ts` | Mobile: Handles signing requests |
 | `components/auth/QRLogin.tsx` | QR code login component |
 | `app/sign/page.tsx` | Signing helper page (runs in World App) |
-| `hooks/useQRXmtpClient.ts` | Hook to create XMTP client with remote signer |
+| `hooks/useQRXmtpClient.ts` | Hook for XMTP client with remote signer |
 
-### Environment Variables
+### Session Restoration
 
-```bash
-# .env.local
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJI...
-NEXT_PUBLIC_WORLD_MINI_APP_ID=app_your_app_id
-```
+Sessions are cached in localStorage (`xmtp-session-cache`) for page reloads:
+- `restoreSession()` creates a cached signer with stored address
+- `Client.create()` reuses existing XMTP installation from OPFS
+- If signing needed (installation lost), redirects to QR login
 
-### Remote Signer (SCW)
+---
 
-For Smart Contract Wallets (like World App's Safe), the signer includes `getChainId`:
+## World App Username API
 
-```typescript
-// lib/signing-relay/remote-signer.ts
-getSigner() {
-  return {
-    type: 'SCW' as const,  // Smart Contract Wallet
-    getIdentifier: () => ({
-      identifier: address.toLowerCase(),
-      identifierKind: 'Ethereum' as const,
-    }),
-    signMessage: async (message: string): Promise<Uint8Array> => {
-      const signature = await this.requestSignature(message);
-      return toBytes(signature);
-    },
-    getChainId: () => BigInt(480),  // World Chain mainnet
-  };
-}
-```
+Resolves wallet addresses to usernames and profile pictures.
 
-### Usage Example
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/{address}` | Single address lookup |
+| `POST /api/v1/query` | Batch resolve addresses |
+| `GET /api/v1/search/{prefix}` | Search usernames |
 
-```typescript
-// In login page
-import { QRLogin } from '@/components/auth/QRLogin';
-import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
+**Base URL**: `https://usernames.worldcoin.org`
 
-function LoginPage() {
-  const { initializeWithRemoteSigner } = useQRXmtpClient();
-  const [showQR, setShowQR] = useState(true);
-
-  const handleSuccess = async (signer) => {
-    await initializeWithRemoteSigner(signer);
-    router.push('/chat');
-  };
-
-  return showQR ? (
-    <QRLogin
-      onSuccess={handleSuccess}
-      onCancel={() => setShowQR(false)}
-    />
-  ) : (
-    // Other login options
-  );
-}
-```
-
-### Relay Message Types
-
-```typescript
-type RelayMessage =
-  | { type: 'mobile_connected'; address: string }
-  | { type: 'sign_request'; requestId: string; message: string }
-  | { type: 'sign_response'; requestId: string; signature: string }
-  | { type: 'sign_error'; requestId: string; error: string }
-  | { type: 'session_complete' };
-```
-
-### Setup Steps
-
-1. **Create Supabase Project** (free tier works)
-   - Go to [supabase.com](https://supabase.com)
-   - Copy Project URL and anon key to `.env.local`
-
-2. **Register Mini App in World Developer Portal**
-   - Go to [developer.worldcoin.org](https://developer.worldcoin.org)
-   - Create app, set URL to your deployed app
-   - Add `app_id` to `.env.local`
-
-3. **Deploy signing helper page**
-   - The `/sign` route handles signing requests
-   - Must be accessible from World App
+**Key Files**: `lib/username/service.ts`, `hooks/useUsername.ts`
 
 ---
 
 ## Directory Structure
 
 ```
-/
-├── app/
-│   ├── layout.tsx          # Root layout + JotaiProvider
-│   ├── page.tsx            # Redirects to /chat
-│   ├── chat/
-│   │   ├── layout.tsx      # Full-height flex container
-│   │   └── page.tsx        # Sidebar + MessagePanel/EmptyState
-│   └── sign/
-│       └── page.tsx        # Signing helper page for World App QR login
-│
-├── components/
-│   ├── auth/
-│   │   ├── ConnectWallet.tsx   # Wallet connection UI
-│   │   └── QRLogin.tsx         # QR code login for World App
-│   ├── chat/
-│   │   ├── Sidebar.tsx         # Left panel (search + conversation list)
-│   │   ├── ConversationList.tsx # Virtualized list
-│   │   ├── ConversationItem.tsx # Single conversation row
-│   │   ├── ChatRequestsBanner.tsx
-│   │   ├── MessagePanel.tsx    # Right panel (header + messages + input)
-│   │   └── EmptyState.tsx      # Shown when no conversation selected
-│   ├── ui/
-│   │   ├── Avatar.tsx          # Letter/image avatar with color palette
-│   │   └── VerificationBadge.tsx
-│   └── providers/
-│       └── JotaiProvider.tsx
-│
-├── stores/                 # Jotai atoms
-│   ├── client.ts           # XMTP client state
-│   ├── conversations.ts    # Conversation atoms + derived
-│   ├── messages.ts         # Message atoms + pagination
-│   ├── usernames.ts        # Username lookup atoms
-│   └── ui.ts               # UI state (selection, modals, toasts)
-│
-├── hooks/
-│   ├── useUsername.ts      # Username lookup hook
-│   ├── useXmtpClient.ts    # XMTP client lifecycle + session caching
-│   ├── useQRXmtpClient.ts  # XMTP client with remote signer (QR login)
-│   ├── useConversations.ts # Conversation list subscription
-│   └── useMessages.ts      # Message loading + streaming
-│
-├── types/
-│   ├── xmtp.ts             # XMTP type extensions
-│   ├── messages.ts         # Message-related types
-│   └── username.ts         # Username API types
-│
-├── lib/
-│   ├── utils/
-│   │   └── lru.ts          # LRU cache for memory management
-│   ├── username/
-│   │   └── service.ts      # Username API client with caching
-│   ├── auth/
-│   │   └── session.ts      # wasConnected() utility for cached auth state
-│   ├── xmtp/
-│   │   └── StreamManager.ts # Singleton for XMTP streaming (outside React)
-│   ├── signing-relay/      # QR login signing relay
-│   │   ├── types.ts        # Relay message types
-│   │   ├── client.ts       # Supabase client + session utilities
-│   │   ├── remote-signer.ts # Desktop: XMTP signer relaying to mobile
-│   │   ├── mobile-signer.ts # Mobile: Handles signing requests
-│   │   └── index.ts        # Exports
-│   └── wagmi/
-│       └── config.ts       # Wallet connectors + storage persistence
-│
-├── config/
-│   └── constants.ts              # App constants ✅
-│
-└── next.config.ts                # Next.js configuration
+app/
+├── layout.tsx          # Root layout + JotaiProvider
+├── page.tsx            # Login page with QR
+├── chat/page.tsx       # Sidebar + MessagePanel
+└── sign/page.tsx       # Signing helper for World App
+
+components/
+├── auth/QRLogin.tsx    # QR code login
+├── chat/               # Sidebar, ConversationList, MessagePanel, etc.
+└── ui/                 # Avatar, VerificationBadge
+
+stores/                 # Jotai atoms
+├── client.ts           # XMTP client state
+├── conversations.ts    # Conversation atoms
+├── messages.ts         # Message atoms
+└── ui.ts               # UI state (selection)
+
+hooks/
+├── useQRXmtpClient.ts  # XMTP client with remote signer
+├── useConversations.ts # Conversation list
+└── useMessages.ts      # Message loading
+
+lib/
+├── xmtp/StreamManager.ts    # Singleton for XMTP streaming
+├── signing-relay/           # QR login signing relay
+├── username/service.ts      # Username API client
+└── auth/session.ts          # Session utilities
 ```
 
 ---
-
-## Next.js 16 Configuration
-
-### next.config.ts
-
-```typescript
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  // React Compiler for automatic memoization (stable in Next.js 16)
-  reactCompiler: true,
-
-  // Turbopack is now the default bundler
-  // Configure if needed for WASM/native modules
-  turbopack: {
-    resolveAlias: {
-      // Handle any Node.js modules that might be imported client-side
-      fs: { browser: './lib/utils/empty.ts' },
-    },
-  },
-
-  // Enable View Transitions for smooth navigation
-  experimental: {
-    viewTransition: true,
-  },
-};
-
-export default nextConfig;
-```
-
-### proxy.ts (Replaces middleware.ts)
-
-```typescript
-// proxy.ts - Next.js 16 network boundary handler
-// Runs on Node.js runtime (not Edge)
-
-import { NextRequest, NextResponse } from 'next/server';
-
-export function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Protect chat routes - redirect to home if no wallet connected
-  if (pathname.startsWith('/chat')) {
-    const walletConnected = request.cookies.get('wallet-connected');
-    if (!walletConnected) {
-      return NextResponse.redirect(new URL('/', request.url));
-    }
-  }
-
-  // Rate limiting headers for API routes
-  if (pathname.startsWith('/api')) {
-    const response = NextResponse.next();
-    response.headers.set('X-RateLimit-Limit', '100');
-    return response;
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ['/chat/:path*', '/api/:path*'],
-};
-```
-
-### Cache Components Usage
-
-```typescript
-// app/chat/page.tsx - Using Cache Components for conversation list
-
-'use cache'; // Opt-in to caching for this component
-
-import { cacheLife } from 'next/cache';
-
-export default async function ConversationListPage() {
-  // Cache user profile data for 5 minutes
-  cacheLife('minutes');
-  
-  return (
-    <div>
-      {/* ConversationList uses client-side Jotai state */}
-      {/* Static shell is cached, dynamic content streams in */}
-      <ConversationListShell />
-    </div>
-  );
-}
-```
-
-### React 19.2 Features
-
-```typescript
-// Using View Transitions for conversation switching
-import { useTransition } from 'react';
-import { unstable_ViewTransition as ViewTransition } from 'react';
-
-function ConversationSwitcher({ conversationId }: { conversationId: string }) {
-  const [isPending, startTransition] = useTransition();
-
-  const switchConversation = (newId: string) => {
-    startTransition(() => {
-      // Navigation wrapped in transition for smooth animation
-      router.push(`/chat/${newId}`);
-    });
-  };
-
-  return (
-    <ViewTransition>
-      <MessageList conversationId={conversationId} />
-    </ViewTransition>
-  );
-}
-
-// Using Activity for background conversation rendering
-import { unstable_Activity as Activity } from 'react';
-
-function ConversationTabs({ conversations }: { conversations: string[] }) {
-  const [activeId, setActiveId] = useState(conversations[0]);
-
-  return (
-    <>
-      {conversations.map((id) => (
-        <Activity key={id} mode={id === activeId ? 'visible' : 'hidden'}>
-          {/* Maintains state and cleans up effects when hidden */}
-          <ConversationView conversationId={id} />
-        </Activity>
-      ))}
-    </>
-  );
-}
-```
-
----
-
-## StreamManager Architecture
-
-The `StreamManager` singleton (`lib/xmtp/StreamManager.ts`) manages all XMTP data loading and streaming **outside React lifecycle**:
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  StreamManager (Singleton)                                   │
-├─────────────────────────────────────────────────────────────┤
-│  Responsibilities:                                           │
-│  ├─ Load conversations on init                              │
-│  ├─ Stream new conversations                                │
-│  ├─ Load messages when conversation opened                  │
-│  ├─ Stream new messages per conversation                    │
-│  ├─ Manage conversation metadata (preview, timestamp)       │
-│  └─ Batch updates to Jotai store                            │
-├─────────────────────────────────────────────────────────────┤
-│  Key Design:                                                 │
-│  ├─ Single source of truth for streams                      │
-│  ├─ Survives React component mount/unmount                  │
-│  ├─ Uses shared Jotai store (not React Provider)            │
-│  ├─ Batches updates via queueMicrotask()                    │
-│  └─ Metadata stored in Map (not atoms) for performance      │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Metadata Versioning
-
-Conversation metadata (last message preview, timestamp) is stored in a `Map` for performance, not in Jotai atoms. To trigger React re-renders when metadata changes:
-
-```typescript
-// stores/conversations.ts
-export const conversationMetadataVersionAtom = atom<number>(0);
-
-// StreamManager increments version when metadata changes
-private incrementMetadataVersion(): void {
-  const current = store.get(conversationMetadataVersionAtom);
-  store.set(conversationMetadataVersionAtom, current + 1);
-}
-
-// hooks/useConversations.ts subscribes to version
-const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
-const metadata = useMemo(() => {
-  return streamManager.getAllConversationMetadata();
-}, [conversationIds, metadataVersion]); // Re-fetch when version changes
-```
-
----
-
-## State Management Design
-
-### Core Principle: Granular Subscriptions
-
-**Problem with naive state:**
-```typescript
-// ❌ BAD: Every new message re-renders entire list
-const [messages, setMessages] = useState<Message[]>([]);
-setMessages([...messages, newMessage]); // O(n) re-renders
-```
-
-**Solution with Jotai atomFamily:**
-```typescript
-// ✅ GOOD: Only new message component renders
-const messageAtomFamily = atomFamily((id: string) => atom<Message | null>(null));
-// Adding new message = O(1) re-render
-```
-
-### Atom Structure
-
-```typescript
-// stores/messages.ts
-
-import { atom } from 'jotai';
-import { atomFamily } from 'jotai/utils';
-import type { DecodedMessage } from '@xmtp/browser-sdk';
-
-// Individual message atoms - granular updates
-export const messageAtomFamily = atomFamily(
-  (messageId: string) => atom<DecodedMessage | null>(null)
-);
-
-// Message IDs per conversation (just strings, not full messages)
-export const conversationMessageIdsAtom = atomFamily(
-  (conversationId: string) => atom<string[]>([])
-);
-
-// Pagination state per conversation
-export const conversationPaginationAtom = atomFamily(
-  (conversationId: string) => atom<{
-    hasMore: boolean;
-    oldestInsertedAtNs: bigint | null;
-    isLoading: boolean;
-  }>({
-    hasMore: true,
-    oldestInsertedAtNs: null,
-    isLoading: false,
-  })
-);
-
-// Pending (optimistic) messages
-export const pendingMessagesAtom = atomFamily(
-  (conversationId: string) => atom<PendingMessage[]>([])
-);
-
-// stores/conversations.ts
-
-export const conversationAtomFamily = atomFamily(
-  (conversationId: string) => atom<Conversation | null>(null)
-);
-
-export const conversationIdsAtom = atom<string[]>([]);
-
-// Derived: sorted conversations by last activity
-export const sortedConversationIdsAtom = atom((get) => {
-  const ids = get(conversationIdsAtom);
-  return [...ids].sort((a, b) => {
-    const convA = get(conversationAtomFamily(a));
-    const convB = get(conversationAtomFamily(b));
-    if (!convA || !convB) return 0;
-    return Number(convB.lastActivityNs - convA.lastActivityNs);
-  });
-});
-```
-
----
-
-## Message Loading & Streaming
-
-### Pagination Strategy
-
-**Use `insertedAtNs` for stable pagination:**
-
-XMTP messages may arrive out of order (a message sent 5 minutes ago might arrive after one sent 1 minute ago). Using `insertedAtNs` (when the message was added to local DB) provides a totally ordered list.
-
-```typescript
-// hooks/useMessages.ts
-
-const PAGE_SIZE = 50;
-
-export function useMessages(conversationId: string) {
-  const [messageIds, setMessageIds] = useAtom(
-    conversationMessageIdsAtom(conversationId)
-  );
-  const [pagination, setPagination] = useAtom(
-    conversationPaginationAtom(conversationId)
-  );
-
-  const loadMore = useCallback(async (conversation: Conversation) => {
-    if (pagination.isLoading || !pagination.hasMore) return;
-
-    setPagination(prev => ({ ...prev, isLoading: true }));
-
-    try {
-      const messages = await conversation.messages({
-        limit: BigInt(PAGE_SIZE),
-        insertedBeforeNs: pagination.oldestInsertedAtNs ?? undefined,
-        direction: 'descending',
-      });
-
-      // Hydrate individual message atoms
-      const newIds: string[] = [];
-      for (const msg of messages) {
-        messageAtomFamily(msg.id).init = msg;
-        newIds.push(msg.id);
-      }
-
-      setMessageIds(prev => [...prev, ...newIds]);
-      setPagination({
-        hasMore: messages.length === PAGE_SIZE,
-        oldestInsertedAtNs: messages.at(-1)?.insertedAtNs ?? null,
-        isLoading: false,
-      });
-    } catch (error) {
-      setPagination(prev => ({ ...prev, isLoading: false }));
-      throw error;
-    }
-  }, [pagination, setMessageIds, setPagination]);
-
-  return { messageIds, loadMore, ...pagination };
-}
-```
-
-### Real-Time Streaming
-
-```typescript
-// hooks/useMessageStream.ts
-
-export function useMessageStream(
-  client: Client | null,
-  conversationId: string
-) {
-  const setMessageIds = useSetAtom(conversationMessageIdsAtom(conversationId));
-
-  useEffect(() => {
-    if (!client) return;
-
-    let mounted = true;
-    let stream: AsyncIterable<DecodedMessage>;
-
-    async function startStream() {
-      const conversation = await client.conversations.getConversationById(
-        conversationId
-      );
-      if (!conversation || !mounted) return;
-
-      stream = await conversation.stream();
-
-      for await (const message of stream) {
-        if (!mounted) break;
-
-        // Hydrate single message atom (no list re-render)
-        messageAtomFamily(message.id).init = message;
-
-        // Prepend ID to list
-        setMessageIds(prev => [message.id, ...prev]);
-      }
-    }
-
-    startStream();
-
-    return () => {
-      mounted = false;
-    };
-  }, [client, conversationId, setMessageIds]);
-}
-```
-
----
-
-## Virtualization Implementation
-
-### Message List
-
-```typescript
-// components/chat/MessageList.tsx
-
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useAtomValue } from 'jotai';
-import { useRef, useEffect } from 'react';
-
-interface MessageListProps {
-  conversationId: string;
-  onLoadMore: () => void;
-  hasMore: boolean;
-}
-
-export function MessageList({ conversationId, onLoadMore, hasMore }: MessageListProps) {
-  const messageIds = useAtomValue(conversationMessageIdsAtom(conversationId));
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const virtualizer = useVirtualizer({
-    count: messageIds.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 72, // Estimated message height
-    overscan: 10, // Render 10 extra items above/below viewport
-    getItemKey: (index) => messageIds[index],
-  });
-
-  // Infinite scroll - load more when near top
-  useEffect(() => {
-    const [firstItem] = virtualizer.getVirtualItems();
-    if (firstItem?.index === 0 && hasMore) {
-      onLoadMore();
-    }
-  }, [virtualizer.getVirtualItems(), hasMore, onLoadMore]);
-
-  return (
-    <div
-      ref={parentRef}
-      className="h-full overflow-auto flex flex-col-reverse"
-    >
-      <div
-        style={{
-          height: virtualizer.getTotalSize(),
-          position: 'relative',
-        }}
-      >
-        {virtualizer.getVirtualItems().map((virtualRow) => (
-          <MessageRow
-            key={virtualRow.key}
-            messageId={messageIds[virtualRow.index]}
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              transform: `translateY(${virtualRow.start}px)`,
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-```
-
-### Individual Message Component
-
-```typescript
-// components/chat/MessageRow.tsx
-
-// Note: React Compiler (enabled in next.config.ts) automatically memoizes
-// this component - no need for manual memo() wrapper in Next.js 16
-
-import { useAtomValue } from 'jotai';
-
-interface MessageRowProps {
-  messageId: string;
-  style: React.CSSProperties;
-}
-
-// React Compiler automatically detects this should be memoized
-// based on props usage - only re-renders when THIS message's atom changes
-export function MessageRow({ messageId, style }: MessageRowProps) {
-  const message = useAtomValue(messageAtomFamily(messageId));
-
-  if (!message) return null;
-
-  const isOwnMessage = message.senderInboxId === currentUserInboxId;
-
-  return (
-    <div style={style} className="px-4 py-2">
-      <div className={cn(
-        "flex gap-3",
-        isOwnMessage && "flex-row-reverse"
-      )}>
-        <Avatar address={message.senderAddress} />
-        <div className={cn(
-          "max-w-[70%] rounded-2xl px-4 py-2",
-          isOwnMessage 
-            ? "bg-blue-500 text-white" 
-            : "bg-gray-100 text-gray-900"
-        )}>
-          <MessageContent message={message} />
-          <MessageMeta message={message} />
-        </div>
-      </div>
-    </div>
-  );
-}
-```
-
----
-
-## Optimistic Updates
-
-```typescript
-// hooks/useSendMessage.ts
-
-interface PendingMessage {
-  id: string;
-  content: string;
-  status: 'sending' | 'failed';
-  sentAtNs: bigint;
-}
-
-export function useSendMessage(conversationId: string) {
-  const setPending = useSetAtom(pendingMessagesAtom(conversationId));
-  const setMessageIds = useSetAtom(conversationMessageIdsAtom(conversationId));
-
-  const send = useCallback(async (
-    conversation: Conversation,
-    content: string
-  ) => {
-    const tempId = `pending-${Date.now()}-${Math.random()}`;
-
-    // 1. Optimistic update - show immediately
-    const pending: PendingMessage = {
-      id: tempId,
-      content,
-      status: 'sending',
-      sentAtNs: BigInt(Date.now()) * 1_000_000n,
-    };
-
-    setPending(prev => [...prev, pending]);
-
-    try {
-      // 2. Actually send via XMTP
-      const sentMessage = await conversation.send(content);
-
-      // 3. Replace pending with real message
-      messageAtomFamily(sentMessage.id).init = sentMessage;
-      setMessageIds(prev => [sentMessage.id, ...prev]);
-      setPending(prev => prev.filter(p => p.id !== tempId));
-
-    } catch (error) {
-      // 4. Mark as failed (allow retry)
-      setPending(prev =>
-        prev.map(p =>
-          p.id === tempId ? { ...p, status: 'failed' } : p
-        )
-      );
-      throw error;
-    }
-  }, [setPending, setMessageIds]);
-
-  return send;
-}
-```
-
----
-
-## Optional Encryption Layer
-
-### When to Use
-
-| Scenario | Recommendation |
-|----------|----------------|
-| Consumer chat app | Skip (XMTP E2EE is sufficient) |
-| Enterprise/compliance | Add encryption layer |
-| Healthcare/financial | Add encryption layer |
-| High-security use cases | Add encryption + WebAuthn keys |
-
-### Implementation
-
-```typescript
-// lib/crypto/encryption.ts
-
-const ALGORITHM = 'AES-GCM';
-const KEY_LENGTH = 256;
-const IV_LENGTH = 12;
-const SALT_LENGTH = 16;
-const PBKDF2_ITERATIONS = 100000;
-
-export class LocalEncryption {
-  private key: CryptoKey | null = null;
-  private salt: Uint8Array | null = null;
-
-  async initialize(password: string): Promise<void> {
-    // Get or create salt
-    const storedSalt = localStorage.getItem('xmtp-encryption-salt');
-    if (storedSalt) {
-      this.salt = Uint8Array.from(atob(storedSalt), c => c.charCodeAt(0));
-    } else {
-      this.salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
-      localStorage.setItem('xmtp-encryption-salt', btoa(String.fromCharCode(...this.salt)));
-    }
-
-    // Derive key from password
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(password),
-      'PBKDF2',
-      false,
-      ['deriveKey']
-    );
-
-    this.key = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: this.salt,
-        iterations: PBKDF2_ITERATIONS,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: ALGORITHM, length: KEY_LENGTH },
-      false, // Non-extractable
-      ['encrypt', 'decrypt']
-    );
-  }
-
-  async encrypt(plaintext: string): Promise<string> {
-    if (!this.key) throw new Error('Encryption not initialized');
-
-    const encoder = new TextEncoder();
-    const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
-    
-    const ciphertext = await crypto.subtle.encrypt(
-      { name: ALGORITHM, iv },
-      this.key,
-      encoder.encode(plaintext)
-    );
-
-    // Pack IV + ciphertext as base64
-    const packed = new Uint8Array(iv.length + ciphertext.byteLength);
-    packed.set(iv);
-    packed.set(new Uint8Array(ciphertext), iv.length);
-    
-    return btoa(String.fromCharCode(...packed));
-  }
-
-  async decrypt(packed: string): Promise<string> {
-    if (!this.key) throw new Error('Encryption not initialized');
-
-    const data = Uint8Array.from(atob(packed), c => c.charCodeAt(0));
-    const iv = data.slice(0, IV_LENGTH);
-    const ciphertext = data.slice(IV_LENGTH);
-
-    const plaintext = await crypto.subtle.decrypt(
-      { name: ALGORITHM, iv },
-      this.key,
-      ciphertext
-    );
-
-    return new TextDecoder().decode(plaintext);
-  }
-
-  isInitialized(): boolean {
-    return this.key !== null;
-  }
-
-  clear(): void {
-    this.key = null;
-    this.salt = null;
-  }
-}
-```
-
----
-
-## Memory Management
-
-### LRU Cache for Messages
-
-```typescript
-// lib/utils/lru.ts
-
-export class LRUCache<K, V> {
-  private cache = new Map<K, V>();
-  private readonly maxSize: number;
-  private onEvict?: (key: K, value: V) => void;
-
-  constructor(maxSize: number, onEvict?: (key: K, value: V) => void) {
-    this.maxSize = maxSize;
-    this.onEvict = onEvict;
-  }
-
-  get(key: K): V | undefined {
-    const value = this.cache.get(key);
-    if (value !== undefined) {
-      // Move to end (most recently used)
-      this.cache.delete(key);
-      this.cache.set(key, value);
-    }
-    return value;
-  }
-
-  set(key: K, value: V): void {
-    if (this.cache.has(key)) {
-      this.cache.delete(key);
-    } else if (this.cache.size >= this.maxSize) {
-      // Evict oldest (first item)
-      const firstKey = this.cache.keys().next().value;
-      const firstValue = this.cache.get(firstKey)!;
-      this.cache.delete(firstKey);
-      this.onEvict?.(firstKey, firstValue);
-    }
-    this.cache.set(key, value);
-  }
-
-  has(key: K): boolean {
-    return this.cache.has(key);
-  }
-
-  delete(key: K): boolean {
-    return this.cache.delete(key);
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
-
-  get size(): number {
-    return this.cache.size;
-  }
-}
-
-// Usage with Jotai
-const messageCache = new LRUCache<string, DecodedMessage>(
-  1000, // Keep 1000 messages in memory
-  (messageId) => {
-    // Clean up atom when evicted
-    messageAtomFamily.remove(messageId);
-  }
-);
-```
-
----
-
-## XMTP Client Initialization
-
-```typescript
-// lib/xmtp/client.ts
-
-import { Client, type Signer } from '@xmtp/browser-sdk';
-
-export interface XMTPClientOptions {
-  env?: 'production' | 'dev' | 'local';
-  appVersion?: string;
-}
-
-export async function createXMTPClient(
-  signer: Signer,
-  options: XMTPClientOptions = {}
-): Promise<Client> {
-  const { env = 'production', appVersion = '1.0.0' } = options;
-
-  const client = await Client.create(signer, {
-    env,
-    appVersion,
-    // Browser SDK doesn't support dbEncryptionKey
-    // History sync is enabled by default
-  });
-
-  return client;
-}
-
-// hooks/useXMTPClient.ts
-
-export function useXMTPClient() {
-  const [client, setClient] = useAtom(xmtpClientAtom);
-  const { data: signer } = useWalletClient(); // From wagmi
-
-  useEffect(() => {
-    if (!signer) {
-      setClient(null);
-      return;
-    }
-
-    let mounted = true;
-
-    createXMTPClient(signer)
-      .then((c) => {
-        if (mounted) setClient(c);
-      })
-      .catch(console.error);
-
-    return () => {
-      mounted = false;
-    };
-  }, [signer, setClient]);
-
-  return client;
-}
-```
-
----
-
-## Performance Targets
-
-| Metric | Target | How to Achieve |
-|--------|--------|----------------|
-| Time to Interactive | < 2s | Code splitting, minimal initial JS |
-| Message list scroll | 60fps | Virtualization, React Compiler auto-memo |
-| New message render | < 16ms | Granular atom updates |
-| Memory (10k messages) | < 50MB | LRU cache, atom eviction |
-| Initial message load | < 500ms | Pagination, parallel requests |
-| Dev server startup | < 1s | Turbopack (default in Next.js 16) |
-| Fast Refresh | < 100ms | Turbopack (5-10x faster than Webpack) |
-| Production build | < 30s | Turbopack builds + file system caching |
-
----
-
-## Debugging with Next.js DevTools MCP
-
-Next.js 16 includes DevTools MCP (Model Context Protocol) for AI-assisted debugging. Configure in your MCP client:
-
-```json
-{
-  "mcpServers": {
-    "next-devtools": {
-      "command": "npx",
-      "args": ["-y", "next-devtools-mcp@latest"]
-    }
-  }
-}
-```
-
-Use natural language prompts like:
-- "Why is this component re-rendering?"
-- "Show me the route structure of my app"
-- "Help me debug this hydration error"
-
----
-
-## Security Considerations
-
-### What XMTP Provides
-
-- ✅ End-to-end encryption via MLS (Message Layer Security)
-- ✅ Forward secrecy with key rotation
-- ✅ Message integrity verification
-- ✅ Sender authentication
-- ✅ Multi-device sync with per-installation keys
-
-### XMTP Installation Persistence
-
-**Important**: Each browser creates an "installation" (device identity) within the user's inbox. There's a limit on installations per inbox, so we must preserve them.
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  Browser Storage Model                                           │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  localStorage (7-day session cache)                              │
-│  ├─ Stores: address, inboxId, timestamp                         │
-│  ├─ Purpose: UI optimization (skip loading screen)              │
-│  └─ Security: NOT sensitive - just metadata                     │
-│                                                                  │
-│  IndexedDB / OPFS (XMTP SDK - persistent)                       │
-│  ├─ Stores: Installation keys (MLS identity), messages          │
-│  ├─ Purpose: Actual XMTP installation                           │
-│  ├─ Security: UNENCRYPTED (browser SDK limitation)              │
-│  └─ Must preserve: Clearing creates new installation!           │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Installation is preserved as long as**:
-- IndexedDB is not cleared
-- Same browser is used
-- Not in incognito mode
-
-**Installation is lost when**:
-- User clears browser data
-- User switches browsers
-- IndexedDB is corrupted
-
-### Browser Security Trade-offs
-
-| Aspect | Status | Notes |
-|--------|--------|-------|
-| Message encryption in transit | ✅ Secure | MLS E2EE via XMTP |
-| Message encryption at rest | ⚠️ Not encrypted | Browser SDK limitation |
-| Same-origin protection | ✅ Protected | Primary browser security model |
-| Cross-origin access | ✅ Protected | Browser enforces isolation |
-| Malicious extensions | ⚠️ Risk | Extensions with storage permissions can read |
-| Physical device access | ⚠️ Risk | Unlocked browser exposes all data |
-
-**Accepted trade-off**: We accept unencrypted IndexedDB storage because:
-1. XMTP Browser SDK does not support `dbEncryptionKey`
-2. Same-origin policy provides reasonable protection
-3. This matches how WhatsApp Web and similar apps operate
-4. Adding custom encryption would break XMTP's internal storage model
-
-### Security Audit Findings (January 2026)
-
-#### Critical - Must Fix Before Production
-
-| ID | Issue | Status | Remediation |
-|----|-------|--------|-------------|
-| SEC-001 | **Unauthenticated signing relay** - Anyone with session ID can hijack QR login | 🔴 Open | Add challenge-response auth |
-| SEC-005 | **Mobile address spoofing** - No proof of wallet ownership on connect | 🔴 Open | Require signed proof |
-
-#### Medium - Should Fix
-
-| ID | Issue | Status | Remediation |
-|----|-------|--------|-------------|
-| SEC-004 | No replay protection in signing relay | 🟡 Open | Add timestamps/nonces |
-| SEC-009 | Dev placeholder in /sign page | 🟡 Open | Remove or gate behind NODE_ENV |
-
-#### Accepted/Not Applicable
-
-| ID | Issue | Status | Notes |
-|----|-------|--------|-------|
-| SEC-003 | localStorage session cache | ✅ Accepted | Just UI metadata, not sensitive |
-| SEC-006 | 7-day session TTL | ✅ Accepted | Needed to preserve installations |
-| SEC-012 | Unencrypted IndexedDB | ✅ Accepted | Browser SDK limitation, documented |
-
-### QR Login Signing Relay - Security Requirements
-
-The signing relay (`lib/signing-relay/`) requires these security improvements:
-
-```typescript
-// REQUIRED: Challenge-response authentication
-// remote-signer.ts - Add after mobile connects
-
-private async authenticateMobile(claimedAddress: string): Promise<boolean> {
-  // 1. Generate random challenge
-  const challenge = `worldchat:auth:${crypto.randomUUID()}:${Date.now()}`;
-
-  // 2. Send challenge to mobile
-  await this.channel.send({
-    type: 'broadcast',
-    event: 'relay',
-    payload: { type: 'auth_challenge', challenge }
-  });
-
-  // 3. Wait for signed response
-  const response = await this.waitForAuthResponse(30000);
-
-  // 4. Verify signature matches claimed address
-  const recoveredAddress = recoverAddress(challenge, response.signature);
-  return recoveredAddress.toLowerCase() === claimedAddress.toLowerCase();
-}
-```
-
-```typescript
-// REQUIRED: Update mobile_connected handler
-// remote-signer.ts
-
-case 'mobile_connected':
-  // Don't trust address until verified!
-  const verified = await this.authenticateMobile(message.address);
-  if (!verified) {
-    this.callbacks.onError?.(new Error('Address verification failed'));
-    this.cleanup();
-    return;
-  }
-  this.mobileAddress = message.address;
-  this.callbacks.onMobileConnected?.(message.address);
-  break;
-```
-
-### Recommendations
-
-1. **For users**: Don't install untrusted browser extensions
-2. **For users**: Enable OS-level disk encryption
-3. **For users**: Don't clear browser data if you want to preserve your installation
-4. **For developers**: Implement SEC-001 and SEC-005 before production
-5. **For developers**: Never store wallet private keys (use external signers)
-
----
-
-## Testing Strategy
-
-```typescript
-// Recommended testing setup for Next.js 16
-
-// Unit tests: Vitest
-// - State management logic
-// - Encryption utilities
-// - Formatting helpers
-
-// Component tests: Testing Library
-// - MessageRow rendering
-// - ConversationList behavior
-// - Input handling
-
-// E2E tests: Playwright
-// - Full message flow
-// - Wallet connection
-// - Multi-device sync
-
-// Linting: Biome (next lint removed in Next.js 16)
-// - Fast, single-tool for lint + format
-// - Configure in biome.json
-
-// Type checking: tsc --noEmit
-// - Run separately from build
-
-// Performance tests: Lighthouse CI
-// - Bundle size monitoring (use new Bundle Analyzer in 16.1)
-// - Core Web Vitals
-```
-
----
-
-## Development Commands
-
-```bash
-# Install dependencies
-pnpm install
-
-# Run development server (Turbopack enabled by default)
-pnpm dev
-
-# Build for production (Turbopack builds)
-pnpm build
-
-# Run tests
-pnpm test
-
-# Type check
-pnpm typecheck
-
-# Lint (using Biome - next lint removed in Next.js 16)
-pnpm lint
-
-# Upgrade Next.js (new in 16.1)
-npx next upgrade
-
-# Debug with inspector (new in 16.1)
-pnpm dev --inspect
-```
-
----
-
-## Breaking Changes from Next.js 15
-
-If migrating from Next.js 15, note these changes:
-
-| Change | Migration |
-|--------|-----------|
-| `middleware.ts` → `proxy.ts` | Rename file, rename export to `proxy` |
-| `next lint` removed | Use Biome or ESLint directly |
-| Async `params`/`searchParams` | Add `await` to page props access |
-| Node.js minimum 20.9.0 | Upgrade Node.js |
-| React Compiler stable | Enable with `reactCompiler: true` |
-| Implicit caching removed | Add `"use cache"` where needed |
-
----
-
-## Key Implementation Notes
-
-1. **Always use `insertedAtNs` for pagination** - provides stable ordering
-2. **React Compiler handles memoization** - no need for manual `memo()`, `useCallback`, `useMemo` in most cases
-3. **Keep message IDs separate from message data** - enables granular updates
-4. **Use atomFamily for per-entity state** - O(1) updates instead of O(n)
-5. **Implement optimistic updates** - perceived performance matters
-6. **Set overscan in virtualizer** - prevents blank flashes during scroll
-7. **Clean up streams on unmount** - prevent memory leaks
-8. **Use enrichedMessages() for reactions/replies** - single query instead of many
-9. **Use `"use cache"` explicitly** - Next.js 16 has no implicit caching
-10. **Use View Transitions** - smooth conversation switching animations
-11. **Use Activity for tab-like UIs** - maintains state when switching conversations
-12. **proxy.ts runs on Node.js** - can use Node APIs unlike old Edge middleware
-13. **Use `AnyClient` type alias** - `Client<any>` for codecs with generic content types
-14. **Filter unsupported content types** - return `null` from `getMessageText()`, never show placeholder text
-15. **Use shared Jotai store** - `stores/index.ts` exports `store` for use outside React (StreamManager)
-16. **Batch atom updates** - use `queueMicrotask()` to batch multiple store updates
-
----
-
-## References
-
-- [XMTP Documentation](https://docs.xmtp.org)
-- [XMTP Browser SDK](https://github.com/xmtp/xmtp-js)
-- [libxmtp](https://github.com/xmtp/libxmtp)
-- [Next.js 16 Release Notes](https://nextjs.org/blog/next-16)
-- [Next.js 16 Upgrade Guide](https://nextjs.org/docs/app/guides/upgrading/version-16)
-- [React 19.2 Announcement](https://react.dev/blog)
-- [React Compiler](https://react.dev/learn/react-compiler)
-- [Jotai Documentation](https://jotai.org)
-- [TanStack Virtual](https://tanstack.com/virtual)
-- [Web Crypto API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API)
-- [Biome (replaces ESLint in Next.js 16)](https://biomejs.dev)
-
 
 ## Design System
 
-### Colors (from Figma)
+### Colors
 
 | Token | Hex | Usage |
 |-------|-----|-------|
 | Grey/900 | `#181818` | Primary text |
-| Grey/500 | `#717680` | Secondary text, previews |
-| Grey/400 | `#9BA3AE` | Muted text, timestamps |
+| Grey/500 | `#717680` | Secondary text |
 | Grey/100 | `#F5F5F5` | Backgrounds |
-| Info/600 | `#005CFF` | Selected state, links, badges |
+| Info/600 | `#005CFF` | Selected state, links |
 | Success/600 | `#00C230` | Online status |
-| Success/200 | `#CCF3D9` | Avatar backgrounds |
 
-### Avatar Colors
-
-```typescript
-const AVATAR_COLORS = [
-  { bg: '#CCF3D9', text: '#00C230' }, // Green
-  { bg: '#CCE5FF', text: '#005CFF' }, // Blue
-  { bg: '#FFE5CC', text: '#FF8C00' }, // Orange
-  { bg: '#FFCCCC', text: '#FF3333' }, // Red
-  { bg: '#E5CCFF', text: '#9933FF' }, // Purple
-  { bg: '#CCFFFF', text: '#00CCCC' }, // Cyan
-  { bg: '#FFFFCC', text: '#CCCC00' }, // Yellow
-  { bg: '#FFCCE5', text: '#FF3399' }, // Pink
-];
-```
-
-#### Typography
-
-| Style | Font | Size | Weight | Line Height |
-|-------|------|------|--------|-------------|
-| Title | System | 22px | 600 | 1.2 |
-| Subtitle/S2 | World Pro MVP | 17px | 500 | 1.2 |
-| Body/B3 | World Pro MVP | 15px | 325 | 1.3 |
-
-**Note:** We use system fonts (Geist) as fallback since World Pro MVP is proprietary.
-
-#### Spacing & Sizing
+### Sizing
 
 | Element | Size |
 |---------|------|
 | Sidebar width | 320px (lg: 380px) |
 | Avatar sm/md/lg | 36px / 52px / 72px |
-| Conversation item height | 56px (desktop) |
-| Message row estimate | 72px |
-
-### ConversationItem Selected State
-
-- Background: `#3B82F6` (hover: `#2563EB`) - Tailwind blue-500/600
-- Text: white, secondary text: `white/70`
-- Unread badge: inverted (white bg, blue text)
 
 ---
 
-## Figma Design References
+## Security Notes
 
-| Screen | Node ID | URL |
-|--------|---------|-----|
-| Conversation List | `148945:77900` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=148945-77900&m=dev) |
-| Conversation View | `138629:71232` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71232&m=dev) |
-| Payments & Link Preview | `138629:71230` | [Link](https://www.figma.com/design/s0BDDd8s4RGxcaA9bpKUlN/%F0%9F%8F%B0-World-App-4.0--Handoff-?node-id=138629-71230&m=dev) |
+### What XMTP Provides
+- E2E encryption via MLS
+- Forward secrecy with key rotation
+- Message integrity verification
 
-**Note**: Figma designs are mobile-first. Adapt to desktop split-pane layout.
+### Browser Limitations
+- IndexedDB is NOT encrypted (Browser SDK limitation)
+- Same-origin policy is primary protection
+- XMTP installations persist in OPFS - don't clear browser data
+
+### QR Login Security (TODO before production)
+- SEC-001: Add challenge-response auth for signing relay
+- SEC-005: Require signed proof of wallet ownership on connect
 
 ---
 
 ## Key Implementation Decisions
 
-1. **Desktop-first layout** - Split-pane like Telegram, not mobile stacked view
-2. **Jotai atomFamily** - Granular subscriptions for O(1) message updates
-3. **Virtualization** - @tanstack/react-virtual for large lists
-4. **Selected state in Jotai** - `selectedConversationIdAtom` drives which panel shows
-5. **LRU cache** - Evict old messages from memory (max 1000)
-6. **Optimistic updates** - Show pending messages immediately
-7. **XMTP insertedAtNs** - Use for pagination (stable ordering vs sentAtNs)
-8. **StreamManager singleton** - XMTP streaming outside React lifecycle
-9. **Session caching** - localStorage cache for instant reconnection
-10. **Content type filtering** - Hide read receipts, reactions, unsupported types from message list
-
----
-
-**ChatHeader:**
-- Three-column layout: scan | title | profile
-- Search bar below with rounded-xl corners
-
-**Responsive Behavior:**
-- Mobile: Full-width, max-w-md centered on larger screens
-- Desktop: Consider sidebar + main content split (TODO)
+1. **Jotai atomFamily** - O(1) message updates
+2. **Virtualization** - @tanstack/react-virtual for large lists
+3. **StreamManager singleton** - XMTP streaming outside React lifecycle
+4. **Session caching** - localStorage for instant reconnection
+5. **Consent filtering** - Only sync/list `Allowed` conversations
+6. **Use `insertedAtNs`** - Stable pagination ordering
+7. **Filter content types** - Hide read receipts, reactions from display
