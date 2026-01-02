@@ -484,6 +484,28 @@ class XMTPStreamManager {
   }
 
   /**
+   * Re-sort conversation IDs based on lastActivityNs
+   * Called when metadata changes to keep list properly ordered
+   */
+  private resortConversations(): void {
+    const currentIds = store.get(conversationIdsAtom);
+    if (currentIds.length === 0) return;
+
+    const sortedIds = [...currentIds].sort((a, b) => {
+      const metaA = this.conversationMetadata.get(a);
+      const metaB = this.conversationMetadata.get(b);
+      if (!metaA || !metaB) return 0;
+      return Number(metaB.lastActivityNs - metaA.lastActivityNs);
+    });
+
+    // Only update if order actually changed
+    const orderChanged = sortedIds.some((id, i) => id !== currentIds[i]);
+    if (orderChanged) {
+      store.set(conversationIdsAtom, sortedIds);
+    }
+  }
+
+  /**
    * Build metadata for a conversation
    * @param conv - The conversation
    * @param shouldSync - Whether to sync before fetching messages (false for fast local load)
@@ -1001,6 +1023,9 @@ class XMTPStreamManager {
               metadata.lastMessagePreview = content;
             }
             metadata.lastActivityNs = msg.sentAtNs;
+
+            // Re-sort conversations to move this one to top
+            this.resortConversations();
 
             // Handle unread count and notifications for peer messages
             const isOwnMessage = msg.senderInboxId === this.client?.inboxId;
