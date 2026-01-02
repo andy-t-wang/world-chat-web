@@ -311,18 +311,28 @@ class XMTPStreamManager {
 
       for (const conv of localConversations) {
         this.conversations.set(conv.id, conv);
-        ids.push(conv.id);
 
         // Build metadata from local cache only
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
+
+        // Only show conversations that have displayable messages (not just system/welcome messages)
+        // Always include the currently selected conversation (so newly created ones are visible)
+        const selectedId = store.get(selectedConversationIdAtom);
+        if (metadata.lastMessagePreview || conv.id === selectedId) {
+          ids.push(conv.id);
+        }
       }
 
-      // Sort by last activity (most recent first)
+      // Sort by last activity (most recent first), but keep selected at top if no activity
+      const selectedId = store.get(selectedConversationIdAtom);
       ids.sort((a, b) => {
         const metaA = this.conversationMetadata.get(a);
         const metaB = this.conversationMetadata.get(b);
         if (!metaA || !metaB) return 0;
+        // Selected conversation with no messages goes to top
+        if (a === selectedId && !metaA.lastMessagePreview) return -1;
+        if (b === selectedId && !metaB.lastMessagePreview) return 1;
         return Number(metaB.lastActivityNs - metaA.lastActivityNs);
       });
 
@@ -368,25 +378,35 @@ class XMTPStreamManager {
         const isNew = !this.conversations.has(conv.id);
         this.conversations.set(conv.id, conv);
 
-        if (isNew) {
-          newIds.unshift(conv.id);
-          newCount++;
-        }
-
         // Rebuild metadata with synced data
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
+
+        // Only add new conversations that have displayable messages
+        // Always include selected conversation
+        const selectedId = store.get(selectedConversationIdAtom);
+        if (isNew && (metadata.lastMessagePreview || conv.id === selectedId)) {
+          newIds.unshift(conv.id);
+          newCount++;
+        }
       }
 
+      // Filter out any conversations without displayable messages (but keep selected)
+      const selectedId = store.get(selectedConversationIdAtom);
+      const filteredIds = newIds.filter(id => {
+        const meta = this.conversationMetadata.get(id);
+        return (meta && meta.lastMessagePreview) || id === selectedId;
+      });
+
       // Sort and update
-      newIds.sort((a, b) => {
+      filteredIds.sort((a, b) => {
         const metaA = this.conversationMetadata.get(a);
         const metaB = this.conversationMetadata.get(b);
         if (!metaA || !metaB) return 0;
         return Number(metaB.lastActivityNs - metaA.lastActivityNs);
       });
 
-      store.set(conversationIdsAtom, newIds);
+      store.set(conversationIdsAtom, filteredIds);
       this.incrementMetadataVersion();
 
       // IMPORTANT: Refresh messages for any conversations that were already loaded
@@ -484,6 +504,19 @@ class XMTPStreamManager {
   }
 
   /**
+   * Ensure a conversation is visible in the list (e.g., newly created conversation)
+   * Call this when selecting a conversation that might not have messages yet
+   */
+  ensureConversationVisible(conversationId: string): void {
+    const currentIds = store.get(conversationIdsAtom);
+    if (!currentIds.includes(conversationId)) {
+      // Add to front of list
+      store.set(conversationIdsAtom, [conversationId, ...currentIds]);
+      this.incrementMetadataVersion();
+    }
+  }
+
+  /**
    * Re-sort conversation IDs based on lastActivityNs
    * Called when metadata changes to keep list properly ordered
    */
@@ -491,10 +524,14 @@ class XMTPStreamManager {
     const currentIds = store.get(conversationIdsAtom);
     if (currentIds.length === 0) return;
 
+    const selectedId = store.get(selectedConversationIdAtom);
     const sortedIds = [...currentIds].sort((a, b) => {
       const metaA = this.conversationMetadata.get(a);
       const metaB = this.conversationMetadata.get(b);
       if (!metaA || !metaB) return 0;
+      // Selected conversation with no messages goes to top
+      if (a === selectedId && !metaA.lastMessagePreview) return -1;
+      if (b === selectedId && !metaB.lastMessagePreview) return 1;
       return Number(metaB.lastActivityNs - metaA.lastActivityNs);
     });
 
@@ -645,10 +682,13 @@ class XMTPStreamManager {
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
-          // Prepend to list
-          const currentIds = store.get(conversationIdsAtom);
-          if (!currentIds.includes(conv.id)) {
-            store.set(conversationIdsAtom, [conv.id, ...currentIds]);
+          // Only add to list if it has displayable messages or is selected
+          const selectedId = store.get(selectedConversationIdAtom);
+          if (metadata.lastMessagePreview || conv.id === selectedId) {
+            const currentIds = store.get(conversationIdsAtom);
+            if (!currentIds.includes(conv.id)) {
+              store.set(conversationIdsAtom, [conv.id, ...currentIds]);
+            }
           }
         }
       } catch (error) {
@@ -1024,8 +1064,16 @@ class XMTPStreamManager {
             }
             metadata.lastActivityNs = msg.sentAtNs;
 
-            // Re-sort conversations to move this one to top
-            this.resortConversations();
+            // Add to conversation list if not already there (first displayable message)
+            const currentConvIds = store.get(conversationIdsAtom);
+            if (!currentConvIds.includes(conversationId) && metadata.lastMessagePreview) {
+              store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
+            }
+
+            // Re-sort conversations to move this one to top (if in list)
+            if (currentConvIds.includes(conversationId) || metadata.lastMessagePreview) {
+              this.resortConversations();
+            }
 
             // Handle unread count and notifications for peer messages
             const isOwnMessage = msg.senderInboxId === this.client?.inboxId;

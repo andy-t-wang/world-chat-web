@@ -8,6 +8,7 @@ import { xmtpClientAtom } from '@/stores/client';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { searchUsernames } from '@/lib/username/service';
 import { useCanMessage } from '@/hooks/useXmtpClient';
+import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { UsernameRecord } from '@/types/username';
 import type { Identifier } from '@xmtp/browser-sdk';
 
@@ -102,6 +103,9 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
           id: conversation.id,
           peerInboxId: conversation.peerInboxId,
         });
+
+        // Ensure the conversation is visible in the list (even without messages)
+        streamManager.ensureConversationVisible(conversation.id);
 
         // Select the new conversation
         setSelectedConversationId(conversation.id);
