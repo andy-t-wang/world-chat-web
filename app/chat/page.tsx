@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, memo, useRef } from 'react';
+import { useEffect, useState, memo, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAtomValue } from 'jotai';
 import { Sidebar, MessagePanel, EmptyState } from '@/components/chat';
@@ -21,9 +21,9 @@ export default function ChatPage() {
   const { restoreSession } = useQRXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
-  const [hasSession] = useState(() => hasQRSession());
   const [isRestoring, setIsRestoring] = useState(false);
   const [restorationAttempted, setRestorationAttempted] = useState(false);
+  const [restorationFailed, setRestorationFailed] = useState(false);
   const restorationRef = useRef(false);
 
   const hasXmtpClient = clientState.client !== null;
@@ -32,47 +32,53 @@ export default function ChatPage() {
   const conversationMetadata = useConversationMetadata(selectedId);
 
   // Try to restore session on mount if we have a cached session but no client
-  useEffect(() => {
-    if (restorationRef.current) return;
+  const attemptRestore = useCallback(async () => {
     if (hasXmtpClient) {
       setRestorationAttempted(true);
       return;
     }
-    if (!hasSession) {
+
+    // Check session on each attempt (might have been cleared)
+    if (!hasQRSession()) {
       setRestorationAttempted(true);
+      router.push('/');
       return;
     }
 
-    restorationRef.current = true;
     setIsRestoring(true);
+    setRestorationFailed(false);
 
-    restoreSession()
-      .then((success) => {
-        console.log('[ChatPage] Session restoration:', success ? 'success' : 'failed');
-        if (!success) {
-          // Restoration failed, redirect to login
+    try {
+      const success = await restoreSession();
+      console.log('[ChatPage] Session restoration:', success ? 'success' : 'failed');
+
+      if (!success) {
+        // Check if session was cleared (expired) vs transient error
+        if (!hasQRSession()) {
           router.push('/');
+        } else {
+          setRestorationFailed(true);
         }
-      })
-      .catch((error) => {
-        console.error('[ChatPage] Session restoration error:', error);
+      }
+    } catch (error) {
+      console.error('[ChatPage] Session restoration error:', error);
+      if (!hasQRSession()) {
         router.push('/');
-      })
-      .finally(() => {
-        setIsRestoring(false);
-        setRestorationAttempted(true);
-      });
-  }, [hasXmtpClient, hasSession, restoreSession, router]);
+      } else {
+        setRestorationFailed(true);
+      }
+    } finally {
+      setIsRestoring(false);
+      setRestorationAttempted(true);
+    }
+  }, [hasXmtpClient, restoreSession, router]);
 
-  // Redirect to login if no session and restoration complete
+  // Initial restoration attempt
   useEffect(() => {
-    if (!restorationAttempted) return;
-    if (hasXmtpClient) return;
-    if (clientState.isInitializing || isRestoring) return;
-
-    console.log('[ChatPage] No client after restoration, redirecting to login');
-    router.push('/');
-  }, [restorationAttempted, hasXmtpClient, clientState.isInitializing, isRestoring, router]);
+    if (restorationRef.current) return;
+    restorationRef.current = true;
+    attemptRestore();
+  }, [attemptRestore]);
 
   // Show loading while restoring or initializing
   if (isRestoring || clientState.isInitializing || !restorationAttempted) {
@@ -93,17 +99,8 @@ export default function ChatPage() {
     );
   }
 
-  // Not connected - redirect handled by useEffect
-  if (!hasXmtpClient) {
-    return (
-      <div className="flex w-full h-full items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
-      </div>
-    );
-  }
-
-  // Show error if XMTP initialization failed
-  if (clientState.error) {
+  // Show retry UI if restoration failed but session still exists
+  if (restorationFailed || clientState.error) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
@@ -111,14 +108,37 @@ export default function ChatPage() {
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
           <h2 className="text-lg font-semibold text-[#181818]">Connection Failed</h2>
-          <p className="text-[#717680]">{clientState.error.message}</p>
-          <button
-            onClick={() => router.push('/')}
-            className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
-          >
-            Login Again
-          </button>
+          <p className="text-[#717680]">
+            {clientState.error?.message || 'Failed to restore session. Please try again.'}
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => {
+                restorationRef.current = false;
+                setRestorationFailed(false);
+                attemptRestore();
+              }}
+              className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+            >
+              Try Again
+            </button>
+            <button
+              onClick={() => router.push('/')}
+              className="px-4 py-2 bg-gray-100 text-[#181818] rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Login Again
+            </button>
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  // Not connected and no error - should redirect (handled by attemptRestore)
+  if (!hasXmtpClient) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
       </div>
     );
   }

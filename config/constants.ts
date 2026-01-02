@@ -24,7 +24,7 @@ export const VIRTUALIZATION = {
   /** Estimated height of a message row in pixels */
   MESSAGE_ROW_HEIGHT: 72,
   /** Estimated height of a conversation item in pixels (desktop) */
-  CONVERSATION_ITEM_HEIGHT: 56,
+  CONVERSATION_ITEM_HEIGHT: 68,
   /** Number of items to render beyond visible area */
   OVERSCAN_COUNT: 10,
 } as const;

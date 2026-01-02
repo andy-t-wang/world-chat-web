@@ -125,7 +125,7 @@ export function ConversationItem(props: ConversationItemProps) {
     <button
       onClick={onClick}
       className={`
-        w-full flex items-center gap-3 px-4 py-2.5
+        w-full flex items-center gap-3 px-4 py-3
         transition-colors duration-150 text-left
         ${isSelected
           ? 'bg-[#3B82F6] hover:bg-[#2563EB]'

@@ -39,7 +39,7 @@ const AVATAR_COLORS = [
 ] as const;
 
 const SIZE_MAP = {
-  sm: { container: 36, text: 14 },
+  sm: { container: 44, text: 16 },  // Increased from 36
   md: { container: 52, text: 22 },
   lg: { container: 72, text: 28 },
 } as const;
@@ -119,7 +119,6 @@ function GroupAvatar({
 }) {
   const [imgError, setImgError] = useState(false);
   const dimensions = SIZE_MAP[size];
-  const miniSize = Math.round(dimensions.container * 0.55);
 
   // If group has an image URL, use it
   if (groupImageUrl && !imgError) {
@@ -138,46 +137,41 @@ function GroupAvatar({
     );
   }
 
-  // If we have member previews, show stacked avatars (2x2 grid for 4, otherwise stacked)
+  // If we have member previews, show 2 overlapping avatars (like Figma design)
   if (memberPreviews && memberPreviews.length >= 2) {
-    const displayMembers = memberPreviews.slice(0, 4);
+    const displayMembers = memberPreviews.slice(0, 2);
+    const miniSize = Math.round(dimensions.container * 0.7);
 
-    if (displayMembers.length === 4) {
-      // 2x2 grid
-      const gridSize = Math.round(dimensions.container * 0.48);
-      return (
-        <div
-          className={`relative shrink-0 rounded-full overflow-hidden bg-gray-200 ${className}`}
-          style={{ width: dimensions.container, height: dimensions.container }}
-        >
-          <div className="w-full h-full grid grid-cols-2 grid-rows-2 gap-0.5 p-0.5">
-            {displayMembers.map((member) => (
-              <MiniAvatar key={member.inboxId} address={member.address} size={gridSize} />
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    // 2-3 members: stacked overlapping
     return (
       <div
         className={`relative shrink-0 ${className}`}
-        style={{ width: dimensions.container, height: dimensions.container }}
+        style={{
+          width: dimensions.container,
+          height: dimensions.container,
+        }}
       >
-        {displayMembers.slice(0, 2).map((member, index) => (
-          <div
-            key={member.inboxId}
-            className="absolute"
-            style={{
-              left: index * (miniSize * 0.5),
-              top: index * (miniSize * 0.3),
-              zIndex: displayMembers.length - index,
-            }}
-          >
-            <MiniAvatar address={member.address} size={miniSize} />
-          </div>
-        ))}
+        {/* Back avatar (second member) */}
+        <div
+          className="absolute"
+          style={{
+            right: 0,
+            bottom: 0,
+            zIndex: 1,
+          }}
+        >
+          <MiniAvatar address={displayMembers[1].address} size={miniSize} />
+        </div>
+        {/* Front avatar (first member) */}
+        <div
+          className="absolute"
+          style={{
+            left: 0,
+            top: 0,
+            zIndex: 2,
+          }}
+        >
+          <MiniAvatar address={displayMembers[0].address} size={miniSize} />
+        </div>
       </div>
     );
   }

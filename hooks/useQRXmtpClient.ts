@@ -160,8 +160,21 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       return true;
     } catch (error) {
       console.error('[QRXmtpClient] Failed to restore session:', error);
-      // Clear invalid session
-      clearSession();
+
+      // Only clear session if it's truly invalid (signing was required)
+      // For other errors (network, etc.), keep session so user can retry
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const isSessionExpired = errorMessage.includes('Session expired') ||
+                               errorMessage.includes('scan QR') ||
+                               errorMessage.includes('signature');
+
+      if (isSessionExpired) {
+        console.log('[QRXmtpClient] Session expired, clearing...');
+        clearSession();
+      } else {
+        console.log('[QRXmtpClient] Transient error, keeping session for retry');
+      }
+
       dispatch({
         type: 'INIT_ERROR',
         error: error instanceof Error ? error : new Error('Failed to restore session'),
