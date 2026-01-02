@@ -534,19 +534,19 @@ export function MessagePanel({
       </div>
 
       {/* Input Area */}
-      <div className="shrink-0 p-4 border-t border-gray-100 bg-white">
-        <div className="flex items-end gap-2">
-          <button className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors shrink-0">
+      <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
+        <div className="flex items-center gap-2">
+          <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
             <Paperclip className="w-5 h-5 text-[#717680]" />
           </button>
-          <div className="flex-1 relative">
+          <div className="flex-1 relative flex items-center">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               rows={1}
-              className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-xl text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
+              className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
             />
             <button className="absolute right-3 top-1/2 -translate-y-1/2">
               <Smile className="w-5 h-5 text-[#9BA3AE] hover:text-[#717680] transition-colors" />
@@ -555,7 +555,7 @@ export function MessagePanel({
           <button
             onClick={handleSend}
             disabled={!message.trim() || isSending}
-            className="w-10 h-10 flex items-center justify-center rounded-lg bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0"
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0"
           >
             {isSending ? (
               <Loader2 className="w-5 h-5 text-white animate-spin" />
