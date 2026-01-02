@@ -457,18 +457,6 @@ export function MessagePanel({
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
           </div>
-        ) : displayItems.length === 0 ? (
-          /* E2EE Empty State Banner */
-          <div className="flex-1 flex flex-col items-center justify-center px-4">
-            <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-4 py-3 flex items-center gap-3 max-w-xs">
-              <div className="w-8 h-8 rounded-full bg-[#F3F4F5] flex items-center justify-center shrink-0">
-                <Lock className="w-4 h-4 text-[#717680]" />
-              </div>
-              <p className="text-sm text-[#717680]">
-                Messages are end-to-end encrypted. No one outside of this chat can read them.
-              </p>
-            </div>
-          </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-full">
             {/* Spacer to push messages to bottom */}
@@ -483,14 +471,55 @@ export function MessagePanel({
 
             {/* Messages list */}
             <div className="px-4 pb-4">
-              {displayItems.map((item) => {
-                // Date separator
-                if (item.type === 'date-separator') {
-                  return (
-                    <div key={item.id} className="flex items-center justify-center py-4">
-                      <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
-                        {item.date}
+              {/* E2EE Banner for empty state (no messages yet) */}
+              {displayItems.length === 0 && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
+                    <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                      <Lock className="w-[11px] h-[11px] text-[#181818]" />
+                      <span className="text-[13px] text-[#181818] leading-[1.3]">
+                        Messages are end-to-end encrypted
                       </span>
+                    </div>
+                    <p className="text-[13px] text-[#181818] leading-[1.3]">
+                      and only visible within this chat.
+                    </p>
+                    <p className="text-[13px] text-[#181818] leading-[1.2]">
+                      Secured by XMTP.
+                    </p>
+                  </div>
+                </div>
+              )}
+              {displayItems.map((item, index) => {
+                // Date separator - show encryption banner after first date separator
+                if (item.type === 'date-separator') {
+                  const isFirstDateSeparator = displayItems.findIndex(i => i.type === 'date-separator') === index;
+                  return (
+                    <div key={item.id}>
+                      <div className="flex items-center justify-center py-4">
+                        <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
+                          {item.date}
+                        </span>
+                      </div>
+                      {/* E2EE Banner - shown after first date separator */}
+                      {isFirstDateSeparator && (
+                        <div className="flex items-center justify-center pb-4">
+                          <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
+                            <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                              <Lock className="w-[11px] h-[11px] text-[#181818]" />
+                              <span className="text-[13px] text-[#181818] leading-[1.3]">
+                                Messages are end-to-end encrypted
+                              </span>
+                            </div>
+                            <p className="text-[13px] text-[#181818] leading-[1.3]">
+                              and only visible within this chat.
+                            </p>
+                            <p className="text-[13px] text-[#181818] leading-[1.2]">
+                              Secured by XMTP.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 }

@@ -78,11 +78,12 @@ function MiniAvatar({ address, size }: { address: string; size: number }) {
   const [imgError, setImgError] = useState(false);
   const displayLabel = displayName ?? address.slice(0, 6);
   const initials = getInitials(displayLabel);
+  const colors = getColorFromName(address); // Use address for consistent color
 
-  // Don't show default profile pictures (wallet address as filename)
+  // Don't show default profile pictures (URLs ending in .png)
   const hasValidPicture = profilePicture &&
     !imgError &&
-    !isDefaultProfilePicture(profilePicture, address);
+    !isDefaultProfilePicture(profilePicture);
 
   if (hasValidPicture) {
     return (
@@ -100,19 +101,19 @@ function MiniAvatar({ address, size }: { address: string; size: number }) {
     );
   }
 
-  // No profile picture - use default gray
+  // No valid profile picture - use colored circle with initial
   return (
     <div
       className="rounded-full flex items-center justify-center border-2 border-white"
       style={{
         width: size,
         height: size,
-        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
+        backgroundColor: colors.bg,
       }}
     >
       <span
         className="font-light leading-none"
-        style={{ color: DEFAULT_AVATAR_COLOR.text, fontSize: size * 0.4 }}
+        style={{ color: colors.text, fontSize: size * 0.4 }}
       >
         {initials}
       </span>
@@ -193,9 +194,10 @@ function GroupAvatar({
     );
   }
 
-  // Fallback: gray circle with initials (no icon)
+  // Fallback: colored circle with initials
   const displayLabel = groupName ?? 'Group';
   const initials = getInitials(displayLabel);
+  const colors = getColorFromName(displayLabel);
 
   return (
     <div
@@ -203,12 +205,12 @@ function GroupAvatar({
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
+        backgroundColor: colors.bg,
       }}
     >
       <span
         className="font-light leading-none"
-        style={{ color: DEFAULT_AVATAR_COLOR.text, fontSize: dimensions.text }}
+        style={{ color: colors.text, fontSize: dimensions.text }}
       >
         {initials}
       </span>
@@ -246,12 +248,14 @@ export function Avatar({
   // Use provided name, or fall back to username/address from hook
   const displayLabel = name ?? displayName ?? '';
   const initials = useMemo(() => getInitials(displayLabel), [displayLabel]);
+  // Use address for consistent color (doesn't change on reload)
+  const colors = useMemo(() => getColorFromName(address ?? displayLabel), [address, displayLabel]);
   const dimensions = SIZE_MAP[size];
 
   // Priority: explicit imageUrl > profile picture from API
-  // But skip default profile pictures (wallet address as filename)
+  // But skip default profile pictures (URLs ending in .png)
   const candidateUrl = imageUrl ?? (imgError ? null : profilePicture);
-  const isDefault = isDefaultProfilePicture(candidateUrl, address);
+  const isDefault = isDefaultProfilePicture(candidateUrl);
   const avatarUrl = isDefault ? null : candidateUrl;
 
   if (avatarUrl) {
@@ -270,20 +274,20 @@ export function Avatar({
     );
   }
 
-  // No profile picture - use default gray with initials only
+  // No valid profile picture - use colored circle with initials
   return (
     <div
       className={`relative shrink-0 rounded-full flex items-center justify-center ${className}`}
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: DEFAULT_AVATAR_COLOR.bg,
+        backgroundColor: colors.bg,
       }}
     >
       <span
         className="font-light leading-none"
         style={{
-          color: DEFAULT_AVATAR_COLOR.text,
+          color: colors.text,
           fontSize: dimensions.text,
         }}
       >
