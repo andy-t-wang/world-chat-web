@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Loader2, Smartphone, Check, X, RefreshCw, KeyRound } from 'lucide-react';
+import { Loader2, Smartphone, X, RefreshCw, KeyRound } from 'lucide-react';
+import Image from 'next/image';
 import { RemoteSigner, generateSessionId } from '@/lib/signing-relay';
 
 // Your mini app ID from the World Developer Portal
@@ -129,9 +130,12 @@ export function QRLogin({ onSuccess, onCancel }: QRLoginProps) {
 
         {state === 'mobile_connected' && (
           <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-              <Check className="w-8 h-8 text-green-600" />
-            </div>
+            <Image
+              src="/human-badge.svg"
+              alt="Verified Human"
+              width={64}
+              height={64}
+            />
             <p className="text-sm text-[#717680]">Mobile connected!</p>
           </div>
         )}
@@ -158,9 +162,12 @@ export function QRLogin({ onSuccess, onCancel }: QRLoginProps) {
 
         {state === 'success' && (
           <div className="flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-              <Check className="w-8 h-8 text-green-600" />
-            </div>
+            <Image
+              src="/human-badge.svg"
+              alt="Verified Human"
+              width={64}
+              height={64}
+            />
             <p className="text-sm text-[#717680]">Logged in!</p>
           </div>
         )}
