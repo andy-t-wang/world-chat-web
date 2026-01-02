@@ -495,7 +495,20 @@ export function MessagePanel({
                   </div>
                 </div>
               )}
-              {displayItems.map((item, index) => {
+              {/* Find the last own message to only show status there */}
+              {(() => {
+                // Find the last own message ID (excluding pending)
+                const lastOwnMessageId = displayItems.reduce<string | null>((acc, item) => {
+                  if (item.type === 'message') {
+                    const msg = getMessage(item.id);
+                    if (msg && msg.senderInboxId === ownInboxId) {
+                      return item.id;
+                    }
+                  }
+                  return acc;
+                }, null);
+
+                return displayItems.map((item, index) => {
                 // Date separator - show encryption banner after first date separator
                 if (item.type === 'date-separator') {
                   const isFirstDateSeparator = displayItems.findIndex(i => i.type === 'date-separator') === index;
@@ -608,13 +621,16 @@ export function MessagePanel({
                       {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={true} />}
                       {isLastInGroup && (
                         <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                          <span className="text-[11px] text-[#9BA3AE]">
+                          <span className="text-[11px] text-[#717680] font-medium">
                             {formatTime(msg.sentAtNs)}
                           </span>
-                          {isRead ? (
-                            <span className="text-[11px] text-[#00C230] font-medium">Read</span>
-                          ) : (
-                            <span className="text-[11px] text-[#9BA3AE]">Sent</span>
+                          {/* Only show Sent/Read on the very last own message */}
+                          {item.id === lastOwnMessageId && (
+                            isRead ? (
+                              <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                            ) : (
+                              <span className="text-[11px] text-[#717680]">Sent</span>
+                            )
                           )}
                         </div>
                       )}
@@ -669,14 +685,15 @@ export function MessagePanel({
                       {/* Link preview outside the bubble */}
                       {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={false} />}
                       {isLastInGroup && (
-                        <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1">
+                        <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
                           {formatTime(msg.sentAtNs)}
                         </span>
                       )}
                     </div>
                   </div>
                 );
-              })}
+              });
+              })()}
             </div>
           </div>
         )}
