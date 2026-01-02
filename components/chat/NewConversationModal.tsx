@@ -152,13 +152,8 @@ export function NewConversationModal({
           identifier
         );
 
-        console.log("Created conversation:", {
-          id: conversation.id,
-          peerInboxId: conversation.peerInboxId,
-        });
-
-        // Ensure the conversation is visible in the list (even without messages)
-        streamManager.ensureConversationVisible(conversation.id);
+        // Register the conversation with StreamManager (stores it, builds metadata)
+        await streamManager.registerNewConversation(conversation);
 
         // Select the new conversation
         setSelectedConversationId(conversation.id);

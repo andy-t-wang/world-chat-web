@@ -87,10 +87,19 @@ export function useMessages(conversationId: string | null) {
       return;
     }
 
-    // Use MODULE-LEVEL guards to prevent duplicate loads across instances
-    if (loadedConversations.has(conversationId)) {
+    // If we think it's loaded but there are no messages, force a reload
+    // This handles cases where state got out of sync
+    const hasMessages = messageIds.length > 0;
+    const markedAsLoaded = loadedConversations.has(conversationId);
+
+    if (markedAsLoaded && hasMessages) {
       setIsInitialLoading(false);
       return;
+    }
+
+    // If marked as loaded but no messages, clear the flag to allow reload
+    if (markedAsLoaded && !hasMessages) {
+      loadedConversations.delete(conversationId);
     }
 
     if (loadingConversations.has(conversationId)) {
@@ -108,7 +117,7 @@ export function useMessages(conversationId: string | null) {
       loadedConversations.add(conversationId);
       setIsInitialLoading(false);
     });
-  }, [conversationId]);
+  }, [conversationId, messageIds.length]);
 
   // Load more (older) messages
   const loadMore = useCallback(async () => {

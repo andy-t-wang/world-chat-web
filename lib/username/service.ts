@@ -260,7 +260,42 @@ export async function resolveAddresses(addresses: string[]): Promise<Map<string,
 }
 
 /**
+ * Resolve a username directly to get the full record
+ * This is useful when you know the exact username
+ */
+export async function resolveUsername(username: string): Promise<UsernameRecord | null> {
+  if (!username || username.length < 1 || username.length > 14) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${USERNAME_API.BASE_URL}/api/v1/${encodeURIComponent(username)}`
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const record = await response.json() as UsernameRecord;
+
+    // Cache the result
+    usernameCache.set(normalizeAddress(record.address), {
+      record,
+      timestamp: Date.now(),
+    });
+    saveToStorage();
+
+    return record;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Search for usernames by prefix
+ * Uses both the search endpoint AND tries to resolve the exact username
+ * to ensure we don't miss any matches
  */
 export async function searchUsernames(query: string): Promise<UsernameRecord[]> {
   if (!query || query.length < 1 || query.length > 14) {
@@ -268,25 +303,54 @@ export async function searchUsernames(query: string): Promise<UsernameRecord[]> 
   }
 
   try {
-    const response = await fetch(
-      `${USERNAME_API.BASE_URL}/api/v1/search/${encodeURIComponent(query)}`
-    );
+    // Run both searches in parallel:
+    // 1. Prefix search (returns up to 10 results)
+    // 2. Exact username resolution (in case search misses it)
+    const [searchResults, exactResult] = await Promise.all([
+      // Prefix search
+      fetch(`${USERNAME_API.BASE_URL}/api/v1/search/${encodeURIComponent(query)}`)
+        .then(async (response) => {
+          if (!response.ok) return [];
+          return (await response.json()) as UsernameRecord[];
+        })
+        .catch(() => [] as UsernameRecord[]),
 
-    if (!response.ok) {
-      return [];
+      // Exact username resolution
+      resolveUsername(query),
+    ]);
+
+    // Deduplicate by address (lowercase)
+    const seen = new Set<string>();
+    const results: UsernameRecord[] = [];
+
+    // Add exact match first if found (prioritize exact matches)
+    if (exactResult) {
+      const addr = normalizeAddress(exactResult.address);
+      if (!seen.has(addr)) {
+        seen.add(addr);
+        results.push(exactResult);
+      }
     }
 
-    const records = await response.json() as UsernameRecord[];
+    // Add search results
+    for (const record of searchResults) {
+      const addr = normalizeAddress(record.address);
+      if (!seen.has(addr)) {
+        seen.add(addr);
+        results.push(record);
+      }
+    }
 
     // Cache each result
-    for (const record of records) {
+    for (const record of results) {
       usernameCache.set(normalizeAddress(record.address), {
         record,
         timestamp: Date.now(),
       });
     }
+    saveToStorage();
 
-    return records;
+    return results;
   } catch (error) {
     console.error('Failed to search usernames:', error);
     return [];

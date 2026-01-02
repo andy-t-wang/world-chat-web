@@ -70,9 +70,11 @@ const CONTENT_TYPE_REACTION = 'reaction';
 const CONTENT_TYPE_REPLY = 'reply';
 
 // Message loading limits
-const INITIAL_MESSAGE_LIMIT = 20;  // Fast initial load
-const LOAD_MORE_LIMIT = 50;        // Larger batch when scrolling
-const PREVIEW_SEARCH_LIMIT = 10;   // Messages to search for displayable preview
+const BATCH_SIZE = 50;             // Messages to fetch per batch
+const MIN_DISPLAYABLE_MESSAGES = 30; // Minimum displayable messages we want initially
+const MIN_LOADMORE_MESSAGES = 20;   // Minimum displayable messages per "load more"
+const MAX_FETCH_ITERATIONS = 5;     // Max iterations to prevent infinite loops
+const BACKGROUND_REFRESH_LIMIT = 100; // Limit for background sync refreshes
 
 // Stream restart configuration
 const STREAM_RESTART_DELAY_MS = 2000;  // Wait before restarting crashed stream
@@ -80,6 +82,7 @@ const MAX_STREAM_RESTARTS = 5;          // Max restart attempts before giving up
 
 // localStorage key for persisting last-read timestamps
 const LAST_READ_TIMESTAMPS_KEY = 'xmtp-last-read-timestamps';
+const PEER_READ_RECEIPTS_KEY = 'xmtp-peer-read-receipts';
 const MAX_MESSAGES_FOR_UNREAD_COUNT = 50; // Only count first N messages per conversation
 
 // Check if a message is a special type that shouldn't be displayed as text
@@ -195,8 +198,9 @@ class XMTPStreamManager {
 
     this.client = client;
 
-    // Load persisted last-read timestamps
+    // Load persisted data from localStorage
     this.loadLastReadTimestamps();
+    this.loadPeerReadReceipts();
 
     // Request notification permission (non-blocking)
     requestNotificationPermission().catch(() => {
@@ -228,10 +232,44 @@ class XMTPStreamManager {
         for (const [conversationId, timestampStr] of Object.entries(parsed)) {
           this.lastReadTimestamps.set(conversationId, BigInt(timestampStr));
         }
-        console.log(`[StreamManager] Loaded ${this.lastReadTimestamps.size} last-read timestamps`);
       }
-    } catch (error) {
-      console.error('[StreamManager] Failed to load last-read timestamps:', error);
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  /**
+   * Load peer read receipts from localStorage
+   */
+  private loadPeerReadReceipts(): void {
+    try {
+      const stored = localStorage.getItem(PEER_READ_RECEIPTS_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Record<string, string>;
+        const newMap = new Map<string, bigint>();
+        for (const [conversationId, timestampStr] of Object.entries(parsed)) {
+          newMap.set(conversationId, BigInt(timestampStr));
+        }
+        store.set(readReceiptsAtom, newMap);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }
+
+  /**
+   * Save peer read receipts to localStorage
+   */
+  private savePeerReadReceipts(): void {
+    try {
+      const receipts = store.get(readReceiptsAtom);
+      const data: Record<string, string> = {};
+      for (const [conversationId, timestamp] of receipts) {
+        data[conversationId] = timestamp.toString();
+      }
+      localStorage.setItem(PEER_READ_RECEIPTS_KEY, JSON.stringify(data));
+    } catch {
+      // Ignore storage errors
     }
   }
 
@@ -245,8 +283,8 @@ class XMTPStreamManager {
         data[conversationId] = timestamp.toString();
       }
       localStorage.setItem(LAST_READ_TIMESTAMPS_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.error('[StreamManager] Failed to save last-read timestamps:', error);
+    } catch {
+      // Ignore storage errors
     }
   }
 
@@ -272,7 +310,6 @@ class XMTPStreamManager {
       this.updateTabTitle();
     }
 
-    console.log('[StreamManager] Marked conversation as read:', conversationId);
   }
 
   /**
@@ -381,8 +418,6 @@ class XMTPStreamManager {
       this.incrementMetadataVersion();
       store.set(isLoadingConversationsAtom, false);
 
-      console.log(`[StreamManager] Loaded ${ids.length} conversations from local cache`);
-
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
@@ -400,9 +435,6 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
-      console.log('[StreamManager] Performing one-time initial sync...');
-      const startTime = Date.now();
-
       // Sync all allowed conversations from network
       await this.client.conversations.syncAll([ConsentState.Allowed]);
 
@@ -411,30 +443,29 @@ class XMTPStreamManager {
         consentStates: [ConsentState.Allowed],
       });
 
-      let newCount = 0;
       const currentIds = store.get(conversationIdsAtom);
-      const newIds = [...currentIds];
+      const currentIdSet = new Set(currentIds);
+      const allIds = [...currentIds];
 
       for (const conv of conversations) {
-        const isNew = !this.conversations.has(conv.id);
         this.conversations.set(conv.id, conv);
 
-        // Rebuild metadata with synced data
+        // Rebuild metadata with synced data (messages should now be in local DB)
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
 
-        // Only add new conversations that have displayable messages
-        // Always include selected conversation
+        // Add to list if it has messages and isn't already in the list
+        // This catches conversations that were filtered out initially but now have messages
         const selectedId = store.get(selectedConversationIdAtom);
-        if (isNew && (metadata.lastMessagePreview || conv.id === selectedId)) {
-          newIds.unshift(conv.id);
-          newCount++;
+        if (!currentIdSet.has(conv.id) && (metadata.lastMessagePreview || conv.id === selectedId)) {
+          allIds.push(conv.id);
+          currentIdSet.add(conv.id);
         }
       }
 
       // Filter out any conversations without displayable messages (but keep selected)
       const selectedId = store.get(selectedConversationIdAtom);
-      const filteredIds = newIds.filter(id => {
+      const filteredIds = allIds.filter(id => {
         const meta = this.conversationMetadata.get(id);
         return (meta && meta.lastMessagePreview) || id === selectedId;
       });
@@ -454,13 +485,8 @@ class XMTPStreamManager {
       // Sync may have brought in messages that weren't in local cache
       await this.refreshLoadedConversations();
 
-      const duration = Date.now() - startTime;
-      console.log(`[StreamManager] Initial sync complete in ${duration}ms, ${newCount} new conversations`);
-      console.log('[StreamManager] Now relying on streams for updates');
-
-    } catch (error) {
-      console.error('[StreamManager] Initial sync error:', error);
-      // Don't fail - local data is showing, streams will catch new updates
+    } catch {
+      // Sync errors are non-fatal - local data is showing, streams will catch updates
     }
   }
 
@@ -474,8 +500,6 @@ class XMTPStreamManager {
     const loadedIds = Array.from(this.loadedMessageConversations);
     if (loadedIds.length === 0) return;
 
-    console.log(`[StreamManager] Refreshing ${loadedIds.length} loaded conversations after sync`);
-
     for (const conversationId of loadedIds) {
       try {
         const conv = this.conversations.get(conversationId);
@@ -483,7 +507,7 @@ class XMTPStreamManager {
 
         // Fetch messages from local DB (sync already populated it)
         const messages = await conv.messages({
-          limit: BigInt(INITIAL_MESSAGE_LIMIT),
+          limit: BigInt(BACKGROUND_REFRESH_LIMIT),
           direction: SortDirection.Descending,
         });
 
@@ -528,10 +552,9 @@ class XMTPStreamManager {
           // Remove duplicates
           const uniqueIds = [...new Set(allIds)];
           this.setMessageIds(conversationId, uniqueIds);
-          console.log(`[StreamManager] Added ${newMessageIds.length} synced messages to ${conversationId}`);
         }
-      } catch (error) {
-        console.error(`[StreamManager] Failed to refresh conversation ${conversationId}:`, error);
+      } catch {
+        // Ignore refresh errors - messages will sync via stream
       }
     }
   }
@@ -547,6 +570,7 @@ class XMTPStreamManager {
   /**
    * Ensure a conversation is visible in the list (e.g., newly created conversation)
    * Call this when selecting a conversation that might not have messages yet
+   * @deprecated Use registerNewConversation instead for newly created conversations
    */
   ensureConversationVisible(conversationId: string): void {
     const currentIds = store.get(conversationIdsAtom);
@@ -554,6 +578,39 @@ class XMTPStreamManager {
       // Add to front of list
       store.set(conversationIdsAtom, [conversationId, ...currentIds]);
       this.incrementMetadataVersion();
+    }
+  }
+
+  /**
+   * Register a newly created conversation
+   * Stores the conversation, builds metadata, and adds to visible list
+   * Use this after creating a conversation with newDmWithIdentifier
+   */
+  async registerNewConversation(conversation: Conversation): Promise<void> {
+    const conversationId = conversation.id;
+
+    // Store the conversation object for future use
+    this.conversations.set(conversationId, conversation);
+
+    // Build metadata (don't sync since it's a new conversation)
+    const metadata = await this.buildConversationMetadata(conversation, false);
+    this.conversationMetadata.set(conversationId, metadata);
+
+    // Add to visible list if not already there
+    const currentIds = store.get(conversationIdsAtom);
+    if (!currentIds.includes(conversationId)) {
+      store.set(conversationIdsAtom, [conversationId, ...currentIds]);
+    }
+
+    this.incrementMetadataVersion();
+
+    // If this is actually an existing conversation (newDmWithIdentifier found it),
+    // we need to ensure messages are loaded. Clear the loaded flag so they get loaded
+    // when the user opens the conversation.
+    // This handles the case where the conversation existed but wasn't fully initialized.
+    if (this.loadedMessageConversations.has(conversationId)) {
+      // Already loaded - trigger a background refresh to pick up any new messages
+      this.syncConversationInBackground(conversationId, conversation);
     }
   }
 
@@ -700,7 +757,6 @@ class XMTPStreamManager {
 
     const stream = async () => {
       try {
-        console.log('[StreamManager] Starting conversation stream...');
         const streamProxy = await this.client!.conversations.stream();
 
         // Reset restart counter on successful connection
@@ -712,11 +768,8 @@ class XMTPStreamManager {
           // Only process allowed conversations
           const consentState = await conv.consentState();
           if (consentState !== ConsentState.Allowed) {
-            console.log('[StreamManager] Skipping non-allowed conversation:', conv.id, consentState);
             continue;
           }
-
-          console.log('[StreamManager] New allowed conversation:', conv.id);
 
           this.conversations.set(conv.id, conv);
           // New streamed conversations - sync to get initial messages
@@ -729,27 +782,23 @@ class XMTPStreamManager {
             const currentIds = store.get(conversationIdsAtom);
             if (!currentIds.includes(conv.id)) {
               store.set(conversationIdsAtom, [conv.id, ...currentIds]);
+              this.incrementMetadataVersion();
             }
           }
         }
       } catch (error) {
         if (signal.aborted) return; // Intentional abort, don't restart
 
-        console.error('[StreamManager] Conversation stream crashed:', error);
-
         // Attempt restart if under limit
         if (this.conversationStreamRestarts < MAX_STREAM_RESTARTS) {
           this.conversationStreamRestarts++;
           const delay = STREAM_RESTART_DELAY_MS * this.conversationStreamRestarts;
-          console.log(`[StreamManager] Restarting conversation stream in ${delay}ms (attempt ${this.conversationStreamRestarts}/${MAX_STREAM_RESTARTS})`);
 
           setTimeout(() => {
             if (!signal.aborted && this.client) {
               this.startConversationStream();
             }
           }, delay);
-        } else {
-          console.error('[StreamManager] Max conversation stream restarts reached, giving up');
         }
       }
     };
@@ -836,10 +885,22 @@ class XMTPStreamManager {
   /**
    * Load messages for a conversation (called when user opens a conversation)
    *
-   * Strategy: Show local messages instantly, sync in background
+   * Strategy: Keep fetching until we have MIN_DISPLAYABLE_MESSAGES displayable messages
+   * This ensures we don't show too few messages when many are read receipts
    */
   async loadMessagesForConversation(conversationId: string): Promise<void> {
-    if (!this.client || this.loadedMessageConversations.has(conversationId)) return;
+    if (!this.client) return;
+
+    // Check if already loaded
+    if (this.loadedMessageConversations.has(conversationId)) {
+      // Safety check: if marked as loaded but no messages, allow reload
+      const currentIds = this.getMessageIds(conversationId);
+      if (currentIds.length > 0) {
+        return; // Already loaded with messages
+      }
+      // Clear flag to allow reload
+      this.loadedMessageConversations.delete(conversationId);
+    }
 
     this.loadedMessageConversations.add(conversationId);
 
@@ -852,47 +913,63 @@ class XMTPStreamManager {
         return;
       }
 
-      // PHASE 1: Load from local cache FIRST (no network, instant)
-      const localMessages = await conv.messages({
-        limit: BigInt(INITIAL_MESSAGE_LIMIT),
-        direction: SortDirection.Descending,
-      });
-
-      // Store and display local messages immediately
-      // Also process read receipts and reactions from the peer
-      const ids: string[] = [];
-      for (const msg of localMessages) {
-        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
-
-        // Process read receipts from the peer
-        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
-          if (msg.senderInboxId !== this.client?.inboxId) {
-            this.updateReadReceipt(conversationId, msg.sentAtNs);
-          }
-          continue; // Don't add to message list
-        }
-
-        // Process reactions
-        if (typeId === CONTENT_TYPE_REACTION) {
-          this.processReaction(msg as unknown as DecodedMessage);
-          continue; // Don't add to message list
-        }
-
-        messageCache.set(msg.id, msg as unknown as DecodedMessage);
-        ids.push(msg.id);
-      }
-
-      this.setMessageIds(conversationId, ids);
-      this.setPagination(conversationId, {
-        hasMore: localMessages.length === INITIAL_MESSAGE_LIMIT,
-        oldestMessageNs: localMessages.length > 0 ? localMessages[localMessages.length - 1].sentAtNs : null,
-        isLoading: false,
-      });
-
-      console.log(`[StreamManager] Loaded ${ids.length} local messages for ${conversationId}`);
-
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
+
+      // Keep fetching until we have enough displayable messages
+      const displayableIds: string[] = [];
+      let oldestMessageNs: bigint | null = null;
+      let hasMore = true;
+      let iterations = 0;
+
+      while (displayableIds.length < MIN_DISPLAYABLE_MESSAGES && hasMore && iterations < MAX_FETCH_ITERATIONS) {
+        iterations++;
+
+        const messages = await conv.messages({
+          limit: BigInt(BATCH_SIZE),
+          sentBeforeNs: oldestMessageNs ?? undefined,
+          direction: SortDirection.Descending,
+        });
+
+        if (messages.length === 0) {
+          hasMore = false;
+          break;
+        }
+
+        // Process messages
+        for (const msg of messages) {
+          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+          // Process read receipts from the peer (but don't display)
+          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+            if (msg.senderInboxId !== this.client?.inboxId) {
+              this.updateReadReceipt(conversationId, msg.sentAtNs);
+            }
+            continue;
+          }
+
+          // Process reactions (but don't display as messages)
+          if (typeId === CONTENT_TYPE_REACTION) {
+            this.processReaction(msg as unknown as DecodedMessage);
+            continue;
+          }
+
+          // This is a displayable message
+          messageCache.set(msg.id, msg as unknown as DecodedMessage);
+          displayableIds.push(msg.id);
+        }
+
+        // Update oldest for next iteration
+        oldestMessageNs = messages[messages.length - 1].sentAtNs;
+        hasMore = messages.length === BATCH_SIZE;
+      }
+
+      this.setMessageIds(conversationId, displayableIds);
+      this.setPagination(conversationId, {
+        hasMore,
+        oldestMessageNs,
+        isLoading: false,
+      });
 
       // PHASE 2: Background sync to fetch any missing messages
       // This is non-blocking - UI shows local content immediately
@@ -913,15 +990,12 @@ class XMTPStreamManager {
    */
   private async syncConversationInBackground(conversationId: string, conv: Conversation): Promise<void> {
     try {
-      console.log(`[StreamManager] Background syncing conversation ${conversationId}...`);
-      const startTime = Date.now();
-
       // Sync this conversation to fetch messages from network
       await conv.sync();
 
       // Fetch messages again from local DB (now includes synced messages)
       const messages = await conv.messages({
-        limit: BigInt(INITIAL_MESSAGE_LIMIT),
+        limit: BigInt(BACKGROUND_REFRESH_LIMIT),
         direction: SortDirection.Descending,
       });
 
@@ -966,19 +1040,15 @@ class XMTPStreamManager {
         // Remove duplicates
         const uniqueIds = [...new Set(allIds)];
         this.setMessageIds(conversationId, uniqueIds);
-        console.log(`[StreamManager] Added ${newMessageIds.length} synced messages to ${conversationId}`);
       }
-
-      const duration = Date.now() - startTime;
-      console.log(`[StreamManager] Background sync complete for ${conversationId} in ${duration}ms`);
-    } catch (error) {
-      console.error(`[StreamManager] Background sync error for ${conversationId}:`, error);
-      // Don't fail - local messages are already showing, stream will catch new ones
+    } catch {
+      // Background sync errors are non-fatal - stream will catch new messages
     }
   }
 
   /**
    * Load more (older) messages for a conversation
+   * Keeps fetching until we have MIN_LOADMORE_MESSAGES displayable messages
    */
   async loadMoreMessages(conversationId: string): Promise<void> {
     const pagination = this.getPagination(conversationId);
@@ -993,43 +1063,57 @@ class XMTPStreamManager {
     });
 
     try {
-      // Load older messages (before our oldest) in descending order
-      const messages = await conv.messages({
-        limit: BigInt(LOAD_MORE_LIMIT),
-        sentBeforeNs: pagination.oldestMessageNs ?? undefined,
-        direction: SortDirection.Descending,
-      });
-
-      // Append older messages to end of list (they're already in descending order)
       const currentIds = this.getMessageIds(conversationId);
-      const newIds: string[] = [];
+      const newDisplayableIds: string[] = [];
+      let oldestMessageNs = pagination.oldestMessageNs;
+      let hasMore = true;
+      let iterations = 0;
 
-      for (const msg of messages) {
-        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+      // Keep fetching until we have enough displayable messages
+      while (newDisplayableIds.length < MIN_LOADMORE_MESSAGES && hasMore && iterations < MAX_FETCH_ITERATIONS) {
+        iterations++;
 
-        // Process reactions
-        if (typeId === CONTENT_TYPE_REACTION) {
-          this.processReaction(msg as unknown as DecodedMessage);
-          continue;
+        const messages = await conv.messages({
+          limit: BigInt(BATCH_SIZE),
+          sentBeforeNs: oldestMessageNs ?? undefined,
+          direction: SortDirection.Descending,
+        });
+
+        if (messages.length === 0) {
+          hasMore = false;
+          break;
         }
 
-        // Skip read receipts
-        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
-          continue;
+        for (const msg of messages) {
+          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+          // Process reactions (but don't display as messages)
+          if (typeId === CONTENT_TYPE_REACTION) {
+            this.processReaction(msg as unknown as DecodedMessage);
+            continue;
+          }
+
+          // Skip read receipts
+          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+            continue;
+          }
+
+          // This is a displayable message
+          if (!messageCache.has(msg.id)) {
+            messageCache.set(msg.id, msg as unknown as DecodedMessage);
+            newDisplayableIds.push(msg.id);
+          }
         }
 
-        if (!messageCache.has(msg.id)) {
-          messageCache.set(msg.id, msg as unknown as DecodedMessage);
-          newIds.push(msg.id);
-        }
+        oldestMessageNs = messages[messages.length - 1].sentAtNs;
+        hasMore = messages.length === BATCH_SIZE;
       }
 
       // Append to end (older messages go after current ones in our descending list)
-      this.setMessageIds(conversationId, [...currentIds, ...newIds]);
+      this.setMessageIds(conversationId, [...currentIds, ...newDisplayableIds]);
       this.setPagination(conversationId, {
-        hasMore: messages.length === LOAD_MORE_LIMIT,
-        // Update oldest to the last message in this batch
-        oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : pagination.oldestMessageNs,
+        hasMore,
+        oldestMessageNs,
         isLoading: false,
       });
     } catch (error) {
@@ -1055,7 +1139,6 @@ class XMTPStreamManager {
 
     const stream = async () => {
       try {
-        console.log('[StreamManager] Starting all messages stream...');
         const streamProxy = await this.client!.conversations.streamAllMessages({
           consentStates: [ConsentState.Allowed],
         });
@@ -1063,13 +1146,14 @@ class XMTPStreamManager {
         // Reset restart counter on successful connection
         this.allMessagesStreamRestarts = 0;
 
-        for await (const msg of streamProxy as AsyncIterable<{ id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string } }>) {
+        for await (const msg of streamProxy as AsyncIterable<{ id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string; authorityId?: string } }>) {
           if (signal.aborted) break;
 
           const conversationId = msg.conversationId;
 
           // Check if this is a read receipt from the peer
           const typeId = msg.contentType?.typeId;
+
           if (typeId === CONTENT_TYPE_READ_RECEIPT) {
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
@@ -1086,7 +1170,6 @@ class XMTPStreamManager {
           // Skip if we already have this message
           if (messageCache.has(msg.id)) continue;
 
-          console.log('[StreamManager] New message in', conversationId);
 
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
 
@@ -1097,7 +1180,28 @@ class XMTPStreamManager {
           }
 
           // Update conversation metadata
-          const metadata = this.conversationMetadata.get(conversationId);
+          let metadata = this.conversationMetadata.get(conversationId);
+
+          // If we don't have metadata for this conversation, try to fetch and create it
+          // This can happen when a message arrives before initial sync completes
+          if (!metadata && this.client) {
+            try {
+              const conv = this.conversations.get(conversationId)
+                || await this.client.conversations.getConversationById(conversationId);
+
+              if (conv) {
+                // Store the conversation for future use
+                this.conversations.set(conversationId, conv);
+
+                // Build metadata for this conversation
+                metadata = await this.buildConversationMetadata(conv, false);
+                this.conversationMetadata.set(conversationId, metadata);
+              }
+            } catch {
+              // Failed to get conversation - continue without metadata
+            }
+          }
+
           if (metadata) {
             const content = extractMessageContent(msg);
             if (content) {
@@ -1159,20 +1263,15 @@ class XMTPStreamManager {
       } catch (error) {
         if (signal.aborted) return;
 
-        console.error('[StreamManager] All messages stream crashed:', error);
-
         if (this.allMessagesStreamRestarts < MAX_STREAM_RESTARTS) {
           this.allMessagesStreamRestarts++;
           const delay = STREAM_RESTART_DELAY_MS * this.allMessagesStreamRestarts;
-          console.log(`[StreamManager] Restarting all messages stream in ${delay}ms (attempt ${this.allMessagesStreamRestarts}/${MAX_STREAM_RESTARTS})`);
 
           setTimeout(() => {
             if (!signal.aborted && this.client) {
               this.startAllMessagesStream();
             }
           }, delay);
-        } else {
-          console.error('[StreamManager] Max all messages stream restarts reached, giving up');
         }
       }
     };
@@ -1218,17 +1317,14 @@ class XMTPStreamManager {
       if (!isDm(conv)) {
         const members = await conv.members();
         if (members.length > 5) {
-          console.log('[StreamManager] Skipping read receipt for large group:', conversationId);
           return;
         }
       }
 
       // Send empty object with read receipt content type
       await conv.send({}, ContentTypeReadReceipt);
-      console.log('[StreamManager] Sent read receipt for', conversationId);
-    } catch (error) {
-      // Don't throw - read receipts are not critical
-      console.error('[StreamManager] Failed to send read receipt:', error);
+    } catch {
+      // Read receipt failures are non-critical
     }
   }
 
@@ -1246,11 +1342,12 @@ class XMTPStreamManager {
       newMap.set(conversationId, timestampNs);
       store.set(readReceiptsAtom, newMap);
 
+      // Persist to localStorage
+      this.savePeerReadReceipts();
+
       // Increment version to trigger UI re-renders
       const version = store.get(readReceiptVersionAtom);
       store.set(readReceiptVersionAtom, version + 1);
-
-      console.log('[StreamManager] Updated read receipt for', conversationId, 'at', timestampNs);
     }
   }
 
@@ -1261,7 +1358,9 @@ class XMTPStreamManager {
   isMessageRead(conversationId: string, messageSentAtNs: bigint): boolean {
     const receipts = store.get(readReceiptsAtom);
     const lastReadTs = receipts.get(conversationId);
-    if (!lastReadTs) return false;
+    if (!lastReadTs) {
+      return false;
+    }
     return messageSentAtNs <= lastReadTs;
   }
 
@@ -1322,7 +1421,6 @@ class XMTPStreamManager {
   private processReaction(msg: DecodedMessage): void {
     const content = msg.content as ReactionContent | undefined;
     if (!content || !content.reference || !content.content) {
-      console.log('[StreamManager] Invalid reaction content:', content);
       return;
     }
 
@@ -1366,8 +1464,6 @@ class XMTPStreamManager {
     // Trigger re-render
     const version = store.get(reactionsVersionAtom);
     store.set(reactionsVersionAtom, version + 1);
-
-    console.log('[StreamManager] Processed reaction:', action, emoji, 'on', targetMessageId);
   }
 
   /**
@@ -1380,10 +1476,7 @@ class XMTPStreamManager {
     action: 'added' | 'removed' = 'added'
   ): Promise<void> {
     const conv = this.conversations.get(conversationId);
-    if (!conv) {
-      console.error('[StreamManager] Conversation not found:', conversationId);
-      return;
-    }
+    if (!conv) return;
 
     try {
       // Import the reaction content type
@@ -1397,7 +1490,6 @@ class XMTPStreamManager {
       };
 
       await conv.send(reactionContent, ContentTypeReaction);
-      console.log('[StreamManager] Sent reaction:', action, emoji, 'on', targetMessageId);
 
       // Optimistically update the UI
       if (action === 'added' && this.client?.inboxId) {
@@ -1421,7 +1513,6 @@ class XMTPStreamManager {
         }
       }
     } catch (error) {
-      console.error('[StreamManager] Failed to send reaction:', error);
       throw error;
     }
   }
@@ -1438,7 +1529,6 @@ class XMTPStreamManager {
    * Cleanup all streams and state
    */
   cleanup(): void {
-    console.log('[StreamManager] Cleaning up...');
 
     // Abort all streams
     this.conversationStreamController?.abort();
