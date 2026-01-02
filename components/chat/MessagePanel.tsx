@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
+import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useAtomValue } from 'jotai';
-import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
+import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { useUsername } from '@/hooks/useUsername';
@@ -124,18 +123,27 @@ export function MessagePanel({
     return null;
   }, []);
 
-  // Format date for separator
+  // Format date for separator following: Today → Yesterday → Day of week → Calendar date
   const formatDateSeparator = useCallback((ns: bigint): string => {
     const date = new Date(Number(ns / BigInt(1_000_000)));
     const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-    if (isToday) return 'Today';
 
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+    // Reset time parts for accurate day comparison
+    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    return date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    const diffDays = Math.floor((nowOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+
+    // Within the last week, show day of week
+    if (diffDays < 7) {
+      return date.toLocaleDateString(undefined, { weekday: 'long' });
+    }
+
+    // Older than a week, show full date
+    return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
   }, []);
 
   // Get date key for grouping
@@ -230,30 +238,14 @@ export function MessagePanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageIds.join(','), pendingMessages.length, ownInboxId]);
 
-  // Virtualizer callbacks - memoize to prevent infinite re-renders
-  const getScrollElement = useCallback(() => parentRef.current, []);
-  const estimateSize = useCallback((index: number) => {
-    const item = displayItems[index];
-    if (item.type === 'date-separator') return 40;
-    if (item.type === 'pending') return 60;
-    return 50; // Estimated message height
-  }, [displayItems]);
-  const getItemKey = useCallback((index: number) => displayItems[index]?.id ?? index, [displayItems]);
-
-  // Virtualizer setup
-  const virtualizer = useVirtualizer({
-    count: displayItems.length,
-    getScrollElement,
-    estimateSize,
-    overscan: 10,
-    getItemKey,
-  });
-
   // Scroll to bottom on new messages
-  useEffect(() => {
+  const prevDisplayCountRef = useRef(0);
+  useLayoutEffect(() => {
     if (parentRef.current && displayItems.length > 0) {
+      // Always scroll to bottom when messages change
       parentRef.current.scrollTop = parentRef.current.scrollHeight;
     }
+    prevDisplayCountRef.current = displayItems.length;
   }, [displayItems.length]);
 
   // Mark conversation as read - only run once when messages first load
@@ -324,11 +316,6 @@ export function MessagePanel({
     return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   };
 
-  // Calculate content height for proper alignment
-  const totalSize = virtualizer.getTotalSize();
-  const containerHeight = parentRef.current?.clientHeight ?? 0;
-  const needsSpacer = totalSize < containerHeight;
-
   return (
     <div className="flex-1 flex flex-col bg-white">
       {/* Header */}
@@ -363,61 +350,44 @@ export function MessagePanel({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto bg-[#F5F5F5]"
+        className="flex-1 overflow-auto bg-[#F5F5F5] flex flex-col"
       >
         {isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
           </div>
         ) : displayItems.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-[#717680]">
-            <p>No messages yet. Send a message to start the conversation.</p>
+          /* E2EE Empty State Banner */
+          <div className="flex-1 flex flex-col items-center justify-center px-4">
+            <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-4 py-3 flex items-center gap-3 max-w-xs">
+              <div className="w-8 h-8 rounded-full bg-[#F3F4F5] flex items-center justify-center shrink-0">
+                <Lock className="w-4 h-4 text-[#717680]" />
+              </div>
+              <p className="text-sm text-[#717680]">
+                Messages are end-to-end encrypted. No one outside of this chat can read them.
+              </p>
+            </div>
           </div>
         ) : (
-          <div
-            style={{
-              height: needsSpacer ? '100%' : totalSize,
-              minHeight: '100%',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            {/* Spacer to push messages to bottom when few messages */}
-            {needsSpacer && <div style={{ flex: 1 }} />}
+          <div className="flex-1 flex flex-col min-h-full">
+            {/* Spacer to push messages to bottom */}
+            <div className="flex-1" />
 
             {/* Load more indicator */}
             {isLoading && hasMore && (
-              <div className="flex justify-center py-2">
+              <div className="flex justify-center py-3">
                 <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
               </div>
             )}
 
-            {/* Virtualized messages */}
-            <div
-              style={{
-                height: totalSize,
-                position: 'relative',
-              }}
-            >
-              {virtualizer.getVirtualItems().map((virtualRow) => {
-                const item = displayItems[virtualRow.index];
-
+            {/* Messages list */}
+            <div className="px-4 pb-4">
+              {displayItems.map((item) => {
                 // Date separator
                 if (item.type === 'date-separator') {
                   return (
-                    <div
-                      key={item.id}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: virtualRow.size,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className="flex items-center justify-center py-2"
-                    >
-                      <span className="px-3 py-1 bg-white/80 rounded-full text-xs text-[#717680] font-medium shadow-sm">
+                    <div key={item.id} className="flex items-center justify-center py-4">
+                      <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
                         {item.date}
                       </span>
                     </div>
@@ -430,39 +400,33 @@ export function MessagePanel({
                   if (!pending) return null;
 
                   return (
-                    <div
-                      key={item.id}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: virtualRow.size,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className="flex justify-end px-4 py-0.5"
-                    >
-                      <div className="max-w-[70%]">
-                        <div className={`rounded-2xl rounded-tr-md px-4 py-2 ${
+                    <div key={item.id} className="flex justify-end mt-0.5">
+                      <div className="max-w-[300px]">
+                        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
                           pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]/70'
                         }`}>
-                          <p className={pending.status === 'failed' ? 'text-red-800' : 'text-white'}>
+                          <p className={`text-[15px] leading-[1.35] ${pending.status === 'failed' ? 'text-red-800' : 'text-white'}`}>
                             {pending.content}
                           </p>
                         </div>
-                        {pending.status === 'failed' && (
-                          <div className="flex justify-end items-center gap-2 mt-1">
-                            <AlertCircle className="w-3 h-3 text-red-500" />
-                            <span className="text-xs text-red-500">Failed</span>
-                            <button
-                              onClick={() => handleRetry(pending.id)}
-                              className="text-xs text-[#005CFF] hover:underline flex items-center gap-1"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Retry
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+                          {pending.status === 'sending' && (
+                            <span className="text-[11px] text-[#9BA3AE]">Sending...</span>
+                          )}
+                          {pending.status === 'failed' && (
+                            <>
+                              <AlertCircle className="w-3 h-3 text-red-500" />
+                              <span className="text-[11px] text-red-500">Failed</span>
+                              <button
+                                onClick={() => handleRetry(pending.id)}
+                                className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
+                              >
+                                <RotateCcw className="w-3 h-3" />
+                                Retry
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -478,38 +442,37 @@ export function MessagePanel({
 
                 const { isFirstInGroup, isLastInGroup, showAvatar } = item;
 
+                // Outgoing message (sender)
                 if (isOwnMessage) {
                   const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
+
+                  // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
+                  const senderRadius = isFirstInGroup && isLastInGroup
+                    ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]'
+                    : isFirstInGroup
+                      ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]'
+                      : isLastInGroup
+                        ? 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]'
+                        : 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]';
 
                   return (
                     <div
                       key={item.id}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        height: virtualRow.size,
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                      className={`flex justify-end px-4 ${isFirstInGroup ? 'pt-2' : 'pt-0.5'} ${isLastInGroup ? 'pb-1' : 'pb-0.5'}`}
+                      className={`flex justify-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                     >
-                      <div className="max-w-[70%]">
-                        <div className={`bg-[#005CFF] px-4 py-2 ${
-                          isFirstInGroup && isLastInGroup ? 'rounded-2xl rounded-tr-md' :
-                          isFirstInGroup ? 'rounded-2xl rounded-tr-md rounded-br-lg' :
-                          isLastInGroup ? 'rounded-2xl rounded-tr-lg rounded-br-md' :
-                          'rounded-2xl rounded-r-lg'
-                        }`}>
-                          <p className="text-white whitespace-pre-wrap break-words">{text}</p>
+                      <div className="max-w-[300px]">
+                        <div className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}>
+                          <p className="text-white text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
                         </div>
                         {isLastInGroup && (
-                          <div className="flex justify-end items-center gap-1.5 mt-0.5">
+                          <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
                             <span className="text-[11px] text-[#9BA3AE]">
                               {formatTime(msg.sentAtNs)}
                             </span>
-                            {isRead && (
+                            {isRead ? (
                               <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                            ) : (
+                              <span className="text-[11px] text-[#9BA3AE]">Sent</span>
                             )}
                           </div>
                         )}
@@ -518,27 +481,28 @@ export function MessagePanel({
                   );
                 }
 
-                // Incoming message
+                // Incoming message (recipient)
                 const senderAddress = conversationType === 'group'
                   ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
                   : peerAddress;
 
+                // Recipient bubble: all corners 16px except bottom-left is 8px (pointing to sender)
+                const recipientRadius = isFirstInGroup && isLastInGroup
+                  ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
+                  : isFirstInGroup
+                    ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
+                    : isLastInGroup
+                      ? 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
+                      : 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]';
+
                 return (
                   <div
                     key={item.id}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      height: virtualRow.size,
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    className={`flex items-end gap-2 px-4 ${isFirstInGroup ? 'pt-2' : 'pt-0.5'} ${isLastInGroup ? 'pb-1' : 'pb-0.5'}`}
+                    className={`flex items-end gap-2 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                   >
-                    {/* Avatar - only show on first message of group, otherwise spacer */}
+                    {/* Avatar - only show on last message of group, otherwise spacer */}
                     <div className="w-8 shrink-0 flex items-end">
-                      {showAvatar && (
+                      {isLastInGroup && (
                         <Avatar
                           address={senderAddress}
                           name={conversationType === 'dm' ? nameOverride : undefined}
@@ -548,21 +512,16 @@ export function MessagePanel({
                         />
                       )}
                     </div>
-                    <div className="max-w-[70%]">
+                    <div className="max-w-[300px]">
                       {/* Sender name - only show on first message of group in group chats */}
                       {conversationType === 'group' && isFirstInGroup && (
                         <GroupMessageSender address={senderAddress} />
                       )}
-                      <div className={`bg-white px-4 py-2 shadow-sm ${
-                        isFirstInGroup && isLastInGroup ? 'rounded-2xl rounded-tl-md' :
-                        isFirstInGroup ? 'rounded-2xl rounded-tl-md rounded-bl-lg' :
-                        isLastInGroup ? 'rounded-2xl rounded-tl-lg rounded-bl-md' :
-                        'rounded-2xl rounded-l-lg'
-                      }`}>
-                        <p className="text-[#181818] whitespace-pre-wrap break-words">{text}</p>
+                      <div className={`bg-white px-3 py-2 ${recipientRadius}`}>
+                        <p className="text-[#181818] text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
                       </div>
                       {isLastInGroup && (
-                        <span className="text-[11px] text-[#9BA3AE] mt-0.5 ml-1 block">
+                        <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1 block">
                           {formatTime(msg.sentAtNs)}
                         </span>
                       )}
