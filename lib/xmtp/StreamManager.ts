@@ -1288,6 +1288,28 @@ class XMTPStreamManager {
   }
 
   /**
+   * Remove a conversation from the list (e.g., after leaving a group)
+   */
+  removeConversation(conversationId: string): void {
+    // Remove from metadata
+    this.conversationMetadata.delete(conversationId);
+
+    // Remove from conversation IDs list
+    const currentIds = store.get(conversationIdsAtom);
+    const newIds = currentIds.filter(id => id !== conversationId);
+    store.set(conversationIdsAtom, newIds);
+
+    // Clear selection if this was selected
+    const selectedId = store.get(selectedConversationIdAtom);
+    if (selectedId === conversationId) {
+      store.set(selectedConversationIdAtom, null);
+    }
+
+    // Trigger UI update
+    this.incrementMetadataVersion();
+  }
+
+  /**
    * Check if manager is initialized
    */
   isInitialized(): boolean {

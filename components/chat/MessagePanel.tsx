@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useAtomValue } from 'jotai';
-import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock } from 'lucide-react';
+import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
@@ -150,6 +150,11 @@ export function MessagePanel({
     messageId: string;
     position: { x: number; y: number };
   } | null>(null);
+
+  // Menu dropdown state
+  const [showMenu, setShowMenu] = useState(false);
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
   const name = conversationType === 'group'
@@ -430,6 +435,41 @@ export function MessagePanel({
     setReactionPicker(null);
   }, [conversationId, reactionPicker]);
 
+  // Close menu when clicking outside
+  useEffect(() => {
+    if (!showMenu) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showMenu]);
+
+  // Handle leave group
+  const handleLeaveGroup = useCallback(async () => {
+    if (!client || !client.inboxId || conversationType !== 'group' || isLeavingGroup) return;
+
+    setIsLeavingGroup(true);
+    setShowMenu(false);
+
+    try {
+      const conversation = await client.conversations.getConversationById(conversationId);
+      if (conversation && 'removeMembers' in conversation) {
+        // Remove self from group using removeMembers with own inboxId
+        const group = conversation as { removeMembers: (ids: string[]) => Promise<void> };
+        await group.removeMembers([client.inboxId]);
+        // Remove from local conversation list
+        streamManager.removeConversation(conversationId);
+      }
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+    } finally {
+      setIsLeavingGroup(false);
+    }
+  }, [client, conversationType, conversationId, isLeavingGroup]);
+
   return (
     <div className="flex-1 flex flex-col bg-white">
       {/* Header */}
@@ -450,14 +490,35 @@ export function MessagePanel({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-1">
-          <button className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-            <Search className="w-5 h-5 text-[#717680]" />
-          </button>
-          <button className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
-            <MoreHorizontal className="w-5 h-5 text-[#717680]" />
-          </button>
-        </div>
+        {/* Menu button - only show for groups */}
+        {conversationType === 'group' && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setShowMenu(!showMenu)}
+              className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              <MoreHorizontal className="w-5 h-5 text-[#717680]" />
+            </button>
+
+            {/* Dropdown menu */}
+            {showMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[160px] z-50">
+                <button
+                  onClick={handleLeaveGroup}
+                  disabled={isLeavingGroup}
+                  className="w-full px-4 py-2.5 text-left text-[15px] text-red-600 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isLeavingGroup ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <LogOut className="w-4 h-4" />
+                  )}
+                  Leave group
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Messages Area */}
