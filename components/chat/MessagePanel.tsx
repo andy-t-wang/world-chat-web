@@ -49,9 +49,6 @@ interface MessagePanelProps {
   memberPreviews?: MemberPreview[];
 }
 
-// Debug render counter
-let messagePanelRenderCount = 0;
-
 export function MessagePanel({
   conversationId,
   conversationType,
@@ -64,8 +61,6 @@ export function MessagePanel({
   memberCount,
   memberPreviews,
 }: MessagePanelProps) {
-  messagePanelRenderCount++;
-  console.log(`[MessagePanel] Render #${messagePanelRenderCount}, id=${conversationId?.slice(0,8)}, type=${conversationType}`);
 
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);

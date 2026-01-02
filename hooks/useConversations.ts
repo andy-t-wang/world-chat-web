@@ -11,9 +11,6 @@ import {
 import { unreadVersionAtom } from '@/stores/messages';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 
-// Debug render counter
-let metadataHookRenderCount = 0;
-
 /**
  * Member preview for group avatars
  */
@@ -83,9 +80,6 @@ export function useConversationMetadata(conversationId: string | null): Conversa
   const conversationIds = useAtomValue(conversationIdsAtom);
   // Subscribe to metadata version to re-render when metadata changes
   const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
-
-  metadataHookRenderCount++;
-  console.log(`[useConversationMetadata] Render #${metadataHookRenderCount}, id=${conversationId?.slice(0,8)}, version=${metadataVersion}`);
 
   // Memoize the result to prevent unnecessary re-renders
   const metadata = useMemo(() => {

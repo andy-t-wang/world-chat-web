@@ -28,6 +28,7 @@ import {
 } from '@/stores';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
+import { showMessageNotification, requestNotificationPermission } from '@/lib/notifications';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -149,6 +150,11 @@ class XMTPStreamManager {
 
     // Load persisted last-read timestamps
     this.loadLastReadTimestamps();
+
+    // Request notification permission (non-blocking)
+    requestNotificationPermission().catch(() => {
+      // Ignore permission errors
+    });
 
     // Phase 1: Load from local cache (instant)
     await this.loadConversationsFromCache();
@@ -916,6 +922,19 @@ class XMTPStreamManager {
               // Trigger unread UI update
               const version = store.get(unreadVersionAtom);
               store.set(unreadVersionAtom, version + 1);
+
+              // Show browser notification
+              const senderName = metadata.conversationType === 'group'
+                ? metadata.groupName || 'Group'
+                : metadata.peerAddress
+                  ? `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`
+                  : 'Someone';
+              showMessageNotification({
+                conversationId,
+                senderName,
+                messagePreview: content || 'New message',
+                avatarUrl: metadata.groupImageUrl,
+              });
             }
 
             // Notify UI of metadata change
