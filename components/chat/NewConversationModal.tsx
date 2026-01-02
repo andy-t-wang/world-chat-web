@@ -1,34 +1,47 @@
-'use client';
+"use client";
 
-import { useState, useCallback } from 'react';
-import { X, Search, Loader2, UserPlus, AlertCircle, CheckCircle } from 'lucide-react';
-import { useAtom } from 'jotai';
-import { Avatar } from '@/components/ui/Avatar';
-import { xmtpClientAtom } from '@/stores/client';
-import { selectedConversationIdAtom } from '@/stores/ui';
-import { searchUsernames } from '@/lib/username/service';
-import { useCanMessage } from '@/hooks/useXmtpClient';
-import { streamManager } from '@/lib/xmtp/StreamManager';
-import type { UsernameRecord } from '@/types/username';
-import type { Identifier } from '@xmtp/browser-sdk';
+import { useState, useCallback, useEffect, useRef } from "react";
+import {
+  X,
+  Search,
+  Loader2,
+  UserPlus,
+  AlertCircle,
+  CheckCircle,
+} from "lucide-react";
+import { useAtom } from "jotai";
+import { Avatar } from "@/components/ui/Avatar";
+import { xmtpClientAtom } from "@/stores/client";
+import { selectedConversationIdAtom } from "@/stores/ui";
+import { searchUsernames } from "@/lib/username/service";
+import { useCanMessage } from "@/hooks/useXmtpClient";
+import { streamManager } from "@/lib/xmtp/StreamManager";
+import type { UsernameRecord } from "@/types/username";
+import type { Identifier } from "@xmtp/browser-sdk";
 
 interface NewConversationModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-export function NewConversationModal({ isOpen, onClose }: NewConversationModalProps) {
+export function NewConversationModal({
+  isOpen,
+  onClose,
+}: NewConversationModalProps) {
   const [client] = useAtom(xmtpClientAtom);
   const [, setSelectedConversationId] = useAtom(selectedConversationIdAtom);
   const { canMessage } = useCanMessage();
 
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UsernameRecord[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string | null>(null);
-  const [canMessageStatus, setCanMessageStatus] = useState<Record<string, boolean | 'checking'>>({});
+  const [canMessageStatus, setCanMessageStatus] = useState<
+    Record<string, boolean | "checking">
+  >({});
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   // Check if input is a valid Ethereum address
   const isValidAddress = (input: string) => /^0x[a-fA-F0-9]{40}$/.test(input);
@@ -49,15 +62,21 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
         setSearchResults([
           {
             address: searchQuery as `0x${string}`,
-            username: '',
+            username: "",
             profile_picture_url: null,
             minimized_profile_picture_url: null,
           },
         ]);
         // Check if this address can receive messages
-        setCanMessageStatus((prev) => ({ ...prev, [searchQuery.toLowerCase()]: 'checking' }));
+        setCanMessageStatus((prev) => ({
+          ...prev,
+          [searchQuery.toLowerCase()]: "checking",
+        }));
         const canReceive = await canMessage(searchQuery);
-        setCanMessageStatus((prev) => ({ ...prev, [searchQuery.toLowerCase()]: canReceive }));
+        setCanMessageStatus((prev) => ({
+          ...prev,
+          [searchQuery.toLowerCase()]: canReceive,
+        }));
       } else {
         // Search by username
         const results = await searchUsernames(searchQuery);
@@ -65,24 +84,56 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
 
         // Check canMessage for all results
         for (const result of results) {
-          setCanMessageStatus((prev) => ({ ...prev, [result.address.toLowerCase()]: 'checking' }));
+          setCanMessageStatus((prev) => ({
+            ...prev,
+            [result.address.toLowerCase()]: "checking",
+          }));
           const canReceive = await canMessage(result.address);
-          setCanMessageStatus((prev) => ({ ...prev, [result.address.toLowerCase()]: canReceive }));
+          setCanMessageStatus((prev) => ({
+            ...prev,
+            [result.address.toLowerCase()]: canReceive,
+          }));
         }
       }
     } catch (err) {
-      console.error('Search error:', err);
-      setError('Failed to search. Please try again.');
+      console.error("Search error:", err);
+      setError("Failed to search. Please try again.");
     } finally {
       setIsSearching(false);
     }
   }, [searchQuery, canMessage]);
 
+  // Debounced auto-search - triggers 250ms after user stops typing
+  useEffect(() => {
+    // Clear previous timeout
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Clear results if query is empty
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setError(null);
+      return;
+    }
+
+    // Set new timeout for search
+    debounceRef.current = setTimeout(() => {
+      handleSearch();
+    }, 250);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchQuery, handleSearch]);
+
   // Create a new DM conversation
   const handleCreateConversation = useCallback(
     async (address: string) => {
       if (!client) {
-        setError('XMTP client not initialized');
+        setError("XMTP client not initialized");
         return;
       }
 
@@ -93,13 +144,15 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
       try {
         const identifier: Identifier = {
           identifier: address.toLowerCase(),
-          identifierKind: 'Ethereum',
+          identifierKind: "Ethereum",
         };
 
         // Create or find existing DM using identifier
-        const conversation = await client.conversations.newDmWithIdentifier(identifier);
+        const conversation = await client.conversations.newDmWithIdentifier(
+          identifier
+        );
 
-        console.log('Created conversation:', {
+        console.log("Created conversation:", {
           id: conversation.id,
           peerInboxId: conversation.peerInboxId,
         });
@@ -113,8 +166,10 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
         // Close the modal
         onClose();
       } catch (err) {
-        console.error('Failed to create conversation:', err);
-        setError(err instanceof Error ? err.message : 'Failed to create conversation');
+        console.error("Failed to create conversation:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to create conversation"
+        );
       } finally {
         setIsCreating(false);
         setSelectedAddress(null);
@@ -125,7 +180,7 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
 
   // Handle key press in search input
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handleSearch();
     }
   };
@@ -141,7 +196,9 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-[#181818]">New Conversation</h2>
+          <h2 className="text-lg font-semibold text-[#181818]">
+            New Conversation
+          </h2>
           <button
             onClick={onClose}
             className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
@@ -162,19 +219,15 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
               placeholder="Search username or enter address (0x...)"
               className="w-full pl-10 pr-4 py-3 bg-[#F5F5F5] rounded-xl text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20"
               autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
             />
             {isSearching && (
               <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#005CFF] animate-spin" />
             )}
           </div>
-
-          <button
-            onClick={handleSearch}
-            disabled={!searchQuery.trim() || isSearching}
-            className="mt-3 w-full py-2.5 bg-[#005CFF] text-white rounded-xl font-medium hover:bg-[#0052E0] disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
-          >
-            Search
-          </button>
         </div>
 
         {/* Error Message */}
@@ -193,24 +246,31 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
                 const addressLower = result.address.toLowerCase();
                 const messageStatus = canMessageStatus[addressLower];
                 const canReceive = messageStatus === true;
-                const isChecking = messageStatus === 'checking';
+                const isChecking = messageStatus === "checking";
                 const isSelected = selectedAddress === result.address;
 
                 return (
                   <button
                     key={result.address}
-                    onClick={() => canReceive && handleCreateConversation(result.address)}
+                    onClick={() =>
+                      canReceive && handleCreateConversation(result.address)
+                    }
                     disabled={!canReceive || isCreating}
                     className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 disabled:hover:bg-white disabled:cursor-not-allowed transition-colors"
                   >
                     <Avatar address={result.address} size="sm" />
                     <div className="flex-1 text-left min-w-0">
                       <p className="font-medium text-[#181818] truncate">
-                        {result.username || `${result.address.slice(0, 6)}...${result.address.slice(-4)}`}
+                        {result.username ||
+                          `${result.address.slice(
+                            0,
+                            6
+                          )}...${result.address.slice(-4)}`}
                       </p>
                       {result.username && (
                         <p className="text-sm text-[#717680] truncate font-mono">
-                          {result.address.slice(0, 6)}...{result.address.slice(-4)}
+                          {result.address.slice(0, 6)}...
+                          {result.address.slice(-4)}
                         </p>
                       )}
                     </div>
@@ -222,7 +282,9 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
                       ) : canReceive ? (
                         <CheckCircle className="w-5 h-5 text-green-500" />
                       ) : messageStatus === false ? (
-                        <span className="text-xs text-[#9BA3AE]">Can't message</span>
+                        <span className="text-xs text-[#9BA3AE]">
+                          Cannot message
+                        </span>
                       ) : null}
                     </div>
                   </button>
@@ -233,7 +295,9 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
             <div className="p-8 text-center">
               <UserPlus className="w-10 h-10 text-[#9BA3AE] mx-auto mb-3" />
               <p className="text-[#717680]">No users found</p>
-              <p className="text-sm text-[#9BA3AE] mt-1">Try a different username or enter an address</p>
+              <p className="text-sm text-[#9BA3AE] mt-1">
+                Try a different username or enter an address
+              </p>
             </div>
           ) : null}
         </div>
@@ -241,7 +305,7 @@ export function NewConversationModal({ isOpen, onClose }: NewConversationModalPr
         {/* Footer hint */}
         <div className="p-4 border-t border-gray-100 bg-gray-50">
           <p className="text-xs text-[#9BA3AE] text-center">
-            Only users with XMTP enabled can receive messages
+            Only DM creation is supported for now.
           </p>
         </div>
       </div>
