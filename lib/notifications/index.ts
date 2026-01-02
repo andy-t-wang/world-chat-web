@@ -110,7 +110,8 @@ export function updateTitleWithUnreadCount(unreadCount: number): void {
 
   if (unreadCount > 0) {
     const displayCount = unreadCount > 99 ? '99+' : unreadCount;
-    document.title = `(${displayCount}) ${originalTitle}`;
+    const messageText = unreadCount === 1 ? 'New Message' : 'New Messages';
+    document.title = `(${displayCount}) ${messageText}`;
   } else {
     document.title = originalTitle;
   }

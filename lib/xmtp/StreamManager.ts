@@ -28,7 +28,7 @@ import {
 } from '@/stores';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
-import { showMessageNotification, requestNotificationPermission } from '@/lib/notifications';
+import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount } from '@/lib/notifications';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -114,7 +114,7 @@ function extractMessageContent(message: { content: unknown; contentType?: { type
 class XMTPStreamManager {
   private client: AnyClient | null = null;
   private conversationStreamController: AbortController | null = null;
-  private messageStreamControllers: Map<string, AbortController> = new Map();
+  private allMessagesStreamController: AbortController | null = null;
 
   // Track what's been loaded to prevent duplicates
   private conversationsLoaded = false;
@@ -128,7 +128,7 @@ class XMTPStreamManager {
 
   // Stream restart attempt counters
   private conversationStreamRestarts = 0;
-  private messageStreamRestarts = new Map<string, number>();
+  private allMessagesStreamRestarts = 0;
 
   // Track when user last read each conversation (for unread counts)
   private lastReadTimestamps = new Map<string, bigint>();
@@ -161,6 +161,7 @@ class XMTPStreamManager {
 
     // Phase 2: Start streams for real-time updates
     this.startConversationStream();
+    this.startAllMessagesStream();
 
     // Phase 3: One-time background sync to catch up
     this.performInitialSync();
@@ -213,11 +214,12 @@ class XMTPStreamManager {
     if (metadata && metadata.unreadCount > 0) {
       metadata.unreadCount = 0;
       // Batch both updates together to prevent multiple re-renders
-      // Use a single microtask to ensure React batches them
       const unreadVersion = store.get(unreadVersionAtom);
       const metadataVersion = store.get(conversationMetadataVersionAtom);
       store.set(unreadVersionAtom, unreadVersion + 1);
       store.set(conversationMetadataVersionAtom, metadataVersion + 1);
+      // Update tab title
+      this.updateTabTitle();
     }
 
     console.log('[StreamManager] Marked conversation as read:', conversationId);
@@ -229,6 +231,28 @@ class XMTPStreamManager {
   getUnreadCount(conversationId: string): number {
     const metadata = this.conversationMetadata.get(conversationId);
     return metadata?.unreadCount ?? 0;
+  }
+
+  /**
+   * Get total unread count across all conversations
+   */
+  getTotalUnreadCount(): number {
+    let total = 0;
+    for (const metadata of this.conversationMetadata.values()) {
+      total += metadata.unreadCount ?? 0;
+    }
+    return total;
+  }
+
+  /**
+   * Update the browser tab title with unread count
+   * Deferred to avoid React lifecycle conflicts
+   */
+  private updateTabTitle(): void {
+    queueMicrotask(() => {
+      const total = this.getTotalUnreadCount();
+      updateTitleWithUnreadCount(total);
+    });
   }
 
   // Track if initial sync has been done
@@ -718,9 +742,6 @@ class XMTPStreamManager {
 
       console.log(`[StreamManager] Loaded ${ids.length} local messages for ${conversationId}`);
 
-      // Start message stream (catches new messages in real-time)
-      this.startMessageStream(conversationId, conv);
-
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
 
@@ -853,41 +874,39 @@ class XMTPStreamManager {
   }
 
   /**
-   * Start streaming messages for a specific conversation
-   * Automatically restarts on crash with exponential backoff
+   * Start streaming messages from ALL conversations
+   * Uses streamAllMessages for efficiency instead of per-conversation streams
    */
-  private startMessageStream(conversationId: string, conv: Conversation): void {
-    // Abort existing stream if any (handles restart case)
-    const existingController = this.messageStreamControllers.get(conversationId);
-    if (existingController) {
-      existingController.abort();
-    }
+  private startAllMessagesStream(): void {
+    if (!this.client) return;
 
-    const controller = new AbortController();
-    this.messageStreamControllers.set(conversationId, controller);
-    const signal = controller.signal;
+    // Abort existing stream if any
+    this.allMessagesStreamController?.abort();
+    this.allMessagesStreamController = new AbortController();
+    const signal = this.allMessagesStreamController.signal;
 
     const stream = async () => {
       try {
-        console.log(`[StreamManager] Starting message stream for ${conversationId}...`);
-        const streamProxy = await conv.stream();
+        console.log('[StreamManager] Starting all messages stream...');
+        const streamProxy = await this.client!.conversations.streamAllMessages({
+          consentStates: [ConsentState.Allowed],
+        });
 
         // Reset restart counter on successful connection
-        this.messageStreamRestarts.set(conversationId, 0);
+        this.allMessagesStreamRestarts = 0;
 
-        for await (const msg of streamProxy as AsyncIterable<{ id: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string } }>) {
+        for await (const msg of streamProxy as AsyncIterable<{ id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string } }>) {
           if (signal.aborted) break;
+
+          const conversationId = msg.conversationId;
 
           // Check if this is a read receipt from the peer
           const typeId = msg.contentType?.typeId;
           if (typeId === CONTENT_TYPE_READ_RECEIPT) {
-            // This is a read receipt - update the timestamp
-            // The sentAtNs of the read receipt indicates when they read our messages
-            // Only process if it's from the peer (not our own read receipt)
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             }
-            continue; // Don't add read receipts to message list
+            continue;
           }
 
           // Skip if we already have this message
@@ -906,12 +925,10 @@ class XMTPStreamManager {
           // Update conversation metadata
           const metadata = this.conversationMetadata.get(conversationId);
           if (metadata) {
-            // Only update preview if message has displayable content
             const content = extractMessageContent(msg);
             if (content) {
               metadata.lastMessagePreview = content;
             }
-            // Always update activity time
             metadata.lastActivityNs = msg.sentAtNs;
 
             // Increment unread count if message is from peer and conversation not selected
@@ -919,7 +936,6 @@ class XMTPStreamManager {
             const selectedId = store.get(selectedConversationIdAtom);
             if (!isOwnMessage && selectedId !== conversationId) {
               metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
-              // Trigger unread UI update
               const version = store.get(unreadVersionAtom);
               store.set(unreadVersionAtom, version + 1);
 
@@ -935,31 +951,30 @@ class XMTPStreamManager {
                 messagePreview: content || 'New message',
                 avatarUrl: metadata.groupImageUrl,
               });
+
+              this.updateTabTitle();
             }
 
-            // Notify UI of metadata change
             this.incrementMetadataVersion();
           }
         }
       } catch (error) {
-        if (signal.aborted) return; // Intentional abort, don't restart
+        if (signal.aborted) return;
 
-        console.error('[StreamManager] Message stream crashed for', conversationId, error);
+        console.error('[StreamManager] All messages stream crashed:', error);
 
-        // Attempt restart if under limit
-        const restarts = this.messageStreamRestarts.get(conversationId) ?? 0;
-        if (restarts < MAX_STREAM_RESTARTS) {
-          this.messageStreamRestarts.set(conversationId, restarts + 1);
-          const delay = STREAM_RESTART_DELAY_MS * (restarts + 1);
-          console.log(`[StreamManager] Restarting message stream for ${conversationId} in ${delay}ms (attempt ${restarts + 1}/${MAX_STREAM_RESTARTS})`);
+        if (this.allMessagesStreamRestarts < MAX_STREAM_RESTARTS) {
+          this.allMessagesStreamRestarts++;
+          const delay = STREAM_RESTART_DELAY_MS * this.allMessagesStreamRestarts;
+          console.log(`[StreamManager] Restarting all messages stream in ${delay}ms (attempt ${this.allMessagesStreamRestarts}/${MAX_STREAM_RESTARTS})`);
 
           setTimeout(() => {
             if (!signal.aborted && this.client) {
-              this.startMessageStream(conversationId, conv);
+              this.startAllMessagesStream();
             }
           }, delay);
         } else {
-          console.error(`[StreamManager] Max message stream restarts reached for ${conversationId}, giving up`);
+          console.error('[StreamManager] Max all messages stream restarts reached, giving up');
         }
       }
     };
@@ -1091,10 +1106,8 @@ class XMTPStreamManager {
     this.conversationStreamController?.abort();
     this.conversationStreamController = null;
 
-    for (const controller of this.messageStreamControllers.values()) {
-      controller.abort();
-    }
-    this.messageStreamControllers.clear();
+    this.allMessagesStreamController?.abort();
+    this.allMessagesStreamController = null;
 
     // Reset state
     this.client = null;
@@ -1106,7 +1119,7 @@ class XMTPStreamManager {
 
     // Reset restart counters
     this.conversationStreamRestarts = 0;
-    this.messageStreamRestarts.clear();
+    this.allMessagesStreamRestarts = 0;
   }
 }
 
