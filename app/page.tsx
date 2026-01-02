@@ -4,14 +4,21 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { ConnectWallet } from '@/components/auth/ConnectWallet';
+import { QRLogin } from '@/components/auth/QRLogin';
+import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
 import { wasConnected } from '@/lib/auth/session';
-import { MessageCircle, Shield, Zap, Loader2 } from 'lucide-react';
+import { MessageCircle, Shield, Zap, Loader2, Smartphone, Wallet } from 'lucide-react';
+
+type LoginMethod = 'wallet' | 'qr';
 
 export default function Home() {
   const router = useRouter();
   const { isConnected, isReconnecting } = useAccount();
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [hadPreviousSession, setHadPreviousSession] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('wallet');
+  const [isQRLoggingIn, setIsQRLoggingIn] = useState(false);
+  const { initializeWithRemoteSigner } = useQRXmtpClient();
 
   // Check for previous session on mount
   useEffect(() => {
@@ -97,9 +104,56 @@ export default function Home() {
             />
           </div>
 
-          {/* Connect Wallet */}
+          {/* Login Method Toggle */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setLoginMethod('wallet')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors ${
+                loginMethod === 'wallet'
+                  ? 'bg-[#005CFF] text-white border-[#005CFF]'
+                  : 'bg-white text-[#717680] border-gray-200 hover:border-[#005CFF]'
+              }`}
+            >
+              <Wallet className="w-5 h-5" />
+              <span className="font-medium">Browser Wallet</span>
+            </button>
+            <button
+              onClick={() => setLoginMethod('qr')}
+              className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors ${
+                loginMethod === 'qr'
+                  ? 'bg-[#005CFF] text-white border-[#005CFF]'
+                  : 'bg-white text-[#717680] border-gray-200 hover:border-[#005CFF]'
+              }`}
+            >
+              <Smartphone className="w-5 h-5" />
+              <span className="font-medium">World App</span>
+            </button>
+          </div>
+
+          {/* Login Content */}
           <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
-            <ConnectWallet onConnect={() => router.push('/chat')} />
+            {loginMethod === 'wallet' ? (
+              <ConnectWallet onConnect={() => router.push('/chat')} />
+            ) : isQRLoggingIn ? (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+                <p className="text-[#717680]">Setting up secure messaging...</p>
+              </div>
+            ) : (
+              <QRLogin
+                onSuccess={async (signer) => {
+                  setIsQRLoggingIn(true);
+                  try {
+                    await initializeWithRemoteSigner(signer);
+                    router.push('/chat');
+                  } catch (error) {
+                    console.error('QR login failed:', error);
+                    setIsQRLoggingIn(false);
+                  }
+                }}
+                onCancel={() => setLoginMethod('wallet')}
+              />
+            )}
           </div>
         </div>
       </main>

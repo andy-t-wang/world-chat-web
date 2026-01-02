@@ -525,6 +525,146 @@ Landing Page (/)
 | `useCanMessage()` | Check if address has XMTP enabled |
 | `useConversations()` | Load and stream conversations |
 | `useConversation(id)` | Get single conversation by ID |
+| `useQRXmtpClient()` | XMTP client with remote signer (QR login) |
+
+---
+
+## QR Login / Signing Relay (World App)
+
+For users with World App wallets (Gnosis Safe), the web client supports QR-based login where signing requests are relayed to the mobile app.
+
+### Architecture
+
+```
+┌─────────────────┐                              ┌─────────────────┐
+│ Desktop Browser │                              │   World App     │
+│                 │      Supabase Realtime       │  (Sign Helper)  │
+│   QR Code ──────┼──────── Channel ─────────────┼──▶ Mini App     │
+│                 │      (session-{id})          │                 │
+│  Remote Signer ◀┼─────── Signatures ───────────┼── MiniKit.sign  │
+└─────────────────┘                              └─────────────────┘
+```
+
+### Flow
+
+```
+Desktop                    Supabase                   World App
+   │                          │                           │
+   │  1. Show QR code         │                           │
+   │  (worldcoin.org/mini-app?app_id=...&path=/sign?session=abc)
+   │                          │                           │
+   │                          │     2. User scans QR      │
+   │                          │◀──────────────────────────│
+   │                          │                           │
+   │                          │     3. Opens /sign page   │
+   │◀───── 4. mobile_connected ───────────────────────────│
+   │                          │                           │
+   │──── 5. XMTP: sign msg ───▶                           │
+   │                          │────── 6. sign_request ───▶│
+   │                          │                           │
+   │                          │  7. MiniKit.signMessage() │
+   │                          │                           │
+   │                          │◀───── 8. signature ───────│
+   │◀─── 9. signature ────────│                           │
+   │                          │                           │
+   │  10. XMTP client ready!  │                           │
+```
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `lib/signing-relay/types.ts` | Type definitions for relay messages |
+| `lib/signing-relay/client.ts` | Supabase client + session ID generation |
+| `lib/signing-relay/remote-signer.ts` | Desktop: XMTP signer that relays to mobile |
+| `lib/signing-relay/mobile-signer.ts` | Mobile: Handles signing requests from desktop |
+| `components/auth/QRLogin.tsx` | QR code login component |
+| `app/sign/page.tsx` | Signing helper page (runs in World App) |
+| `hooks/useQRXmtpClient.ts` | Hook to create XMTP client with remote signer |
+
+### Environment Variables
+
+```bash
+# .env.local
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJI...
+NEXT_PUBLIC_WORLD_MINI_APP_ID=app_your_app_id
+```
+
+### Remote Signer (SCW)
+
+For Smart Contract Wallets (like World App's Safe), the signer includes `getChainId`:
+
+```typescript
+// lib/signing-relay/remote-signer.ts
+getSigner() {
+  return {
+    type: 'SCW' as const,  // Smart Contract Wallet
+    getIdentifier: () => ({
+      identifier: address.toLowerCase(),
+      identifierKind: 'Ethereum' as const,
+    }),
+    signMessage: async (message: string): Promise<Uint8Array> => {
+      const signature = await this.requestSignature(message);
+      return toBytes(signature);
+    },
+    getChainId: () => BigInt(480),  // World Chain mainnet
+  };
+}
+```
+
+### Usage Example
+
+```typescript
+// In login page
+import { QRLogin } from '@/components/auth/QRLogin';
+import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
+
+function LoginPage() {
+  const { initializeWithRemoteSigner } = useQRXmtpClient();
+  const [showQR, setShowQR] = useState(true);
+
+  const handleSuccess = async (signer) => {
+    await initializeWithRemoteSigner(signer);
+    router.push('/chat');
+  };
+
+  return showQR ? (
+    <QRLogin
+      onSuccess={handleSuccess}
+      onCancel={() => setShowQR(false)}
+    />
+  ) : (
+    // Other login options
+  );
+}
+```
+
+### Relay Message Types
+
+```typescript
+type RelayMessage =
+  | { type: 'mobile_connected'; address: string }
+  | { type: 'sign_request'; requestId: string; message: string }
+  | { type: 'sign_response'; requestId: string; signature: string }
+  | { type: 'sign_error'; requestId: string; error: string }
+  | { type: 'session_complete' };
+```
+
+### Setup Steps
+
+1. **Create Supabase Project** (free tier works)
+   - Go to [supabase.com](https://supabase.com)
+   - Copy Project URL and anon key to `.env.local`
+
+2. **Register Mini App in World Developer Portal**
+   - Go to [developer.worldcoin.org](https://developer.worldcoin.org)
+   - Create app, set URL to your deployed app
+   - Add `app_id` to `.env.local`
+
+3. **Deploy signing helper page**
+   - The `/sign` route handles signing requests
+   - Must be accessible from World App
 
 ---
 
@@ -535,11 +675,16 @@ Landing Page (/)
 ├── app/
 │   ├── layout.tsx          # Root layout + JotaiProvider
 │   ├── page.tsx            # Redirects to /chat
-│   └── chat/
-│       ├── layout.tsx      # Full-height flex container
-│       └── page.tsx        # Sidebar + MessagePanel/EmptyState
+│   ├── chat/
+│   │   ├── layout.tsx      # Full-height flex container
+│   │   └── page.tsx        # Sidebar + MessagePanel/EmptyState
+│   └── sign/
+│       └── page.tsx        # Signing helper page for World App QR login
 │
 ├── components/
+│   ├── auth/
+│   │   ├── ConnectWallet.tsx   # Wallet connection UI
+│   │   └── QRLogin.tsx         # QR code login for World App
 │   ├── chat/
 │   │   ├── Sidebar.tsx         # Left panel (search + conversation list)
 │   │   ├── ConversationList.tsx # Virtualized list
@@ -563,6 +708,7 @@ Landing Page (/)
 ├── hooks/
 │   ├── useUsername.ts      # Username lookup hook
 │   ├── useXmtpClient.ts    # XMTP client lifecycle + session caching
+│   ├── useQRXmtpClient.ts  # XMTP client with remote signer (QR login)
 │   ├── useConversations.ts # Conversation list subscription
 │   └── useMessages.ts      # Message loading + streaming
 │
@@ -580,13 +726,14 @@ Landing Page (/)
 │   │   └── session.ts      # wasConnected() utility for cached auth state
 │   ├── xmtp/
 │   │   └── StreamManager.ts # Singleton for XMTP streaming (outside React)
+│   ├── signing-relay/      # QR login signing relay
+│   │   ├── types.ts        # Relay message types
+│   │   ├── client.ts       # Supabase client + session utilities
+│   │   ├── remote-signer.ts # Desktop: XMTP signer relaying to mobile
+│   │   ├── mobile-signer.ts # Mobile: Handles signing requests
+│   │   └── index.ts        # Exports
 │   └── wagmi/
 │       └── config.ts       # Wallet connectors + storage persistence
-│
-├── components/
-│   ├── auth/
-│   │   └── ConnectWallet.tsx   # Wallet connection UI
-│   ├── chat/                   # Chat components (see below)
 │
 ├── config/
 │   └── constants.ts              # App constants ✅
@@ -1404,26 +1551,140 @@ Use natural language prompts like:
 
 ## Security Considerations
 
-### What XMTP Provides (Free)
+### What XMTP Provides
 
-- ✅ End-to-end encryption via MLS
+- ✅ End-to-end encryption via MLS (Message Layer Security)
 - ✅ Forward secrecy with key rotation
 - ✅ Message integrity verification
 - ✅ Sender authentication
+- ✅ Multi-device sync with per-installation keys
 
-### Browser Limitations
+### XMTP Installation Persistence
 
-- ⚠️ XMTP Browser SDK does NOT encrypt local IndexedDB
-- ⚠️ Same-origin policy is primary protection
-- ⚠️ Other JS on same origin could access data
-- ⚠️ No hardware-backed key storage (unlike mobile)
+**Important**: Each browser creates an "installation" (device identity) within the user's inbox. There's a limit on installations per inbox, so we must preserve them.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Browser Storage Model                                           │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  localStorage (7-day session cache)                              │
+│  ├─ Stores: address, inboxId, timestamp                         │
+│  ├─ Purpose: UI optimization (skip loading screen)              │
+│  └─ Security: NOT sensitive - just metadata                     │
+│                                                                  │
+│  IndexedDB / OPFS (XMTP SDK - persistent)                       │
+│  ├─ Stores: Installation keys (MLS identity), messages          │
+│  ├─ Purpose: Actual XMTP installation                           │
+│  ├─ Security: UNENCRYPTED (browser SDK limitation)              │
+│  └─ Must preserve: Clearing creates new installation!           │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Installation is preserved as long as**:
+- IndexedDB is not cleared
+- Same browser is used
+- Not in incognito mode
+
+**Installation is lost when**:
+- User clears browser data
+- User switches browsers
+- IndexedDB is corrupted
+
+### Browser Security Trade-offs
+
+| Aspect | Status | Notes |
+|--------|--------|-------|
+| Message encryption in transit | ✅ Secure | MLS E2EE via XMTP |
+| Message encryption at rest | ⚠️ Not encrypted | Browser SDK limitation |
+| Same-origin protection | ✅ Protected | Primary browser security model |
+| Cross-origin access | ✅ Protected | Browser enforces isolation |
+| Malicious extensions | ⚠️ Risk | Extensions with storage permissions can read |
+| Physical device access | ⚠️ Risk | Unlocked browser exposes all data |
+
+**Accepted trade-off**: We accept unencrypted IndexedDB storage because:
+1. XMTP Browser SDK does not support `dbEncryptionKey`
+2. Same-origin policy provides reasonable protection
+3. This matches how WhatsApp Web and similar apps operate
+4. Adding custom encryption would break XMTP's internal storage model
+
+### Security Audit Findings (January 2026)
+
+#### Critical - Must Fix Before Production
+
+| ID | Issue | Status | Remediation |
+|----|-------|--------|-------------|
+| SEC-001 | **Unauthenticated signing relay** - Anyone with session ID can hijack QR login | 🔴 Open | Add challenge-response auth |
+| SEC-005 | **Mobile address spoofing** - No proof of wallet ownership on connect | 🔴 Open | Require signed proof |
+
+#### Medium - Should Fix
+
+| ID | Issue | Status | Remediation |
+|----|-------|--------|-------------|
+| SEC-004 | No replay protection in signing relay | 🟡 Open | Add timestamps/nonces |
+| SEC-009 | Dev placeholder in /sign page | 🟡 Open | Remove or gate behind NODE_ENV |
+
+#### Accepted/Not Applicable
+
+| ID | Issue | Status | Notes |
+|----|-------|--------|-------|
+| SEC-003 | localStorage session cache | ✅ Accepted | Just UI metadata, not sensitive |
+| SEC-006 | 7-day session TTL | ✅ Accepted | Needed to preserve installations |
+| SEC-012 | Unencrypted IndexedDB | ✅ Accepted | Browser SDK limitation, documented |
+
+### QR Login Signing Relay - Security Requirements
+
+The signing relay (`lib/signing-relay/`) requires these security improvements:
+
+```typescript
+// REQUIRED: Challenge-response authentication
+// remote-signer.ts - Add after mobile connects
+
+private async authenticateMobile(claimedAddress: string): Promise<boolean> {
+  // 1. Generate random challenge
+  const challenge = `worldchat:auth:${crypto.randomUUID()}:${Date.now()}`;
+
+  // 2. Send challenge to mobile
+  await this.channel.send({
+    type: 'broadcast',
+    event: 'relay',
+    payload: { type: 'auth_challenge', challenge }
+  });
+
+  // 3. Wait for signed response
+  const response = await this.waitForAuthResponse(30000);
+
+  // 4. Verify signature matches claimed address
+  const recoveredAddress = recoverAddress(challenge, response.signature);
+  return recoveredAddress.toLowerCase() === claimedAddress.toLowerCase();
+}
+```
+
+```typescript
+// REQUIRED: Update mobile_connected handler
+// remote-signer.ts
+
+case 'mobile_connected':
+  // Don't trust address until verified!
+  const verified = await this.authenticateMobile(message.address);
+  if (!verified) {
+    this.callbacks.onError?.(new Error('Address verification failed'));
+    this.cleanup();
+    return;
+  }
+  this.mobileAddress = message.address;
+  this.callbacks.onMobileConnected?.(message.address);
+  break;
+```
 
 ### Recommendations
 
-1. **For most apps**: Trust XMTP + browser same-origin policy
-2. **For sensitive apps**: Add the optional encryption layer
-3. **Always recommend**: Users enable OS disk encryption
-4. **Never store**: Wallet private keys (use external signers)
+1. **For users**: Don't install untrusted browser extensions
+2. **For users**: Enable OS-level disk encryption
+3. **For users**: Don't clear browser data if you want to preserve your installation
+4. **For developers**: Implement SEC-001 and SEC-005 before production
+5. **For developers**: Never store wallet private keys (use external signers)
 
 ---
 
