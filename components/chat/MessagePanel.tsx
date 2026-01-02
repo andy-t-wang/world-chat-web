@@ -10,6 +10,7 @@ import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
 import { VIRTUALIZATION } from '@/config/constants';
+import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PendingMessage } from '@/types/messages';
 
@@ -129,6 +130,17 @@ export function MessagePanel({
     }
   }, [displayItems.length]);
 
+  // Send read receipt when conversation is opened/viewed
+  useEffect(() => {
+    if (conversationId && messageIds.length > 0) {
+      // Small delay to ensure messages are loaded
+      const timer = setTimeout(() => {
+        streamManager.sendReadReceipt(conversationId);
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [conversationId, messageIds.length > 0]);
+
   // Load more when scrolling to top
   const handleScroll = useCallback(() => {
     if (!parentRef.current) return;
@@ -171,10 +183,10 @@ export function MessagePanel({
     }
   };
 
-  // Format timestamp
+  // Format timestamp using user's locale (12h vs 24h based on locale)
   const formatTime = (ns: bigint): string => {
     const date = new Date(Number(ns / BigInt(1_000_000)));
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   };
 
   // Check if message should be displayed (filter out read receipts, etc.)

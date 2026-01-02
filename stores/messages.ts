@@ -28,6 +28,18 @@ export const allConversationPaginationAtom = atom<Map<string, PaginationState>>(
 export const allPendingMessagesAtom = atom<Map<string, PendingMessage[]>>(new Map());
 
 /**
+ * Read receipt timestamps per conversation
+ * Map from conversationId -> timestamp (bigint ns) when peer last read our messages
+ * A message is "read" if its sentAtNs <= this timestamp
+ */
+export const readReceiptsAtom = atom<Map<string, bigint>>(new Map());
+
+/**
+ * Version counter to trigger re-renders when read receipts change
+ */
+export const readReceiptVersionAtom = atom<number>(0);
+
+/**
  * Helper function to get message IDs for a conversation
  */
 export function getMessageIds(messageIdsMap: Map<string, string[]>, conversationId: string): string[] {

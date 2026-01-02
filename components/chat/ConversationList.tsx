@@ -26,7 +26,7 @@ export function ConversationList({
   // Use conversations hook - it handles all loading and provides metadata
   const { conversationIds, metadata, isLoading } = useConversations();
 
-  // Format timestamp for display
+  // Format timestamp for display using user's locale
   const formatTimestamp = (ns: bigint): string => {
     if (ns === BigInt(0)) return '';
     const date = new Date(Number(ns / BigInt(1_000_000)));
@@ -34,7 +34,8 @@ export function ConversationList({
     const isToday = date.toDateString() === now.toDateString();
 
     if (isToday) {
-      return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+      // Use user's locale for time format (12h vs 24h based on locale)
+      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
     }
 
     const yesterday = new Date(now);
@@ -43,7 +44,8 @@ export function ConversationList({
       return 'Yesterday';
     }
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Use user's locale for date format
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
   };
 
   // Build conversation props from data

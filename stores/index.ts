@@ -41,6 +41,9 @@ export {
   getMessageIds,
   getPagination,
   getPendingMessages,
+  // Read receipt tracking
+  readReceiptsAtom,
+  readReceiptVersionAtom,
 } from './messages';
 
 // Conversation state

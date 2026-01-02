@@ -10,6 +10,7 @@
 
 import type { Dm, Group } from '@xmtp/browser-sdk';
 import { SortDirection, ConsentState } from '@xmtp/browser-sdk';
+import { ContentTypeReadReceipt } from '@xmtp/content-type-read-receipt';
 import type { AnyClient } from '@/types/xmtp';
 import {
   store,
@@ -20,6 +21,8 @@ import {
   allConversationMessageIdsAtom,
   allConversationPaginationAtom,
   messageCache,
+  readReceiptsAtom,
+  readReceiptVersionAtom,
 } from '@/stores';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
@@ -63,6 +66,10 @@ const CONTENT_TYPE_REPLY = 'reply';
 const INITIAL_MESSAGE_LIMIT = 20;  // Fast initial load
 const LOAD_MORE_LIMIT = 50;        // Larger batch when scrolling
 const PREVIEW_SEARCH_LIMIT = 10;   // Messages to search for displayable preview
+
+// Stream restart configuration
+const STREAM_RESTART_DELAY_MS = 2000;  // Wait before restarting crashed stream
+const MAX_STREAM_RESTARTS = 5;          // Max restart attempts before giving up
 
 // Check if a message is a special type that shouldn't be displayed as text
 function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
@@ -111,8 +118,18 @@ class XMTPStreamManager {
   // Store conversation instances for reuse
   private conversations = new Map<string, Conversation>();
 
+  // Stream restart attempt counters
+  private conversationStreamRestarts = 0;
+  private messageStreamRestarts = new Map<string, number>();
+
   /**
    * Initialize the manager with an XMTP client
+   *
+   * Strategy:
+   * 1. Load local data immediately (fast)
+   * 2. Start streams for real-time updates
+   * 3. Do ONE background sync to catch up
+   * 4. Never sync again - rely on streams
    */
   async initialize(client: AnyClient): Promise<void> {
     // Clean up any existing state
@@ -120,20 +137,23 @@ class XMTPStreamManager {
 
     this.client = client;
 
-    // Load conversations and start streaming
-    await this.loadConversations();
+    // Phase 1: Load from local cache (instant)
+    await this.loadConversationsFromCache();
+
+    // Phase 2: Start streams for real-time updates
     this.startConversationStream();
+
+    // Phase 3: One-time background sync to catch up
+    this.performInitialSync();
   }
 
+  // Track if initial sync has been done
+  private initialSyncDone = false;
+
   /**
-   * Load all conversations from XMTP
-   *
-   * Strategy: Show UI fast with local data, sync in background
-   * 1. List from local cache (instant)
-   * 2. Show UI
-   * 3. Background sync updates metadata
+   * Load conversations from local cache (no network)
    */
-  private async loadConversations(): Promise<void> {
+  private async loadConversationsFromCache(): Promise<void> {
     if (!this.client || this.conversationsLoaded) return;
 
     this.conversationsLoaded = true;
@@ -141,8 +161,7 @@ class XMTPStreamManager {
     store.set(conversationsErrorAtom, null);
 
     try {
-      // PHASE 1: Load from local cache FIRST (no network, instant)
-      // This shows stale data but gives instant UI
+      // Load from local cache only (no network, instant)
       const localConversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed],
       });
@@ -153,7 +172,7 @@ class XMTPStreamManager {
         this.conversations.set(conv.id, conv);
         ids.push(conv.id);
 
-        // Build metadata from LOCAL cache only (no sync)
+        // Build metadata from local cache only
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
       }
@@ -172,10 +191,6 @@ class XMTPStreamManager {
 
       console.log(`[StreamManager] Loaded ${ids.length} conversations from local cache`);
 
-      // PHASE 2: Background sync (non-blocking)
-      // This fetches new data from network and updates UI
-      this.backgroundSync();
-
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
@@ -184,14 +199,16 @@ class XMTPStreamManager {
   }
 
   /**
-   * Background sync - runs after UI is shown
-   * Syncs conversations from network and updates metadata
+   * One-time initial sync - runs once after app load
+   * After this, we rely entirely on streams for updates
    */
-  private async backgroundSync(): Promise<void> {
-    if (!this.client) return;
+  private async performInitialSync(): Promise<void> {
+    if (!this.client || this.initialSyncDone) return;
+
+    this.initialSyncDone = true;
 
     try {
-      console.log('[StreamManager] Starting background sync...');
+      console.log('[StreamManager] Performing one-time initial sync...');
       const startTime = Date.now();
 
       // Sync all allowed conversations from network
@@ -211,11 +228,11 @@ class XMTPStreamManager {
         this.conversations.set(conv.id, conv);
 
         if (isNew) {
-          newIds.unshift(conv.id); // Prepend new conversations
+          newIds.unshift(conv.id);
           newCount++;
         }
 
-        // Rebuild metadata with synced data (but still don't sync individual convs)
+        // Rebuild metadata with synced data
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
       }
@@ -232,11 +249,12 @@ class XMTPStreamManager {
       this.incrementMetadataVersion();
 
       const duration = Date.now() - startTime;
-      console.log(`[StreamManager] Background sync complete in ${duration}ms, ${newCount} new conversations`);
+      console.log(`[StreamManager] Initial sync complete in ${duration}ms, ${newCount} new conversations`);
+      console.log('[StreamManager] Now relying on streams for updates');
 
     } catch (error) {
-      console.error('[StreamManager] Background sync error:', error);
-      // Don't set error state - UI is already showing, this is just a refresh
+      console.error('[StreamManager] Initial sync error:', error);
+      // Don't fail - local data is showing, streams will catch new updates
     }
   }
 
@@ -346,16 +364,23 @@ class XMTPStreamManager {
 
   /**
    * Start streaming new conversations (only allowed ones)
+   * Automatically restarts on crash with exponential backoff
    */
   private startConversationStream(): void {
     if (!this.client) return;
 
+    // Abort existing stream if any
+    this.conversationStreamController?.abort();
     this.conversationStreamController = new AbortController();
     const signal = this.conversationStreamController.signal;
 
     const stream = async () => {
       try {
+        console.log('[StreamManager] Starting conversation stream...');
         const streamProxy = await this.client!.conversations.stream();
+
+        // Reset restart counter on successful connection
+        this.conversationStreamRestarts = 0;
 
         for await (const conv of streamProxy as AsyncIterable<Conversation>) {
           if (signal.aborted) break;
@@ -381,8 +406,23 @@ class XMTPStreamManager {
           }
         }
       } catch (error) {
-        if (!signal.aborted) {
-          console.error('[StreamManager] Conversation stream error:', error);
+        if (signal.aborted) return; // Intentional abort, don't restart
+
+        console.error('[StreamManager] Conversation stream crashed:', error);
+
+        // Attempt restart if under limit
+        if (this.conversationStreamRestarts < MAX_STREAM_RESTARTS) {
+          this.conversationStreamRestarts++;
+          const delay = STREAM_RESTART_DELAY_MS * this.conversationStreamRestarts;
+          console.log(`[StreamManager] Restarting conversation stream in ${delay}ms (attempt ${this.conversationStreamRestarts}/${MAX_STREAM_RESTARTS})`);
+
+          setTimeout(() => {
+            if (!signal.aborted && this.client) {
+              this.startConversationStream();
+            }
+          }, delay);
+        } else {
+          console.error('[StreamManager] Max conversation stream restarts reached, giving up');
         }
       }
     };
@@ -468,18 +508,13 @@ class XMTPStreamManager {
 
   /**
    * Load messages for a conversation (called when user opens a conversation)
+   *
+   * Strategy: Show local messages instantly, sync in background
    */
   async loadMessagesForConversation(conversationId: string): Promise<void> {
     if (!this.client || this.loadedMessageConversations.has(conversationId)) return;
 
     this.loadedMessageConversations.add(conversationId);
-
-    // Update pagination to loading
-    this.setPagination(conversationId, {
-      hasMore: true,
-      oldestMessageNs: null,
-      isLoading: true,
-    });
 
     try {
       const conv = this.conversations.get(conversationId)
@@ -490,32 +525,41 @@ class XMTPStreamManager {
         return;
       }
 
-      // Sync and load messages (descending = newest first for initial load)
-      // Only load 20 initially for performance - more loaded on scroll
-      await conv.sync();
-      const messages = await conv.messages({
+      // PHASE 1: Load from local cache FIRST (no network, instant)
+      const localMessages = await conv.messages({
         limit: BigInt(INITIAL_MESSAGE_LIMIT),
         direction: SortDirection.Descending,
       });
 
-      // Store messages - keep in descending order (newest first) for display
+      // Store and display local messages immediately
+      // Also process read receipts from the peer
       const ids: string[] = [];
-      for (const msg of messages) {
+      for (const msg of localMessages) {
+        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+        // Process read receipts from the peer
+        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (msg.senderInboxId !== this.client?.inboxId) {
+            this.updateReadReceipt(conversationId, msg.sentAtNs);
+          }
+          continue; // Don't add to message list
+        }
+
         messageCache.set(msg.id, msg as unknown as DecodedMessage);
         ids.push(msg.id);
       }
 
       this.setMessageIds(conversationId, ids);
       this.setPagination(conversationId, {
-        hasMore: messages.length === INITIAL_MESSAGE_LIMIT,
-        // Track oldest message for pagination (last item in descending order)
-        oldestMessageNs: messages.length > 0 ? messages[messages.length - 1].sentAtNs : null,
+        hasMore: localMessages.length === INITIAL_MESSAGE_LIMIT,
+        oldestMessageNs: localMessages.length > 0 ? localMessages[localMessages.length - 1].sentAtNs : null,
         isLoading: false,
       });
 
-      console.log(`[StreamManager] Loaded ${messages.length} messages for ${conversationId}`);
+      console.log(`[StreamManager] Loaded ${localMessages.length} local messages for ${conversationId}`);
 
-      // Start message stream for this conversation
+      // Start message stream (catches new messages in real-time)
+      // We rely on streams now - no background sync needed
       this.startMessageStream(conversationId, conv);
     } catch (error) {
       console.error('[StreamManager] Failed to load messages:', error);
@@ -580,10 +624,14 @@ class XMTPStreamManager {
 
   /**
    * Start streaming messages for a specific conversation
+   * Automatically restarts on crash with exponential backoff
    */
   private startMessageStream(conversationId: string, conv: Conversation): void {
-    // Don't create duplicate streams
-    if (this.messageStreamControllers.has(conversationId)) return;
+    // Abort existing stream if any (handles restart case)
+    const existingController = this.messageStreamControllers.get(conversationId);
+    if (existingController) {
+      existingController.abort();
+    }
 
     const controller = new AbortController();
     this.messageStreamControllers.set(conversationId, controller);
@@ -591,10 +639,26 @@ class XMTPStreamManager {
 
     const stream = async () => {
       try {
+        console.log(`[StreamManager] Starting message stream for ${conversationId}...`);
         const streamProxy = await conv.stream();
 
-        for await (const msg of streamProxy as AsyncIterable<{ id: string; content: unknown; sentAtNs: bigint; senderInboxId: string }>) {
+        // Reset restart counter on successful connection
+        this.messageStreamRestarts.set(conversationId, 0);
+
+        for await (const msg of streamProxy as AsyncIterable<{ id: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string } }>) {
           if (signal.aborted) break;
+
+          // Check if this is a read receipt from the peer
+          const typeId = msg.contentType?.typeId;
+          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+            // This is a read receipt - update the timestamp
+            // The sentAtNs of the read receipt indicates when they read our messages
+            // Only process if it's from the peer (not our own read receipt)
+            if (msg.senderInboxId !== this.client?.inboxId) {
+              this.updateReadReceipt(conversationId, msg.sentAtNs);
+            }
+            continue; // Don't add read receipts to message list
+          }
 
           // Skip if we already have this message
           if (messageCache.has(msg.id)) continue;
@@ -624,8 +688,24 @@ class XMTPStreamManager {
           }
         }
       } catch (error) {
-        if (!signal.aborted) {
-          console.error('[StreamManager] Message stream error for', conversationId, error);
+        if (signal.aborted) return; // Intentional abort, don't restart
+
+        console.error('[StreamManager] Message stream crashed for', conversationId, error);
+
+        // Attempt restart if under limit
+        const restarts = this.messageStreamRestarts.get(conversationId) ?? 0;
+        if (restarts < MAX_STREAM_RESTARTS) {
+          this.messageStreamRestarts.set(conversationId, restarts + 1);
+          const delay = STREAM_RESTART_DELAY_MS * (restarts + 1);
+          console.log(`[StreamManager] Restarting message stream for ${conversationId} in ${delay}ms (attempt ${restarts + 1}/${MAX_STREAM_RESTARTS})`);
+
+          setTimeout(() => {
+            if (!signal.aborted && this.client) {
+              this.startMessageStream(conversationId, conv);
+            }
+          }, delay);
+        } else {
+          console.error(`[StreamManager] Max message stream restarts reached for ${conversationId}, giving up`);
         }
       }
     };
@@ -655,6 +735,65 @@ class XMTPStreamManager {
       console.error('[StreamManager] Failed to send message:', error);
       throw error;
     }
+  }
+
+  /**
+   * Send a read receipt for a conversation
+   * Call this when the user views/opens a conversation
+   */
+  async sendReadReceipt(conversationId: string): Promise<void> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv) return;
+
+    try {
+      // Send empty object with read receipt content type
+      await conv.send({}, ContentTypeReadReceipt);
+      console.log('[StreamManager] Sent read receipt for', conversationId);
+    } catch (error) {
+      // Don't throw - read receipts are not critical
+      console.error('[StreamManager] Failed to send read receipt:', error);
+    }
+  }
+
+  /**
+   * Update the read receipt timestamp for a conversation
+   * Called when we receive a read receipt from the peer
+   */
+  private updateReadReceipt(conversationId: string, timestampNs: bigint): void {
+    const current = store.get(readReceiptsAtom);
+    const existingTs = current.get(conversationId);
+
+    // Only update if this is a newer timestamp
+    if (!existingTs || timestampNs > existingTs) {
+      const newMap = new Map(current);
+      newMap.set(conversationId, timestampNs);
+      store.set(readReceiptsAtom, newMap);
+
+      // Increment version to trigger UI re-renders
+      const version = store.get(readReceiptVersionAtom);
+      store.set(readReceiptVersionAtom, version + 1);
+
+      console.log('[StreamManager] Updated read receipt for', conversationId, 'at', timestampNs);
+    }
+  }
+
+  /**
+   * Check if a message was read by the peer
+   * A message is considered "read" if it was sent before the peer's last read receipt
+   */
+  isMessageRead(conversationId: string, messageSentAtNs: bigint): boolean {
+    const receipts = store.get(readReceiptsAtom);
+    const lastReadTs = receipts.get(conversationId);
+    if (!lastReadTs) return false;
+    return messageSentAtNs <= lastReadTs;
+  }
+
+  /**
+   * Get the read receipt timestamp for a conversation
+   */
+  getReadReceiptTimestamp(conversationId: string): bigint | undefined {
+    const receipts = store.get(readReceiptsAtom);
+    return receipts.get(conversationId);
   }
 
   /**
@@ -696,9 +835,14 @@ class XMTPStreamManager {
     // Reset state
     this.client = null;
     this.conversationsLoaded = false;
+    this.initialSyncDone = false;
     this.loadedMessageConversations.clear();
     this.conversationMetadata.clear();
     this.conversations.clear();
+
+    // Reset restart counters
+    this.conversationStreamRestarts = 0;
+    this.messageStreamRestarts.clear();
   }
 }
 
