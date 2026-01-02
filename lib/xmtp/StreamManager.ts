@@ -248,6 +248,10 @@ class XMTPStreamManager {
       store.set(conversationIdsAtom, newIds);
       this.incrementMetadataVersion();
 
+      // IMPORTANT: Refresh messages for any conversations that were already loaded
+      // Sync may have brought in messages that weren't in local cache
+      await this.refreshLoadedConversations();
+
       const duration = Date.now() - startTime;
       console.log(`[StreamManager] Initial sync complete in ${duration}ms, ${newCount} new conversations`);
       console.log('[StreamManager] Now relying on streams for updates');
@@ -255,6 +259,72 @@ class XMTPStreamManager {
     } catch (error) {
       console.error('[StreamManager] Initial sync error:', error);
       // Don't fail - local data is showing, streams will catch new updates
+    }
+  }
+
+  /**
+   * Refresh messages for conversations that were already loaded
+   * Called after sync to pick up any messages that were synced
+   */
+  private async refreshLoadedConversations(): Promise<void> {
+    if (!this.client) return;
+
+    const loadedIds = Array.from(this.loadedMessageConversations);
+    if (loadedIds.length === 0) return;
+
+    console.log(`[StreamManager] Refreshing ${loadedIds.length} loaded conversations after sync`);
+
+    for (const conversationId of loadedIds) {
+      try {
+        const conv = this.conversations.get(conversationId);
+        if (!conv) continue;
+
+        // Fetch messages from local DB (sync already populated it)
+        const messages = await conv.messages({
+          limit: BigInt(INITIAL_MESSAGE_LIMIT),
+          direction: SortDirection.Descending,
+        });
+
+        // Find messages we don't have yet
+        const currentIds = this.getMessageIds(conversationId);
+        const currentIdSet = new Set(currentIds);
+        const newMessageIds: string[] = [];
+
+        for (const msg of messages) {
+          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+          // Skip read receipts
+          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+            if (msg.senderInboxId !== this.client?.inboxId) {
+              this.updateReadReceipt(conversationId, msg.sentAtNs);
+            }
+            continue;
+          }
+
+          if (!currentIdSet.has(msg.id)) {
+            messageCache.set(msg.id, msg as unknown as DecodedMessage);
+            newMessageIds.push(msg.id);
+          }
+        }
+
+        if (newMessageIds.length > 0) {
+          // Merge new messages with existing (maintain order)
+          const allIds = [...newMessageIds, ...currentIds];
+          // Sort by sentAtNs descending (newest first)
+          allIds.sort((a, b) => {
+            const msgA = messageCache.get(a);
+            const msgB = messageCache.get(b);
+            if (!msgA || !msgB) return 0;
+            return Number(msgB.sentAtNs - msgA.sentAtNs);
+          });
+          // Remove duplicates
+          const uniqueIds = [...new Set(allIds)];
+          this.setMessageIds(conversationId, uniqueIds);
+          console.log(`[StreamManager] Added ${newMessageIds.length} synced messages to ${conversationId}`);
+        }
+      } catch (error) {
+        console.error(`[StreamManager] Failed to refresh conversation ${conversationId}:`, error);
+      }
     }
   }
 
@@ -556,11 +626,17 @@ class XMTPStreamManager {
         isLoading: false,
       });
 
-      console.log(`[StreamManager] Loaded ${localMessages.length} local messages for ${conversationId}`);
+      console.log(`[StreamManager] Loaded ${ids.length} local messages for ${conversationId}`);
 
       // Start message stream (catches new messages in real-time)
-      // We rely on streams now - no background sync needed
       this.startMessageStream(conversationId, conv);
+
+      // Store conversation for later use
+      this.conversations.set(conversationId, conv);
+
+      // PHASE 2: Background sync to fetch any missing messages
+      // This is non-blocking - UI shows local content immediately
+      this.syncConversationInBackground(conversationId, conv);
     } catch (error) {
       console.error('[StreamManager] Failed to load messages:', error);
       this.setPagination(conversationId, {
@@ -568,6 +644,70 @@ class XMTPStreamManager {
         oldestMessageNs: null,
         isLoading: false,
       });
+    }
+  }
+
+  /**
+   * Sync a conversation in the background and refresh its messages
+   * Called after showing local content to fetch any missing messages
+   */
+  private async syncConversationInBackground(conversationId: string, conv: Conversation): Promise<void> {
+    try {
+      console.log(`[StreamManager] Background syncing conversation ${conversationId}...`);
+      const startTime = Date.now();
+
+      // Sync this conversation to fetch messages from network
+      await conv.sync();
+
+      // Fetch messages again from local DB (now includes synced messages)
+      const messages = await conv.messages({
+        limit: BigInt(INITIAL_MESSAGE_LIMIT),
+        direction: SortDirection.Descending,
+      });
+
+      // Find messages we don't have yet
+      const currentIds = this.getMessageIds(conversationId);
+      const currentIdSet = new Set(currentIds);
+      const newMessageIds: string[] = [];
+
+      for (const msg of messages) {
+        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+        // Skip read receipts
+        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (msg.senderInboxId !== this.client?.inboxId) {
+            this.updateReadReceipt(conversationId, msg.sentAtNs);
+          }
+          continue;
+        }
+
+        if (!currentIdSet.has(msg.id)) {
+          messageCache.set(msg.id, msg as unknown as DecodedMessage);
+          newMessageIds.push(msg.id);
+        }
+      }
+
+      if (newMessageIds.length > 0) {
+        // Merge new messages with existing (maintain order)
+        const allIds = [...newMessageIds, ...currentIds];
+        // Sort by sentAtNs descending (newest first)
+        allIds.sort((a, b) => {
+          const msgA = messageCache.get(a);
+          const msgB = messageCache.get(b);
+          if (!msgA || !msgB) return 0;
+          return Number(msgB.sentAtNs - msgA.sentAtNs);
+        });
+        // Remove duplicates
+        const uniqueIds = [...new Set(allIds)];
+        this.setMessageIds(conversationId, uniqueIds);
+        console.log(`[StreamManager] Added ${newMessageIds.length} synced messages to ${conversationId}`);
+      }
+
+      const duration = Date.now() - startTime;
+      console.log(`[StreamManager] Background sync complete for ${conversationId} in ${duration}ms`);
+    } catch (error) {
+      console.error(`[StreamManager] Background sync error for ${conversationId}:`, error);
+      // Don't fail - local messages are already showing, stream will catch new ones
     }
   }
 
@@ -740,12 +880,22 @@ class XMTPStreamManager {
   /**
    * Send a read receipt for a conversation
    * Call this when the user views/opens a conversation
+   * Note: Skips groups with more than 5 members to reduce noise
    */
   async sendReadReceipt(conversationId: string): Promise<void> {
     const conv = this.conversations.get(conversationId);
     if (!conv) return;
 
     try {
+      // For groups, skip if more than 5 members to reduce noise
+      if (!isDm(conv)) {
+        const members = await conv.members();
+        if (members.length > 5) {
+          console.log('[StreamManager] Skipping read receipt for large group:', conversationId);
+          return;
+        }
+      }
+
       // Send empty object with read receipt content type
       await conv.send({}, ContentTypeReadReceipt);
       console.log('[StreamManager] Sent read receipt for', conversationId);

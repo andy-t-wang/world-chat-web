@@ -147,11 +147,29 @@ XMTP docs: https://github.com/xmtp/docs-xmtp-org/blob/main/llms/llms-chat-apps.t
 ### StreamManager Singleton
 
 `lib/xmtp/StreamManager.ts` manages XMTP streaming **outside React lifecycle**:
+
+**Sync-Once + Streams Strategy:**
+```
+App Load:
+1. Load from local cache (instant, no network)
+2. Start streams for real-time updates
+3. ONE background sync to catch up
+4. Never sync again - rely on streams
+
+On conversation open:
+1. Load local messages (instant)
+2. Start message stream (real-time)
+3. NO sync - streams handle everything
+```
+
+**Key Features:**
 - Loads conversations on init (with consent filtering)
 - Streams new conversations and messages
+- Stream restart on crash (up to 5 attempts with exponential backoff)
 - Manages conversation metadata (preview, timestamp)
 - Uses shared Jotai store (`stores/index.ts`)
 - Batches updates via `queueMicrotask()`
+- Tracks read receipts per conversation
 
 ---
 
@@ -291,3 +309,6 @@ lib/
 5. **Consent filtering** - Only sync/list `Allowed` conversations
 6. **Use `insertedAtNs`** - Stable pagination ordering
 7. **Filter content types** - Hide read receipts, reactions from display
+8. **Sync-once + streams** - Sync once on load, then rely entirely on streams
+9. **Stream restart** - Auto-restart crashed streams with exponential backoff
+10. **Read receipts** - Send when viewing (DMs and groups ≤5 members), show "Read" on sent messages

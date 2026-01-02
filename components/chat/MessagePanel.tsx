@@ -9,6 +9,7 @@ import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
+import { readReceiptVersionAtom } from '@/stores/messages';
 import { VIRTUALIZATION } from '@/config/constants';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
@@ -81,6 +82,9 @@ export function MessagePanel({
     : undefined;
 
   const client = useAtomValue(xmtpClientAtom);
+
+  // Subscribe to read receipt updates to trigger re-renders
+  const _readReceiptVersion = useAtomValue(readReceiptVersionAtom);
 
   // Use messages hook
   const {
@@ -368,6 +372,9 @@ export function MessagePanel({
               if (text === null) return null;
 
               if (isOwnMessage) {
+                // Check if message was read by peer
+                const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
+
                 return (
                   <div
                     key={item.id}
@@ -384,10 +391,15 @@ export function MessagePanel({
                       <div className="bg-[#005CFF] rounded-2xl rounded-tr-md px-4 py-2">
                         <p className="text-white whitespace-pre-wrap break-words">{text}</p>
                       </div>
-                      <div className="flex justify-end">
-                        <span className="text-xs text-[#9BA3AE] mt-1 mr-2">
+                      <div className="flex justify-end items-center gap-1.5">
+                        <span className="text-xs text-[#9BA3AE] mt-1">
                           {formatTime(msg.sentAtNs)}
                         </span>
+                        {isRead && (
+                          <span className="text-xs text-[#00C230] mt-1 font-medium">
+                            Read
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
