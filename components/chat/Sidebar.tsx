@@ -47,7 +47,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
 
       {/* Conversation List */}
       <div className="flex-1 overflow-hidden">
-        <ConversationList requestCount={2} />
+        <ConversationList />
       </div>
     </aside>
   );
