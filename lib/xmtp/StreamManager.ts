@@ -95,7 +95,38 @@ function extractMessageContent(message: { content: unknown; contentType?: { type
     return '';
   }
 
+  const typeId = message.contentType?.typeId;
   const content = message.content;
+
+  // Handle transaction references - show payment preview (supports both formats)
+  if (typeId === 'transactionReference' && content && typeof content === 'object') {
+    // Our custom format
+    if ('txHash' in content) {
+      const txRef = content as { amount?: string; token?: { symbol?: string; decimals?: number }; type?: string };
+      if (txRef.amount && txRef.token?.decimals !== undefined) {
+        const value = BigInt(txRef.amount);
+        const divisor = BigInt(10 ** txRef.token.decimals);
+        const formatted = (Number(value) / Number(divisor)).toFixed(2);
+        const symbol = txRef.token.symbol || 'Token';
+        const prefix = txRef.type === 'request' ? 'Payment request' : 'Payment';
+        return `${prefix}: ${formatted} ${symbol}`;
+      }
+      return 'Payment';
+    }
+    // XMTP standard format (from World App, etc.)
+    if ('reference' in content && 'metadata' in content) {
+      const txRef = content as { metadata?: { amount?: number; decimals?: number; currency?: string } };
+      if (txRef.metadata?.amount !== undefined && txRef.metadata?.decimals !== undefined) {
+        const value = BigInt(Math.floor(txRef.metadata.amount));
+        const divisor = BigInt(10 ** txRef.metadata.decimals);
+        const formatted = (Number(value) / Number(divisor)).toFixed(2);
+        const symbol = txRef.metadata.currency || 'Token';
+        return `Payment: ${formatted} ${symbol}`;
+      }
+      return 'Payment';
+    }
+  }
+
   if (typeof content === 'string') return content;
   if (content && typeof content === 'object') {
     // Handle text content

@@ -6,7 +6,9 @@ import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, R
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
+import { PaymentMessage } from './PaymentMessage';
 import { chatBackgroundStyle } from './ChatBackground';
+import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
@@ -179,6 +181,8 @@ export function MessagePanel({
   const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
     const typeId = (msg.contentType as { typeId?: string })?.typeId;
     if (typeId === 'readReceipt') return false;
+    // Transaction references are displayed as payment cards
+    if (typeId === 'transactionReference') return true;
     return true;
   }, []);
 
@@ -186,6 +190,8 @@ export function MessagePanel({
   const getMessageText = useCallback((msg: DecodedMessage): string | null => {
     const typeId = (msg.contentType as { typeId?: string })?.typeId;
     if (typeId === 'readReceipt') return null;
+    // Transaction references render as payment cards, not text
+    if (typeId === 'transactionReference') return null;
     if (typeId === 'reaction') {
       const content = msg.content as { content?: string } | undefined;
       return content?.content ? `Reacted ${content.content}` : null;
@@ -254,17 +260,20 @@ export function MessagePanel({
       const typeId = (msg.contentType as { typeId?: string })?.typeId;
       if (typeId === 'readReceipt') continue;
 
-      // Check if has displayable text
+      // Check if has displayable content
       const content = msg.content;
-      let hasText = false;
+      let hasDisplayableContent = false;
       if (typeof content === 'string') {
-        hasText = true;
+        hasDisplayableContent = true;
       } else if (content && typeof content === 'object') {
-        if ('text' in content) hasText = true;
-        else if ('content' in content) hasText = true;
+        if ('text' in content) hasDisplayableContent = true;
+        else if ('content' in content) hasDisplayableContent = true;
+        // Transaction references have txHash
+        else if ('txHash' in content) hasDisplayableContent = true;
       }
-      if (typeId === 'reaction') hasText = true;
-      if (!hasText) continue;
+      if (typeId === 'reaction') hasDisplayableContent = true;
+      if (typeId === 'transactionReference') hasDisplayableContent = true;
+      if (!hasDisplayableContent) continue;
 
       const date = new Date(Number(msg.sentAtNs / BigInt(1_000_000)));
       messageData.push({
@@ -586,9 +595,82 @@ export function MessagePanel({
 
                 const isOwnMessage = msg.senderInboxId === ownInboxId;
                 const text = getMessageText(msg);
-                if (text === null) return null;
-
                 const { isFirstInGroup, isLastInGroup, showAvatar } = item;
+
+                // Check if this is a transaction reference (payment message)
+                const typeId = (msg.contentType as { typeId?: string })?.typeId;
+
+                // Try to get transaction content - may need to decode from fallback
+                let txContent = msg.content;
+
+                // If content is undefined but we have a transaction type, try to decode from fallback/encodedContent
+                if (typeId === 'transactionReference' && !txContent) {
+                  // Check for encodedContent (raw bytes that weren't decoded)
+                  const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
+                  if (encodedContent?.content) {
+                    try {
+                      const decoded = new TextDecoder().decode(encodedContent.content);
+                      txContent = JSON.parse(decoded);
+                      console.log('[MessagePanel] Manually decoded transaction:', txContent);
+                    } catch (e) {
+                      console.log('[MessagePanel] Failed to decode transaction:', e);
+                    }
+                  }
+
+                  // Also check fallback string
+                  const fallback = (msg as { fallback?: string }).fallback;
+                  if (fallback) {
+                    console.log('[MessagePanel] Transaction fallback:', fallback);
+                  }
+                }
+
+                const isPayment = typeId === 'transactionReference' && isTransactionReference(txContent);
+
+                // For payment messages, render PaymentMessage component
+                if (isPayment) {
+                  const txRef = normalizeTransactionReference(txContent as TransactionReference);
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      {/* Avatar for incoming payment */}
+                      {!isOwnMessage && (
+                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                          {isLastInGroup && (
+                            <Avatar
+                              address={conversationType === 'group'
+                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                                : peerAddress}
+                              size="sm"
+                            />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        {/* Sender name for incoming */}
+                        {!isOwnMessage && isFirstInGroup && (
+                          <SenderName address={conversationType === 'group'
+                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                            : peerAddress}
+                          />
+                        )}
+                        <PaymentMessage
+                          txRef={txRef}
+                          isOwnMessage={isOwnMessage}
+                        />
+                        {isLastInGroup && (
+                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
+                            {formatTime(msg.sentAtNs)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Skip if text is null (non-displayable content types)
+                if (text === null) return null;
 
                 // Outgoing message (sender)
                 if (isOwnMessage) {

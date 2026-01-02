@@ -127,12 +127,18 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     try {
       console.log('[QRXmtpClient] Restoring session for:', cachedSession.address);
 
-      const [{ Client }, { ReactionCodec }, { ReplyCodec }, { ReadReceiptCodec }] =
-        await Promise.all([
+      const [
+          { Client },
+          { ReactionCodec },
+          { ReplyCodec },
+          { ReadReceiptCodec },
+          { TransactionReferenceCodec },
+        ] = await Promise.all([
           getXmtpModule(),
           import('@xmtp/content-type-reaction'),
           import('@xmtp/content-type-reply'),
           import('@xmtp/content-type-read-receipt'),
+          import('@/lib/xmtp/TransactionReferenceCodec'),
         ]);
 
       // Create a cached signer - works for existing installations
@@ -142,7 +148,12 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       const xmtpClient = await Client.create(cachedSigner, {
         env: 'production',
         appVersion: 'WorldChat/1.0.0',
-        codecs: [new ReactionCodec(), new ReplyCodec(), new ReadReceiptCodec()],
+        codecs: [
+          new ReactionCodec(),
+          new ReplyCodec(),
+          new ReadReceiptCodec(),
+          new TransactionReferenceCodec(),
+        ],
       });
       const duration = Date.now() - startTime;
 
@@ -197,12 +208,18 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       const address = signer.getIdentifier().identifier;
 
       try {
-        const [{ Client }, { ReactionCodec }, { ReplyCodec }, { ReadReceiptCodec }] =
-          await Promise.all([
+        const [
+            { Client },
+            { ReactionCodec },
+            { ReplyCodec },
+            { ReadReceiptCodec },
+            { TransactionReferenceCodec },
+          ] = await Promise.all([
             getXmtpModule(),
             import('@xmtp/content-type-reaction'),
             import('@xmtp/content-type-reply'),
             import('@xmtp/content-type-read-receipt'),
+            import('@/lib/xmtp/TransactionReferenceCodec'),
           ]);
 
         console.log('[QRXmtpClient] Creating XMTP client with remote signer...');
@@ -212,7 +229,12 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         const xmtpClient = await Client.create(signer, {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
-          codecs: [new ReactionCodec(), new ReplyCodec(), new ReadReceiptCodec()],
+          codecs: [
+            new ReactionCodec(),
+            new ReplyCodec(),
+            new ReadReceiptCodec(),
+            new TransactionReferenceCodec(),
+          ],
         });
         const duration = Date.now() - startTime;
 
