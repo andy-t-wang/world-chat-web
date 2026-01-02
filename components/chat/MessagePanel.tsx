@@ -6,6 +6,7 @@ import { Search, MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, R
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
+import { chatBackgroundStyle } from './ChatBackground';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
@@ -454,7 +455,8 @@ export function MessagePanel({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto bg-[#F5F5F5] flex flex-col"
+        className="flex-1 overflow-auto flex flex-col"
+        style={chatBackgroundStyle}
       >
         {isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
