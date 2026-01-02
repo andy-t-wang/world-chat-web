@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
@@ -8,16 +8,19 @@ import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
-import { Loader2 } from 'lucide-react';
+import { Loader2, SearchX } from 'lucide-react';
+import { getCachedUsername } from '@/lib/username/service';
 
 interface ConversationListProps {
   requestCount?: number;
   onRequestsClick?: () => void;
+  searchQuery?: string;
 }
 
 export function ConversationList({
   requestCount = 0,
-  onRequestsClick
+  onRequestsClick,
+  searchQuery = '',
 }: ConversationListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const selectedId = useAtomValue(selectedConversationIdAtom);
@@ -25,6 +28,52 @@ export function ConversationList({
 
   // Use conversations hook - it handles all loading and provides metadata
   const { conversationIds, metadata, isLoading } = useConversations();
+
+  // Track username cache for search
+  const [usernameCacheVersion, setUsernameCacheVersion] = useState(0);
+
+  // Refresh username cache periodically when searching
+  useEffect(() => {
+    if (!searchQuery) return;
+    // Trigger a re-render to pick up newly cached usernames
+    const interval = setInterval(() => {
+      setUsernameCacheVersion(v => v + 1);
+    }, 500);
+    return () => clearInterval(interval);
+  }, [searchQuery]);
+
+  // Filter conversations based on search query
+  const filteredIds = useMemo(() => {
+    if (!searchQuery.trim()) return conversationIds;
+
+    const query = searchQuery.toLowerCase().trim();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _version = usernameCacheVersion; // Dependency to trigger re-filter
+
+    return conversationIds.filter((id) => {
+      const data = metadata.get(id);
+      if (!data) return false;
+
+      // For groups, search by group name
+      if (data.conversationType === 'group') {
+        const groupName = data.groupName?.toLowerCase() ?? '';
+        return groupName.includes(query);
+      }
+
+      // For DMs, search by username (from cache) or address
+      if (data.peerAddress) {
+        const address = data.peerAddress.toLowerCase();
+        // Check if address matches
+        if (address.includes(query)) return true;
+
+        // Check if cached username matches
+        const cached = getCachedUsername(data.peerAddress);
+        if (cached?.username?.toLowerCase().includes(query)) return true;
+      }
+
+      return false;
+    });
+  }, [conversationIds, metadata, searchQuery, usernameCacheVersion]);
 
   // Format timestamp for display using user's locale
   const formatTimestamp = (ns: bigint): string => {
@@ -81,7 +130,7 @@ export function ConversationList({
   };
 
   const virtualizer = useVirtualizer({
-    count: conversationIds.length,
+    count: filteredIds.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => VIRTUALIZATION.CONVERSATION_ITEM_HEIGHT,
     overscan: VIRTUALIZATION.OVERSCAN_COUNT,
@@ -97,12 +146,23 @@ export function ConversationList({
     );
   }
 
-  // Show empty state
+  // Show empty state (no conversations at all)
   if (!isLoading && conversationIds.length === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center px-6 text-center">
         <p className="text-[#717680]">No conversations yet</p>
         <p className="text-sm text-[#9BA3AE] mt-1">Start a new conversation to begin chatting</p>
+      </div>
+    );
+  }
+
+  // Show no search results state
+  if (searchQuery && filteredIds.length === 0) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center px-6 text-center">
+        <SearchX className="w-10 h-10 text-[#9BA3AE] mb-3" />
+        <p className="text-[#717680]">No results found</p>
+        <p className="text-sm text-[#9BA3AE] mt-1">Try a different search term</p>
       </div>
     );
   }
@@ -128,7 +188,7 @@ export function ConversationList({
           }}
         >
           {virtualizer.getVirtualItems().map((virtualRow) => {
-            const id = conversationIds[virtualRow.index];
+            const id = filteredIds[virtualRow.index];
             const props = getConversationProps(id);
 
             // Skip rendering if data not loaded yet

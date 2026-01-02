@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Search, SquarePen } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, SquarePen, X } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 
 interface SidebarProps {
@@ -10,6 +10,30 @@ interface SidebarProps {
 
 export function Sidebar({ onNewChat }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Debounce search query - 250ms after user stops typing
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 250);
+
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  const clearSearch = () => {
+    setSearchQuery('');
+    setDebouncedQuery('');
+  };
 
   return (
     <aside className="w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -35,19 +59,27 @@ export function Sidebar({ onNewChat }: SidebarProps) {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="
-              w-full h-10 pl-9 pr-3
+              w-full h-10 pl-9 pr-9
               bg-[#F5F5F5] rounded-lg
               text-sm text-[#181818] placeholder-[#9BA3AE]
               outline-none focus:ring-2 focus:ring-[#005CFF]/20
               transition-shadow
             "
           />
+          {searchQuery && (
+            <button
+              onClick={clearSearch}
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE] hover:text-[#717680]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </header>
 
       {/* Conversation List */}
       <div className="flex-1 overflow-hidden">
-        <ConversationList />
+        <ConversationList searchQuery={debouncedQuery} />
       </div>
     </aside>
   );
