@@ -17,13 +17,13 @@ interface MemberPreview {
   address: string;
 }
 
-// Helper component to display sender name in group messages
-function GroupMessageSender({ address }: { address: string | undefined }) {
+// Helper component to display sender name above messages
+function SenderName({ address }: { address: string | undefined }) {
   const { displayName } = useUsername(address);
   const name = displayName ?? (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Unknown');
 
   return (
-    <span className="text-xs font-medium text-[#005CFF] mb-0.5 block">
+    <span className="text-[13px] text-[#717680] mb-1 ml-1 block">
       {name}
     </span>
   );
@@ -482,6 +482,8 @@ export function MessagePanel({
                 }
 
                 // Incoming message (recipient)
+                // For group chats, look up address from memberPreviews
+                // For DMs, use the peerAddress
                 const senderAddress = conversationType === 'group'
                   ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
                   : peerAddress;
@@ -501,7 +503,7 @@ export function MessagePanel({
                     className={`flex items-end gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                   >
                     {/* Avatar - only show on last message of group, otherwise spacer */}
-                    <div className="w-7 h-7 shrink-0 flex items-end">
+                    <div className="w-8 h-8 shrink-0 flex items-end">
                       {isLastInGroup && (
                         <Avatar
                           address={senderAddress}
@@ -510,9 +512,9 @@ export function MessagePanel({
                       )}
                     </div>
                     <div className="max-w-[300px] flex flex-col">
-                      {/* Sender name - only show on first message of group in group chats */}
-                      {conversationType === 'group' && isFirstInGroup && (
-                        <GroupMessageSender address={senderAddress} />
+                      {/* Sender name - show on first message in group for all incoming messages */}
+                      {isFirstInGroup && (
+                        <SenderName address={senderAddress} />
                       )}
                       <div className={`bg-white px-3 py-2 ${recipientRadius}`}>
                         <p className="text-[#181818] text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>

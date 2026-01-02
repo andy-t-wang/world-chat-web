@@ -39,7 +39,7 @@ const AVATAR_COLORS = [
 ] as const;
 
 const SIZE_MAP = {
-  sm: { container: 28, text: 12 },  // Small for message avatars
+  sm: { container: 32, text: 14 },  // Small for message avatars (32px per Figma)
   md: { container: 44, text: 16 },  // Medium for conversation list
   lg: { container: 52, text: 22 },  // Large for headers
 } as const;

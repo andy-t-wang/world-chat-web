@@ -511,8 +511,9 @@ class XMTPStreamManager {
         groupImageUrl = group.imageUrl;
         const members = await group.members();
         memberCount = members.length;
-        // Get first 2 members for overlapping avatar previews
-        memberPreviews = members.slice(0, 2).map((m) => ({
+        // Include ALL members so we can look up sender addresses for messages
+        // Avatar component will only use first 2 for the preview display
+        memberPreviews = members.map((m) => ({
           inboxId: m.inboxId,
           address: m.accountIdentifiers?.[0]?.identifier ?? '',
         }));
