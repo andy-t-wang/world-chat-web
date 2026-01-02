@@ -8,9 +8,84 @@ import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
-import { readReceiptVersionAtom } from '@/stores/messages';
+import { readReceiptVersionAtom, reactionsVersionAtom } from '@/stores/messages';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
+
+// Common reaction emojis
+const REACTION_EMOJIS = ['❤️', '👍', '👎', '😂', '😮', '😢'];
+
+// Reaction picker component
+interface ReactionPickerProps {
+  position: { x: number; y: number };
+  onSelect: (emoji: string) => void;
+  onClose: () => void;
+}
+
+function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={pickerRef}
+      className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 px-2 py-1.5 flex gap-1"
+      style={{ left: position.x, top: position.y }}
+    >
+      {REACTION_EMOJIS.map((emoji) => (
+        <button
+          key={emoji}
+          onClick={() => onSelect(emoji)}
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-lg"
+        >
+          {emoji}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Display reactions below a message (overlapping style per Figma)
+interface MessageReactionsProps {
+  messageId: string;
+  isOwnMessage: boolean;
+}
+
+function MessageReactions({ messageId, isOwnMessage }: MessageReactionsProps) {
+  const _reactionsVersion = useAtomValue(reactionsVersionAtom);
+  const reactions = streamManager.getReactions(messageId);
+
+  if (reactions.length === 0) return null;
+
+  // Group reactions by emoji
+  const grouped = reactions.reduce((acc, r) => {
+    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  return (
+    <div className={`flex gap-1 -mt-2 relative z-10 ${isOwnMessage ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
+      {Object.entries(grouped).map(([emoji, count]) => (
+        <div
+          key={emoji}
+          className="inline-flex items-center h-[24px] px-[9px] bg-[#F3F4F5] border-2 border-white rounded-[13px] text-[16px]"
+        >
+          <span className="tracking-[4.8px]">{emoji}</span>
+          {count > 1 && <span className="text-xs text-[#717680] ml-0.5">{count}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface MemberPreview {
   inboxId: string;
@@ -64,6 +139,12 @@ export function MessagePanel({
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // Reaction picker state
+  const [reactionPicker, setReactionPicker] = useState<{
+    messageId: string;
+    position: { x: number; y: number };
+  } | null>(null);
 
   const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
   const name = conversationType === 'group'
@@ -316,6 +397,26 @@ export function MessagePanel({
     return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   };
 
+  // Handle right-click to show reaction picker
+  const handleMessageContextMenu = useCallback((e: React.MouseEvent, messageId: string) => {
+    e.preventDefault();
+    setReactionPicker({
+      messageId,
+      position: { x: e.clientX, y: e.clientY - 50 },
+    });
+  }, []);
+
+  // Handle reaction selection
+  const handleReactionSelect = useCallback(async (emoji: string) => {
+    if (!reactionPicker) return;
+    try {
+      await streamManager.sendReaction(conversationId, reactionPicker.messageId, emoji);
+    } catch (error) {
+      console.error('Failed to send reaction:', error);
+    }
+    setReactionPicker(null);
+  }, [conversationId, reactionPicker]);
+
   return (
     <div className="flex-1 flex flex-col bg-white">
       {/* Header */}
@@ -461,9 +562,13 @@ export function MessagePanel({
                       className={`flex justify-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                     >
                       <div className="max-w-[300px]">
-                        <div className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}>
+                        <div
+                          className={`bg-[#005CFF] px-3 py-2 ${senderRadius} cursor-pointer`}
+                          onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
+                        >
                           <p className="text-white text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
                         </div>
+                        <MessageReactions messageId={item.id} isOwnMessage={true} />
                         {isLastInGroup && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
                             <span className="text-[11px] text-[#9BA3AE]">
@@ -516,9 +621,13 @@ export function MessagePanel({
                       {isFirstInGroup && (
                         <SenderName address={senderAddress} />
                       )}
-                      <div className={`bg-white px-3 py-2 ${recipientRadius}`}>
+                      <div
+                        className={`bg-white px-3 py-2 ${recipientRadius} cursor-pointer`}
+                        onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
+                      >
                         <p className="text-[#181818] text-[15px] leading-[1.35] whitespace-pre-wrap break-words">{text}</p>
                       </div>
+                      <MessageReactions messageId={item.id} isOwnMessage={false} />
                       {isLastInGroup && (
                         <span className="text-[11px] text-[#9BA3AE] mt-1 ml-1">
                           {formatTime(msg.sentAtNs)}
@@ -565,6 +674,15 @@ export function MessagePanel({
           </button>
         </div>
       </div>
+
+      {/* Reaction Picker */}
+      {reactionPicker && (
+        <ReactionPicker
+          position={reactionPicker.position}
+          onSelect={handleReactionSelect}
+          onClose={() => setReactionPicker(null)}
+        />
+      )}
     </div>
   );
 }

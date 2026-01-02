@@ -25,7 +25,10 @@ import {
   readReceiptVersionAtom,
   unreadVersionAtom,
   selectedConversationIdAtom,
+  reactionsAtom,
+  reactionsVersionAtom,
 } from '@/stores';
+import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
 import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible } from '@/lib/notifications';
@@ -439,6 +442,12 @@ class XMTPStreamManager {
             continue;
           }
 
+          // Process reactions
+          if (typeId === CONTENT_TYPE_REACTION) {
+            this.processReaction(msg as unknown as DecodedMessage);
+            continue;
+          }
+
           if (!currentIdSet.has(msg.id)) {
             messageCache.set(msg.id, msg as unknown as DecodedMessage);
             newMessageIds.push(msg.id);
@@ -747,7 +756,7 @@ class XMTPStreamManager {
       });
 
       // Store and display local messages immediately
-      // Also process read receipts from the peer
+      // Also process read receipts and reactions from the peer
       const ids: string[] = [];
       for (const msg of localMessages) {
         const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
@@ -757,6 +766,12 @@ class XMTPStreamManager {
           if (msg.senderInboxId !== this.client?.inboxId) {
             this.updateReadReceipt(conversationId, msg.sentAtNs);
           }
+          continue; // Don't add to message list
+        }
+
+        // Process reactions
+        if (typeId === CONTENT_TYPE_REACTION) {
+          this.processReaction(msg as unknown as DecodedMessage);
           continue; // Don't add to message list
         }
 
@@ -823,6 +838,12 @@ class XMTPStreamManager {
           continue;
         }
 
+        // Process reactions
+        if (typeId === CONTENT_TYPE_REACTION) {
+          this.processReaction(msg as unknown as DecodedMessage);
+          continue;
+        }
+
         if (!currentIdSet.has(msg.id)) {
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
           newMessageIds.push(msg.id);
@@ -881,6 +902,19 @@ class XMTPStreamManager {
       const newIds: string[] = [];
 
       for (const msg of messages) {
+        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+
+        // Process reactions
+        if (typeId === CONTENT_TYPE_REACTION) {
+          this.processReaction(msg as unknown as DecodedMessage);
+          continue;
+        }
+
+        // Skip read receipts
+        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          continue;
+        }
+
         if (!messageCache.has(msg.id)) {
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
           newIds.push(msg.id);
@@ -937,6 +971,12 @@ class XMTPStreamManager {
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             }
+            continue;
+          }
+
+          // Handle reaction messages
+          if (typeId === CONTENT_TYPE_REACTION) {
+            this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
@@ -1138,6 +1178,124 @@ class XMTPStreamManager {
    */
   isInitialized(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Process an incoming reaction message
+   */
+  private processReaction(msg: DecodedMessage): void {
+    const content = msg.content as ReactionContent | undefined;
+    if (!content || !content.reference || !content.content) {
+      console.log('[StreamManager] Invalid reaction content:', content);
+      return;
+    }
+
+    const targetMessageId = content.reference;
+    const emoji = content.content;
+    const action = content.action || 'added';
+    const senderInboxId = msg.senderInboxId;
+
+    const currentReactions = store.get(reactionsAtom);
+    const messageReactions = currentReactions.get(targetMessageId) ?? [];
+
+    if (action === 'added') {
+      // Check if this exact reaction already exists
+      const exists = messageReactions.some(
+        r => r.emoji === emoji && r.senderInboxId === senderInboxId
+      );
+      if (!exists) {
+        const newReaction: StoredReaction = {
+          emoji,
+          senderInboxId,
+          messageId: msg.id,
+        };
+        const newMap = new Map(currentReactions);
+        newMap.set(targetMessageId, [...messageReactions, newReaction]);
+        store.set(reactionsAtom, newMap);
+      }
+    } else if (action === 'removed') {
+      // Remove the reaction
+      const filtered = messageReactions.filter(
+        r => !(r.emoji === emoji && r.senderInboxId === senderInboxId)
+      );
+      const newMap = new Map(currentReactions);
+      if (filtered.length > 0) {
+        newMap.set(targetMessageId, filtered);
+      } else {
+        newMap.delete(targetMessageId);
+      }
+      store.set(reactionsAtom, newMap);
+    }
+
+    // Trigger re-render
+    const version = store.get(reactionsVersionAtom);
+    store.set(reactionsVersionAtom, version + 1);
+
+    console.log('[StreamManager] Processed reaction:', action, emoji, 'on', targetMessageId);
+  }
+
+  /**
+   * Send a reaction to a message
+   */
+  async sendReaction(
+    conversationId: string,
+    targetMessageId: string,
+    emoji: string,
+    action: 'added' | 'removed' = 'added'
+  ): Promise<void> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv) {
+      console.error('[StreamManager] Conversation not found:', conversationId);
+      return;
+    }
+
+    try {
+      // Import the reaction content type
+      const { ContentTypeReaction } = await import('@xmtp/content-type-reaction');
+
+      const reactionContent: ReactionContent = {
+        content: emoji,
+        action,
+        reference: targetMessageId,
+        schema: 'custom',
+      };
+
+      await conv.send(reactionContent, ContentTypeReaction);
+      console.log('[StreamManager] Sent reaction:', action, emoji, 'on', targetMessageId);
+
+      // Optimistically update the UI
+      if (action === 'added' && this.client?.inboxId) {
+        const currentReactions = store.get(reactionsAtom);
+        const messageReactions = currentReactions.get(targetMessageId) ?? [];
+        const exists = messageReactions.some(
+          r => r.emoji === emoji && r.senderInboxId === this.client!.inboxId
+        );
+        if (!exists) {
+          const newReaction: StoredReaction = {
+            emoji,
+            senderInboxId: this.client.inboxId,
+            messageId: `pending-${Date.now()}`,
+          };
+          const newMap = new Map(currentReactions);
+          newMap.set(targetMessageId, [...messageReactions, newReaction]);
+          store.set(reactionsAtom, newMap);
+
+          const version = store.get(reactionsVersionAtom);
+          store.set(reactionsVersionAtom, version + 1);
+        }
+      }
+    } catch (error) {
+      console.error('[StreamManager] Failed to send reaction:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get reactions for a message
+   */
+  getReactions(messageId: string): StoredReaction[] {
+    const reactions = store.get(reactionsAtom);
+    return reactions.get(messageId) ?? [];
   }
 
   /**

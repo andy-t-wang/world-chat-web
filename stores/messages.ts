@@ -45,6 +45,40 @@ export const readReceiptVersionAtom = atom<number>(0);
 export const unreadVersionAtom = atom<number>(0);
 
 /**
+ * Reaction content type structure from XMTP
+ */
+export interface ReactionContent {
+  /** The emoji reaction */
+  content: string;
+  /** Action: 'added' or 'removed' */
+  action: 'added' | 'removed';
+  /** Reference to the message being reacted to */
+  reference: string;
+  /** Schema for the reference */
+  schema: 'custom' | 'messageid';
+}
+
+/**
+ * Stored reaction with sender info
+ */
+export interface StoredReaction {
+  emoji: string;
+  senderInboxId: string;
+  messageId: string; // The reaction message ID (for removal)
+}
+
+/**
+ * Reactions per message
+ * Map from targetMessageId -> array of reactions
+ */
+export const reactionsAtom = atom<Map<string, StoredReaction[]>>(new Map());
+
+/**
+ * Version counter to trigger re-renders when reactions change
+ */
+export const reactionsVersionAtom = atom<number>(0);
+
+/**
  * Helper function to get message IDs for a conversation
  */
 export function getMessageIds(messageIdsMap: Map<string, string[]>, conversationId: string): string[] {
