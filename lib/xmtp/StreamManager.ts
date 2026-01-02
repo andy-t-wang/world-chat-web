@@ -136,8 +136,14 @@ class XMTPStreamManager {
     store.set(conversationsErrorAtom, null);
 
     try {
-      await this.client.conversations.sync();
-      const conversations = await this.client.conversations.list();
+      // Only sync allowed conversations for performance
+      // This prevents loading spam/unknown conversations
+      await this.client.conversations.syncAll([ConsentState.Allowed]);
+
+      // Only list conversations with allowed consent state
+      const conversations = await this.client.conversations.list({
+        consentStates: [ConsentState.Allowed],
+      });
 
       const ids: string[] = [];
 
@@ -161,7 +167,7 @@ class XMTPStreamManager {
       store.set(conversationIdsAtom, ids);
       // Notify that metadata has been updated
       this.incrementMetadataVersion();
-      console.log(`[StreamManager] Loaded ${ids.length} conversations`);
+      console.log(`[StreamManager] Loaded ${ids.length} allowed conversations`);
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
@@ -258,7 +264,7 @@ class XMTPStreamManager {
   }
 
   /**
-   * Start streaming new conversations
+   * Start streaming new conversations (only allowed ones)
    */
   private startConversationStream(): void {
     if (!this.client) return;
@@ -273,7 +279,14 @@ class XMTPStreamManager {
         for await (const conv of streamProxy as AsyncIterable<Conversation>) {
           if (signal.aborted) break;
 
-          console.log('[StreamManager] New conversation:', conv.id);
+          // Only process allowed conversations
+          const consentState = await conv.consentState();
+          if (consentState !== ConsentState.Allowed) {
+            console.log('[StreamManager] Skipping non-allowed conversation:', conv.id, consentState);
+            continue;
+          }
+
+          console.log('[StreamManager] New allowed conversation:', conv.id);
 
           this.conversations.set(conv.id, conv);
           const metadata = await this.buildConversationMetadata(conv);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, memo } from 'react';
+import { useEffect, useState, memo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAtomValue } from 'jotai';
 import { Sidebar, MessagePanel, EmptyState } from '@/components/chat';
@@ -8,6 +8,7 @@ import { NewConversationModal } from '@/components/chat/NewConversationModal';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { clientStateAtom } from '@/stores/client';
 import { useConversationMetadata } from '@/hooks/useConversations';
+import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
 import { hasQRSession } from '@/lib/auth/session';
 import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
 
@@ -17,54 +18,83 @@ const MemoizedMessagePanel = memo(MessagePanel);
 export default function ChatPage() {
   const router = useRouter();
   const clientState = useAtomValue(clientStateAtom);
+  const { restoreSession } = useQRXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [hasSession] = useState(() => hasQRSession());
-
-  // Track if we've given state time to settle (prevents race condition redirect)
-  const [isStateSettled, setIsStateSettled] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restorationAttempted, setRestorationAttempted] = useState(false);
+  const restorationRef = useRef(false);
 
   const hasXmtpClient = clientState.client !== null;
 
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
 
-  // Give state time to settle before allowing redirect (prevents race condition)
+  // Try to restore session on mount if we have a cached session but no client
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsStateSettled(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Redirect to home if no client available
-  useEffect(() => {
-    if (!isStateSettled) return;
-    if (hasXmtpClient) return;
-    if (clientState.isInitializing) return;
-
-    // If we have a session flag but no client, the page was reloaded
-    // XMTP client is in-memory only, so we need to re-login
-    if (hasSession && !hasXmtpClient) {
-      console.log('[ChatPage] Session exists but no client - page was reloaded, redirecting to login');
-    } else {
-      console.log('[ChatPage] No session found, redirecting to login');
+    if (restorationRef.current) return;
+    if (hasXmtpClient) {
+      setRestorationAttempted(true);
+      return;
     }
-    router.push('/');
-  }, [isStateSettled, hasXmtpClient, hasSession, clientState.isInitializing, router]);
+    if (!hasSession) {
+      setRestorationAttempted(true);
+      return;
+    }
 
-  // Show loading only while state is settling (brief moment on navigation)
-  // Don't show loading forever if session exists but client doesn't (reload case)
-  if (!isStateSettled) {
+    restorationRef.current = true;
+    setIsRestoring(true);
+
+    restoreSession()
+      .then((success) => {
+        console.log('[ChatPage] Session restoration:', success ? 'success' : 'failed');
+        if (!success) {
+          // Restoration failed, redirect to login
+          router.push('/');
+        }
+      })
+      .catch((error) => {
+        console.error('[ChatPage] Session restoration error:', error);
+        router.push('/');
+      })
+      .finally(() => {
+        setIsRestoring(false);
+        setRestorationAttempted(true);
+      });
+  }, [hasXmtpClient, hasSession, restoreSession, router]);
+
+  // Redirect to login if no session and restoration complete
+  useEffect(() => {
+    if (!restorationAttempted) return;
+    if (hasXmtpClient) return;
+    if (clientState.isInitializing || isRestoring) return;
+
+    console.log('[ChatPage] No client after restoration, redirecting to login');
+    router.push('/');
+  }, [restorationAttempted, hasXmtpClient, clientState.isInitializing, isRestoring, router]);
+
+  // Show loading while restoring or initializing
+  if (isRestoring || clientState.isInitializing || !restorationAttempted) {
     return (
       <div className="flex w-full h-full items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
+            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
+            <span className="text-[#717680]">
+              {isRestoring ? 'Restoring session...' : 'Loading...'}
+            </span>
+          </div>
+        </div>
       </div>
     );
   }
 
   // Not connected - redirect handled by useEffect
-  if (!hasXmtpClient && !clientState.isInitializing) {
+  if (!hasXmtpClient) {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
@@ -83,10 +113,10 @@ export default function ChatPage() {
           <h2 className="text-lg font-semibold text-[#181818]">Connection Failed</h2>
           <p className="text-[#717680]">{clientState.error.message}</p>
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => router.push('/')}
             className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
           >
-            Try Again
+            Login Again
           </button>
         </div>
       </div>
