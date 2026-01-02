@@ -89,14 +89,24 @@ function isSpecialContentType(message: { contentType?: { typeId?: string } }): b
 }
 
 // Extract text content from a message
-function extractMessageContent(message: { content: unknown; contentType?: { typeId?: string } }): string {
+function extractMessageContent(message: { content: unknown; contentType?: { typeId?: string }; encodedContent?: { content?: Uint8Array } }): string {
   // Skip read receipts and reactions for preview
   if (isSpecialContentType(message)) {
     return '';
   }
 
   const typeId = message.contentType?.typeId;
-  const content = message.content;
+  let content = message.content;
+
+  // If content is undefined but we have a transaction type, try to decode from encodedContent
+  if (typeId === 'transactionReference' && !content && message.encodedContent?.content) {
+    try {
+      const decoded = new TextDecoder().decode(message.encodedContent.content);
+      content = JSON.parse(decoded);
+    } catch {
+      // Failed to decode, continue with undefined content
+    }
+  }
 
   // Handle transaction references - show payment preview (supports both formats)
   if (typeId === 'transactionReference' && content && typeof content === 'object') {

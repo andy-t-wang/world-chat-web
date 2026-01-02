@@ -138,7 +138,11 @@ export async function GET(request: NextRequest) {
         url,
         domain,
         title: domain,
-      } satisfies LinkMetadata);
+      } satisfies LinkMetadata, {
+        headers: {
+          'Cache-Control': 'public, max-age=604800, s-maxage=604800',
+        },
+      });
     }
 
     const html = await response.text();
@@ -146,17 +150,22 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(metadata, {
       headers: {
-        'Cache-Control': 'public, max-age=3600, s-maxage=86400',
+        // Cache for 1 week (browser and CDN)
+        'Cache-Control': 'public, max-age=604800, s-maxage=604800',
       },
     });
   } catch (error) {
     console.error('Link preview error:', error);
 
-    // Return basic metadata on error
+    // Return basic metadata on error (short cache so we can retry)
     const domain = new URL(url).hostname.replace(/^www\./, '');
     return NextResponse.json({
       url,
       domain,
-    } satisfies LinkMetadata);
+    } satisfies LinkMetadata, {
+      headers: {
+        'Cache-Control': 'public, max-age=300, s-maxage=300',
+      },
+    });
   }
 }
