@@ -1,7 +1,7 @@
 'use client';
 
-import { useAtomValue } from 'jotai';
-import { useMemo, useRef, useEffect } from 'react';
+import { useAtomValue, useSetAtom } from 'jotai';
+import { useMemo, useRef, useCallback } from 'react';
 import {
   conversationIdsAtom,
   isLoadingConversationsAtom,
@@ -9,6 +9,7 @@ import {
   conversationMetadataVersionAtom,
 } from '@/stores/conversations';
 import { unreadVersionAtom } from '@/stores/messages';
+import { seenRequestIdsAtom } from '@/stores/settings';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 
 /**
@@ -101,25 +102,57 @@ export function useConversationMetadata(conversationId: string | null): Conversa
  *
  * Returns conversation IDs and metadata for conversations where
  * the user hasn't accepted or rejected the contact yet.
+ * Also tracks which requests are "new" (haven't been seen yet).
  */
 export function useMessageRequests() {
   // Subscribe to metadata version to re-render when metadata changes
   const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
   // Subscribe to unread version for consistency
   const unreadVersion = useAtomValue(unreadVersionAtom);
+  // Get seen request IDs from storage
+  const seenRequestIds = useAtomValue(seenRequestIdsAtom);
+  const setSeenRequestIds = useSetAtom(seenRequestIdsAtom);
 
   // Get request conversation IDs and metadata
-  const { requestIds, metadata, requestCount } = useMemo(() => {
+  const { requestIds, metadata, requestCount, newRequestIds, newRequestCount } = useMemo(() => {
     const ids = streamManager.getRequestConversationIds();
     const meta = streamManager.getAllConversationMetadata();
     const count = ids.length;
-    return { requestIds: ids, metadata: meta, requestCount: count };
-  }, [metadataVersion, unreadVersion]);
+    // New requests are those not in the seen list
+    const seenSet = new Set(seenRequestIds);
+    const newIds = ids.filter(id => !seenSet.has(id));
+    return {
+      requestIds: ids,
+      metadata: meta,
+      requestCount: count,
+      newRequestIds: newIds,
+      newRequestCount: newIds.length,
+    };
+  }, [metadataVersion, unreadVersion, seenRequestIds]);
+
+  // Mark all current requests as seen
+  const markAllAsSeen = useCallback(() => {
+    if (requestIds.length === 0) return;
+    setSeenRequestIds(prev => {
+      const seenSet = new Set(prev);
+      requestIds.forEach(id => seenSet.add(id));
+      return Array.from(seenSet);
+    });
+  }, [requestIds, setSeenRequestIds]);
+
+  // Check if a specific request is new
+  const isNewRequest = useCallback((id: string) => {
+    return !seenRequestIds.includes(id);
+  }, [seenRequestIds]);
 
   return {
     requestIds,
     metadata,
     requestCount,
+    newRequestIds,
+    newRequestCount,
+    markAllAsSeen,
+    isNewRequest,
   };
 }
 

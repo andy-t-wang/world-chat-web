@@ -3,7 +3,7 @@
 import { useRef, useMemo, useState, useEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtomValue, useSetAtom } from "jotai";
-import { ArrowLeft, Search, SearchX, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, SearchX } from "lucide-react";
 import {
   ConversationItem,
   type ConversationItemProps,
@@ -27,7 +27,16 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
 
   // Use message requests hook
-  const { requestIds, metadata, requestCount } = useMessageRequests();
+  const { requestIds, metadata, requestCount, isNewRequest, markAllAsSeen } = useMessageRequests();
+
+  // Mark all requests as seen when this view is opened
+  useEffect(() => {
+    // Small delay to let the UI render first, then mark as seen
+    const timer = setTimeout(() => {
+      markAllAsSeen();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [markAllAsSeen]);
 
   // Track username cache for search
   const [usernameCacheVersion, setUsernameCacheVersion] = useState(0);
@@ -109,6 +118,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       lastMessage: data.lastMessagePreview ?? undefined,
       timestamp: formatTimestamp(data.lastActivityNs),
       unreadCount: data.unreadCount ?? 0,
+      isNewRequest: isNewRequest(id),
     };
 
     if (data.conversationType === "group") {

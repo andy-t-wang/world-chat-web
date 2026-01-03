@@ -13,6 +13,7 @@ import { getCachedUsername } from '@/lib/username/service';
 
 interface ConversationListProps {
   requestCount?: number;
+  newRequestCount?: number;
   onRequestsClick?: () => void;
   searchQuery?: string;
   bottomPadding?: number;
@@ -20,6 +21,7 @@ interface ConversationListProps {
 
 export function ConversationList({
   requestCount = 0,
+  newRequestCount = 0,
   onRequestsClick,
   searchQuery = '',
   bottomPadding = 0,
@@ -183,7 +185,7 @@ export function ConversationList({
       {/* Chat Requests Banner */}
       {requestCount > 0 && (
         <div className="shrink-0 border-b border-gray-100">
-          <ChatRequestsBanner count={requestCount} onClick={onRequestsClick} />
+          <ChatRequestsBanner count={requestCount} newCount={newRequestCount} onClick={onRequestsClick} />
         </div>
       )}
 

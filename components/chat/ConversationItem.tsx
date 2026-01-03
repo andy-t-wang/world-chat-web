@@ -37,6 +37,8 @@ export interface ConversationItemProps {
   isPinned?: boolean;
   isMuted?: boolean;
   isSelected?: boolean;
+  /** Whether this is a new/unseen message request */
+  isNewRequest?: boolean;
   onClick?: () => void;
 }
 
@@ -103,6 +105,7 @@ export function ConversationItem(props: ConversationItemProps) {
     isPinned = false,
     isMuted = false,
     isSelected = false,
+    isNewRequest = false,
     onClick,
   } = props;
 
@@ -196,7 +199,14 @@ export function ConversationItem(props: ConversationItemProps) {
             {isPinned && (
               <Pin className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
             )}
-            {unreadCount > 0 && (
+            {isNewRequest && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                isSelected ? 'bg-white text-[#005CFF]' : 'bg-[#005CFF] text-white'
+              }`}>
+                New
+              </span>
+            )}
+            {unreadCount > 0 && !isNewRequest && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
                 isSelected ? 'bg-white text-[#181818]' : 'bg-[#181818] text-white'
               }`}>

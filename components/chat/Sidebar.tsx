@@ -112,7 +112,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const [showRequests, setShowRequests] = useAtom(showMessageRequestsAtom);
-  const { requestCount } = useMessageRequests();
+  const { requestCount, newRequestCount } = useMessageRequests();
 
   // Debounce search query - 250ms after user stops typing
   useEffect(() => {
@@ -193,6 +193,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           searchQuery={debouncedQuery}
           bottomPadding={64}
           requestCount={requestCount}
+          newRequestCount={newRequestCount}
           onRequestsClick={() => setShowRequests(true)}
         />
 
