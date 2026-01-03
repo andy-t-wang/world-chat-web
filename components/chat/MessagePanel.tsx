@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useAtomValue } from 'jotai';
-import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut } from 'lucide-react';
+import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut, Clock } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
@@ -146,8 +146,11 @@ interface PendingMessageBubbleProps {
 }
 
 function PendingMessageBubble({ pending, onRetry }: PendingMessageBubbleProps) {
+  // Format current time for the timestamp
+  const timeString = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+
   return (
-    <AnimatedMessageWrapper className="flex flex-col items-end mt-0.5">
+    <AnimatedMessageWrapper className="flex flex-col items-end mt-3">
       <div className="max-w-[300px]">
         <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
           pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]'
@@ -157,19 +160,27 @@ function PendingMessageBubble({ pending, onRetry }: PendingMessageBubbleProps) {
           </p>
         </div>
       </div>
-      {pending.status === 'failed' && (
-        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-          <AlertCircle className="w-3 h-3 text-red-500" />
-          <span className="text-[11px] text-red-500">Failed</span>
-          <button
-            onClick={() => onRetry(pending.id)}
-            className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
-          >
-            <RotateCcw className="w-3 h-3" />
-            Retry
-          </button>
-        </div>
-      )}
+      {/* Always show timestamp row - matches sent message layout exactly */}
+      <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+        <span className="text-[11px] text-[#717680] font-medium">
+          {timeString}
+        </span>
+        {pending.status === 'sending' && (
+          <Clock className="w-3 h-3 text-[#717680]" />
+        )}
+        {pending.status === 'failed' && (
+          <>
+            <AlertCircle className="w-3 h-3 text-red-500" />
+            <button
+              onClick={() => onRetry(pending.id)}
+              className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Retry
+            </button>
+          </>
+        )}
+      </div>
     </AnimatedMessageWrapper>
   );
 }
@@ -210,10 +221,6 @@ export function MessagePanel({
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
-  // Track which message IDs we've seen (for animation)
-  const seenMessageIdsRef = useRef<Set<string>>(new Set());
-  const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
-
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
     messageId: string;
@@ -250,39 +257,6 @@ export function MessagePanel({
   } = useMessages(conversationId);
 
   const ownInboxId = client?.inboxId ?? '';
-
-  // Detect new own messages and mark them for animation
-  useEffect(() => {
-    if (!ownInboxId || isInitialLoading) return;
-
-    const newIds: string[] = [];
-    for (const msgId of messageIds) {
-      if (seenMessageIdsRef.current.has(msgId)) continue;
-
-      const msg = getMessage(msgId);
-      if (msg && msg.senderInboxId === ownInboxId) {
-        newIds.push(msgId);
-      }
-      seenMessageIdsRef.current.add(msgId);
-    }
-
-    if (newIds.length > 0) {
-      setNewMessageIds(prev => {
-        const next = new Set(prev);
-        newIds.forEach(id => next.add(id));
-        return next;
-      });
-
-      // Clear animation state after animation completes
-      setTimeout(() => {
-        setNewMessageIds(prev => {
-          const next = new Set(prev);
-          newIds.forEach(id => next.delete(id));
-          return next;
-        });
-      }, 250);
-    }
-  }, [messageIds, ownInboxId, isInitialLoading, getMessage]);
 
   // Check if message should be displayed
   const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
@@ -1057,7 +1031,6 @@ export function MessagePanel({
                 // Outgoing message (sender)
                 if (isOwnMessage) {
                   const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
-                  const isNewMessage = newMessageIds.has(item.id);
 
                   // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
                   const senderRadius = isFirstInGroup && isLastInGroup
@@ -1068,8 +1041,11 @@ export function MessagePanel({
                         ? 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]'
                         : 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]';
 
-                  const messageContent = (
-                    <>
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
                       <div className="max-w-[300px]">
                         <div
                           className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}
@@ -1096,27 +1072,6 @@ export function MessagePanel({
                           )}
                         </div>
                       )}
-                    </>
-                  );
-
-                  // Wrap in animation for new messages
-                  if (isNewMessage) {
-                    return (
-                      <AnimatedMessageWrapper
-                        key={item.id}
-                        className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                      >
-                        {messageContent}
-                      </AnimatedMessageWrapper>
-                    );
-                  }
-
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {messageContent}
                     </div>
                   );
                 }
