@@ -132,12 +132,14 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           { ReactionCodec },
           { ReplyCodec },
           { ReadReceiptCodec },
+          { RemoteAttachmentCodec },
           { TransactionReferenceCodec },
         ] = await Promise.all([
           getXmtpModule(),
           import('@xmtp/content-type-reaction'),
           import('@xmtp/content-type-reply'),
           import('@xmtp/content-type-read-receipt'),
+          import('@xmtp/content-type-remote-attachment'),
           import('@/lib/xmtp/TransactionReferenceCodec'),
         ]);
 
@@ -152,6 +154,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           new ReactionCodec(),
           new ReplyCodec(),
           new ReadReceiptCodec(),
+          new RemoteAttachmentCodec(),
           new TransactionReferenceCodec(),
         ],
       });
@@ -213,12 +216,14 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             { ReactionCodec },
             { ReplyCodec },
             { ReadReceiptCodec },
+            { RemoteAttachmentCodec },
             { TransactionReferenceCodec },
           ] = await Promise.all([
             getXmtpModule(),
             import('@xmtp/content-type-reaction'),
             import('@xmtp/content-type-reply'),
             import('@xmtp/content-type-read-receipt'),
+            import('@xmtp/content-type-remote-attachment'),
             import('@/lib/xmtp/TransactionReferenceCodec'),
           ]);
 
@@ -233,6 +238,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new ReactionCodec(),
             new ReplyCodec(),
             new ReadReceiptCodec(),
+            new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
           ],
         });

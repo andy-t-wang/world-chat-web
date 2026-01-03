@@ -75,6 +75,20 @@ export const USERNAME_API = {
   MAX_CACHE_SIZE: 500,
 } as const;
 
+/** Image Cache Configuration */
+export const IMAGE_CACHE = {
+  /** Trusted CDN for image downloads */
+  TRUSTED_CDN: 'https://chat-assets.toolsforhumanity.com',
+  /** Maximum images to keep in memory */
+  MAX_CACHE_SIZE: 100,
+  /** Cache TTL in milliseconds (24 hours) */
+  CACHE_TTL_MS: 24 * 60 * 60 * 1000,
+  /** localStorage key for image metadata */
+  STORAGE_KEY: 'worldchat_images',
+  /** Storage version for migration */
+  STORAGE_VERSION: 1,
+} as const;
+
 /** Local Storage Keys */
 export const STORAGE_KEYS = {
   /** Key for storing encryption salt */
@@ -85,4 +99,6 @@ export const STORAGE_KEYS = {
   SELECTED_CONVERSATION: 'selected-conversation',
   /** Key for storing user preferences */
   USER_PREFERENCES: 'user-preferences',
+  /** Key for storing cached images metadata */
+  IMAGES_CACHE: 'worldchat_images',
 } as const;

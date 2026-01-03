@@ -68,6 +68,7 @@ function isDm(conv: unknown): conv is Dm & { peerInboxId(): Promise<string> } {
 const CONTENT_TYPE_READ_RECEIPT = 'readReceipt';
 const CONTENT_TYPE_REACTION = 'reaction';
 const CONTENT_TYPE_REPLY = 'reply';
+const CONTENT_TYPE_REMOTE_ATTACHMENT = 'remoteAttachment';
 
 // Message loading limits
 const BATCH_SIZE = 50;             // Messages to fetch per batch
@@ -85,9 +86,11 @@ const LAST_READ_TIMESTAMPS_KEY = 'xmtp-last-read-timestamps';
 const PEER_READ_RECEIPTS_KEY = 'xmtp-peer-read-receipts';
 const MAX_MESSAGES_FOR_UNREAD_COUNT = 50; // Only count first N messages per conversation
 
-// Check if a message is a special type that shouldn't be displayed as text
+// Check if a message is a hidden type (shouldn't show ANY preview text)
 function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
   const typeId = message.contentType?.typeId;
+  // Only read receipts and reactions are completely hidden
+  // Remote attachments show "Image" preview, so not included here
   return typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION;
 }
 
@@ -100,6 +103,21 @@ function extractMessageContent(message: { content: unknown; contentType?: { type
 
   const typeId = message.contentType?.typeId;
   let content = message.content;
+
+  // Handle remote attachments (images) - show preview text
+  // Check both typeId AND content shape since typeId may not always be detected
+  const contentAsObj = content as Record<string, unknown> | null;
+  const hasImageShape = contentAsObj !== null && typeof contentAsObj === 'object' &&
+    'contentDigest' in contentAsObj && 'url' in contentAsObj;
+  const isRemoteAttachment = typeId === CONTENT_TYPE_REMOTE_ATTACHMENT || hasImageShape;
+
+  if (isRemoteAttachment) {
+    const attachmentContent = content as { filename?: string } | undefined;
+    if (attachmentContent?.filename) {
+      return `Image: ${attachmentContent.filename}`;
+    }
+    return 'Image';
+  }
 
   // If content is undefined but we have a transaction type, try to decode from encodedContent
   if (typeId === 'transactionReference' && !content && message.encodedContent?.content) {
