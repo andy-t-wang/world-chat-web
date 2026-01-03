@@ -157,7 +157,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
       {/* Empty state - no requests */}
       {requestCount === 0 && (
-        <div className="flex flex-col flex-1 items-center justify-center px-6 text-center">
+        <div className="flex flex-col flex-1 justify-center px-6">
           <p className="text-[#717680]">No message requests</p>
           <p className="text-sm text-[#9BA3AE] mt-1">
             When someone new messages you, they&apos;ll appear here
@@ -167,7 +167,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
       {/* No search results */}
       {requestCount > 0 && searchQuery && filteredIds.length === 0 && (
-        <div className="flex flex-col flex-1 items-center justify-center px-6 text-center">
+        <div className="flex flex-col flex-1 justify-center px-6">
           <SearchX className="w-10 h-10 text-[#9BA3AE] mb-3" />
           <p className="text-[#717680]">No results found</p>
           <p className="text-sm text-[#9BA3AE] mt-1">Try a different search term</p>

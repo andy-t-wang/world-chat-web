@@ -1,13 +1,16 @@
-'use client';
+"use client";
 
-import { Mail, ChevronRight } from 'lucide-react';
+import { Mail, ChevronRight } from "lucide-react";
 
 interface ChatRequestsBannerProps {
   count: number;
   onClick?: () => void;
 }
 
-export function ChatRequestsBanner({ count, onClick }: ChatRequestsBannerProps) {
+export function ChatRequestsBanner({
+  count,
+  onClick,
+}: ChatRequestsBannerProps) {
   if (count === 0) return null;
 
   return (
@@ -21,12 +24,12 @@ export function ChatRequestsBanner({ count, onClick }: ChatRequestsBannerProps) 
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5 items-start">
         <span className="text-[17px] font-medium text-[#181818]">
           Chat requests
         </span>
         <span className="text-[15px] text-[#717680] leading-[1.3]">
-          {count} new message {count === 1 ? 'request' : 'requests'}
+          {count} new message {count === 1 ? "request" : "requests"}
         </span>
       </div>
 
