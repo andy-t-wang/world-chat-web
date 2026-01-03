@@ -8,9 +8,12 @@ import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
 import { PaymentMessage } from './PaymentMessage';
 import { ImageMessage } from './ImageMessage';
+import { ImageGrid } from './ImageGrid';
+import { MultiAttachmentMessage } from './MultiAttachmentMessage';
 import { chatBackgroundStyle } from './ChatBackground';
 import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
 import type { RemoteAttachmentContent } from '@/types/attachments';
+import { isMultiAttachment, isSingleAttachment, isMultiAttachmentWrapper, extractAttachments } from '@/types/attachments';
 import { useUsername } from '@/hooks/useUsername';
 import { useMessages } from '@/hooks/useMessages';
 import { xmtpClientAtom } from '@/stores/client';
@@ -190,8 +193,10 @@ export function MessagePanel({
     if (typeId === 'readReceipt') return false;
     // Transaction references are displayed as payment cards
     if (typeId === 'transactionReference') return true;
-    // Remote attachments (images) are displayed as image cards
-    if (typeId === 'remoteAttachment') return true;
+    // Remote attachments (images) are displayed as image cards - single or multi
+    // Handle both old and new naming conventions
+    if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
+        typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') return true;
     return true;
   }, []);
 
@@ -201,12 +206,11 @@ export function MessagePanel({
     if (typeId === 'readReceipt') return null;
     // Transaction references render as payment cards, not text
     if (typeId === 'transactionReference') return null;
-    // Remote attachments render as image cards, not text
-    if (typeId === 'remoteAttachment') return null;
-    // Also check content shape for remote attachments
-    const contentAsObj = msg.content as Record<string, unknown> | null;
-    if (contentAsObj !== null && typeof contentAsObj === 'object' &&
-        'contentDigest' in contentAsObj && 'url' in contentAsObj) return null;
+    // Remote attachments render as image cards, not text (handle both old and new naming)
+    if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
+        typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') return null;
+    // Also check content shape for remote attachments (single or multi)
+    if (isSingleAttachment(msg.content) || isMultiAttachment(msg.content)) return null;
     if (typeId === 'reaction') {
       const content = msg.content as { content?: string } | undefined;
       return content?.content ? `Reacted ${content.content}` : null;
@@ -343,14 +347,16 @@ export function MessagePanel({
         else if ('txHash' in content) hasDisplayableContent = true;
         // Transaction references - XMTP format (World App)
         else if ('reference' in content) hasDisplayableContent = true;
-        // Remote attachments (images)
-        else if ('contentDigest' in content && 'url' in content) hasDisplayableContent = true;
+        // Remote attachments (images) - single or multi
+        else if (isSingleAttachment(content) || isMultiAttachment(content)) hasDisplayableContent = true;
       }
 
       // Always show reactions, transaction references, and images by typeId
       if (typeId === 'reaction') hasDisplayableContent = true;
       if (typeId === 'transactionReference') hasDisplayableContent = true;
-      if (typeId === 'remoteAttachment') hasDisplayableContent = true;
+      // Handle both old and new attachment type naming
+      if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
+          typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') hasDisplayableContent = true;
 
       if (!hasDisplayableContent) continue;
 
@@ -818,18 +824,63 @@ export function MessagePanel({
                   );
                 }
 
-                // For image messages, render ImageMessage component
-                // Check both typeId and content shape for robustness
-                const msgContentObj = msg.content as Record<string, unknown> | null;
-                const hasImageShape = msgContentObj !== null && typeof msgContentObj === 'object' &&
-                  'contentDigest' in msgContentObj && 'url' in msgContentObj;
+                // For image messages, render ImageMessage or ImageGrid component
+                // Check for various attachment formats
+                let attachmentContent = msg.content;
+
+                // For multi-attachment types, show placeholder (SDK doesn't export codec yet)
+                const isMultiType = typeId === 'multiRemoteStaticAttachment' || typeId === 'multiRemoteAttachment';
+                if (isMultiType) {
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      {!isOwnMessage && (
+                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                          {isLastInGroup && (
+                            <Avatar
+                              address={conversationType === 'group'
+                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                                : peerAddress}
+                              size="sm"
+                            />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        {!isOwnMessage && isFirstInGroup && (
+                          <SenderName address={conversationType === 'group'
+                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                            : peerAddress}
+                          />
+                        )}
+                        <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
+                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
+                        {isLastInGroup && (
+                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
+                            {formatTime(msg.sentAtNs)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                const hasMultiAttachments = isMultiAttachment(attachmentContent);
+                const hasMultiWrapper = isMultiAttachmentWrapper(attachmentContent);
+                const hasSingleAttachment = isSingleAttachment(attachmentContent);
+                const attachments = extractAttachments(attachmentContent);
 
                 // Check for raw/undecoded content (string with CDN URL embedded)
                 const contentStr = typeof msg.content === 'string' ? msg.content : '';
                 const hasRawCdnUrl = contentStr.includes('chat-assets.toolsforhumanity.com');
 
-                const isImage = (typeId === 'remoteAttachment' || hasImageShape) && msg.content;
-                const isRawImageData = typeId === 'remoteAttachment' && hasRawCdnUrl && !hasImageShape;
+                const hasAnyAttachment = hasSingleAttachment || hasMultiAttachments || hasMultiWrapper;
+                // Handle single attachment types (multi-attachment types are handled above)
+                const isAttachmentType = typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment';
+                const isImage = (isAttachmentType || hasAnyAttachment) && attachmentContent;
+                const isRawImageData = isAttachmentType && hasRawCdnUrl && !hasAnyAttachment;
 
                 // For raw undecoded image data, show a placeholder instead of gibberish
                 if (isRawImageData) {
@@ -874,7 +925,6 @@ export function MessagePanel({
                 }
 
                 if (isImage) {
-                  const attachmentContent = msg.content as RemoteAttachmentContent;
                   return (
                     <div
                       key={item.id}
@@ -901,10 +951,23 @@ export function MessagePanel({
                             : peerAddress}
                           />
                         )}
-                        <ImageMessage
-                          remoteAttachment={attachmentContent}
-                          isOwnMessage={isOwnMessage}
-                        />
+                        {/* Render ImageGrid for multiple attachments, ImageMessage for single */}
+                        {attachments && attachments.length > 1 ? (
+                          <ImageGrid
+                            attachments={attachments}
+                            isOwnMessage={isOwnMessage}
+                          />
+                        ) : attachments && attachments.length === 1 ? (
+                          <ImageMessage
+                            remoteAttachment={attachments[0]}
+                            isOwnMessage={isOwnMessage}
+                          />
+                        ) : (
+                          <ImageMessage
+                            remoteAttachment={attachmentContent as RemoteAttachmentContent}
+                            isOwnMessage={isOwnMessage}
+                          />
+                        )}
                         <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
                         {isLastInGroup && (
                           <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>

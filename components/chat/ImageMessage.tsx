@@ -8,6 +8,10 @@ import type { RemoteAttachmentContent } from '@/types/attachments';
 interface ImageMessageProps {
   remoteAttachment: RemoteAttachmentContent;
   isOwnMessage: boolean;
+  /** Compact mode for grid display - square aspect ratio, no border radius */
+  compact?: boolean;
+  /** Full size mode for lightbox - no size constraints */
+  fullSize?: boolean;
 }
 
 /**
@@ -15,7 +19,7 @@ interface ImageMessageProps {
  * Displays an image attachment with loading, error, and retry states
  * Matches Figma design: rounded corners, subtle border, no bubble background
  */
-export function ImageMessage({ remoteAttachment, isOwnMessage }: ImageMessageProps) {
+export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize }: ImageMessageProps) {
   const { status, blobUrl, error, isLoading, canRetry, retry } = useImageAttachment(remoteAttachment);
   const [imageError, setImageError] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
@@ -23,23 +27,38 @@ export function ImageMessage({ remoteAttachment, isOwnMessage }: ImageMessagePro
   // Determine if image is vertical or horizontal for sizing
   const isVertical = imageDimensions ? imageDimensions.height > imageDimensions.width : true;
 
-  // Container dimensions based on orientation (from Figma)
-  const containerStyle = isVertical
-    ? { width: 180, height: 232 }
-    : { width: 250, height: 193 };
+  // Container dimensions based on mode
+  const getContainerStyle = () => {
+    if (compact) {
+      return { width: '100%', height: '100%' };
+    }
+    if (fullSize) {
+      return {};
+    }
+    // Default sizing based on orientation (from Figma)
+    return isVertical
+      ? { width: 180, height: 232 }
+      : { width: 250, height: 193 };
+  };
+
+  const containerStyle = getContainerStyle();
 
   // Loading state
   if (status === 'downloading' || isLoading) {
     return (
       <div
-        className="bg-[#F3F4F5] border border-[rgba(0,0,0,0.1)] rounded-[16px] flex items-center justify-center"
+        className={`bg-[#F3F4F5] flex items-center justify-center ${
+          compact ? 'w-full h-full' : 'border border-[rgba(0,0,0,0.1)] rounded-[16px]'
+        }`}
         style={containerStyle}
       >
         <div className="flex flex-col items-center gap-2">
-          <Loader2 className="w-6 h-6 animate-spin text-[#9BA3AE]" />
-          <span className="text-[13px] text-[#717680]">
-            Loading...
-          </span>
+          <Loader2 className={`animate-spin text-[#9BA3AE] ${compact ? 'w-5 h-5' : 'w-6 h-6'}`} />
+          {!compact && (
+            <span className="text-[13px] text-[#717680]">
+              Loading...
+            </span>
+          )}
         </div>
       </div>
     );
@@ -48,6 +67,18 @@ export function ImageMessage({ remoteAttachment, isOwnMessage }: ImageMessagePro
   // Failed state
   if (status === 'failed' || imageError) {
     const isUntrusted = error === 'Untrusted CDN source';
+
+    if (compact) {
+      return (
+        <div className="w-full h-full bg-[#F3F4F5] flex items-center justify-center">
+          {isUntrusted ? (
+            <AlertTriangle className="w-5 h-5 text-amber-500" />
+          ) : (
+            <ImageIcon className="w-5 h-5 text-[#9BA3AE]" />
+          )}
+        </div>
+      );
+    }
 
     return (
       <div className="flex items-center gap-1.5">
@@ -85,6 +116,31 @@ export function ImageMessage({ remoteAttachment, isOwnMessage }: ImageMessagePro
 
   // Success state - show image
   if (blobUrl) {
+    // Compact mode for grid
+    if (compact) {
+      return (
+        <img
+          src={blobUrl}
+          alt={remoteAttachment.filename || 'Image'}
+          className="w-full h-full object-cover"
+          onError={() => setImageError(true)}
+        />
+      );
+    }
+
+    // Full size mode for lightbox
+    if (fullSize) {
+      return (
+        <img
+          src={blobUrl}
+          alt={remoteAttachment.filename || 'Image'}
+          className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+          onError={() => setImageError(true)}
+        />
+      );
+    }
+
+    // Default mode
     return (
       <div className="overflow-hidden rounded-[16px] border border-[rgba(0,0,0,0.1)]">
         <img
