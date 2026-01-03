@@ -132,7 +132,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           { ReactionCodec },
           { ReplyCodec },
           { ReadReceiptCodec },
-          { RemoteAttachmentCodec },
+          { RemoteAttachmentCodec, AttachmentCodec },
           { TransactionReferenceCodec },
         ] = await Promise.all([
           getXmtpModule(),
@@ -154,6 +154,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           new ReactionCodec(),
           new ReplyCodec(),
           new ReadReceiptCodec(),
+          new AttachmentCodec(),
           new RemoteAttachmentCodec(),
           new TransactionReferenceCodec(),
         ],
@@ -216,7 +217,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             { ReactionCodec },
             { ReplyCodec },
             { ReadReceiptCodec },
-            { RemoteAttachmentCodec },
+            { RemoteAttachmentCodec, AttachmentCodec },
             { TransactionReferenceCodec },
           ] = await Promise.all([
             getXmtpModule(),
@@ -238,6 +239,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new ReactionCodec(),
             new ReplyCodec(),
             new ReadReceiptCodec(),
+            new AttachmentCodec(),
             new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
           ],

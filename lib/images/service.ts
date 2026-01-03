@@ -131,23 +131,41 @@ async function downloadAndDecrypt(
   remoteAttachment: RemoteAttachmentContent,
   xmtpClient: unknown
 ): Promise<ImageLoadResult> {
-  const { contentDigest, filename } = remoteAttachment;
+  const { contentDigest, filename, url } = remoteAttachment;
+
+  console.log('[ImageService] downloadAndDecrypt called');
+  console.log('[ImageService] Original URL:', url?.slice(0, 100));
+  console.log('[ImageService] Content digest:', contentDigest);
 
   try {
     // Import the codec dynamically
     const { RemoteAttachmentCodec } = await import('@xmtp/content-type-remote-attachment');
 
+    // Rewrite URL to go through our proxy to avoid CORS issues
+    const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
+    console.log('[ImageService] Proxy URL:', proxyUrl.slice(0, 100));
+
+    const proxiedAttachment = {
+      ...remoteAttachment,
+      url: proxyUrl,
+    };
+
+    console.log('[ImageService] Calling RemoteAttachmentCodec.load...');
+
     // Use the SDK's built-in load method which handles decryption
     // We use 'as any' because XMTP message content may not exactly match the SDK's expected type
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const attachment = await RemoteAttachmentCodec.load(
-      remoteAttachment as any,
+      proxiedAttachment as any,
       xmtpClient as any
     ) as LoadedAttachment;
+
+    console.log('[ImageService] Load successful! Filename:', attachment.filename, 'Type:', attachment.mimeType, 'Size:', attachment.data?.length);
 
     // Create blob URL from decrypted data
     const blob = new Blob([attachment.data as BlobPart], { type: attachment.mimeType });
     const blobUrl = URL.createObjectURL(blob);
+    console.log('[ImageService] Created blob URL:', blobUrl);
 
     // Cache the result
     const entry: WorldChatImage = {
@@ -171,6 +189,9 @@ async function downloadAndDecrypt(
       mimeType: entry.mimeType,
     };
   } catch (error) {
+    console.error('[ImageService] Download/decrypt failed:', error);
+    console.error('[ImageService] Error details:', error instanceof Error ? error.stack : String(error));
+
     // Cache the failure
     const failedEntry: WorldChatImage = {
       contentDigest,
@@ -204,9 +225,13 @@ export async function loadImage(
 
   const { contentDigest, url } = remoteAttachment;
 
+  console.log('[ImageService] loadImage called for:', contentDigest?.slice(0, 20));
+  console.log('[ImageService] URL:', url?.slice(0, 80));
+
   // Check cache first
   const cached = imageCache.get(contentDigest);
   if (cached && cached.status === 'downloaded' && cached.fileLocation) {
+    console.log('[ImageService] Returning from cache (downloaded)');
     return {
       status: 'downloaded',
       blobUrl: cached.fileLocation,
@@ -217,6 +242,7 @@ export async function loadImage(
 
   // Return cached failure state (allows retry via retryImage)
   if (cached && cached.status === 'failed') {
+    console.log('[ImageService] Returning from cache (failed)');
     return {
       status: 'failed',
       blobUrl: null,
@@ -227,11 +253,13 @@ export async function loadImage(
   // Deduplicate concurrent downloads
   const pending = pendingDownloads.get(contentDigest);
   if (pending) {
+    console.log('[ImageService] Returning pending download');
     return pending;
   }
 
   // Verify trusted CDN
   if (!isTrustedCdnUrl(url)) {
+    console.log('[ImageService] Untrusted CDN URL:', url);
     const failedEntry: WorldChatImage = {
       contentDigest,
       fileLocation: url,
@@ -248,6 +276,8 @@ export async function loadImage(
       error: 'Untrusted CDN source',
     };
   }
+
+  console.log('[ImageService] Starting download...');
 
   // Start download
   const downloadPromise = downloadAndDecrypt(remoteAttachment, xmtpClient);
