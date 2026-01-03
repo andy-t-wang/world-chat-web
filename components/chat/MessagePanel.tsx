@@ -233,7 +233,14 @@ export function MessagePanel({
       }
     }
 
-    if (typeof content === 'string') return content;
+    // Check for raw image attachment data (undecoded) - don't display as text
+    if (typeof content === 'string') {
+      // If it looks like raw remote attachment data (contains CDN URL), don't display
+      if (content.includes('chat-assets.toolsforhumanity.com')) {
+        return null;
+      }
+      return content;
+    }
     if (content && typeof content === 'object') {
       if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
         return (content as { text: string }).text;
@@ -802,7 +809,56 @@ export function MessagePanel({
                 const msgContentObj = msg.content as Record<string, unknown> | null;
                 const hasImageShape = msgContentObj !== null && typeof msgContentObj === 'object' &&
                   'contentDigest' in msgContentObj && 'url' in msgContentObj;
+
+                // Check for raw/undecoded content (string with CDN URL embedded)
+                const contentStr = typeof msg.content === 'string' ? msg.content : '';
+                const hasRawCdnUrl = contentStr.includes('chat-assets.toolsforhumanity.com');
+
                 const isImage = (typeId === 'remoteAttachment' || hasImageShape) && msg.content;
+                const isRawImageData = typeId === 'remoteAttachment' && hasRawCdnUrl && !hasImageShape;
+
+                // For raw undecoded image data, show a placeholder instead of gibberish
+                if (isRawImageData) {
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      {!isOwnMessage && (
+                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                          {isLastInGroup && (
+                            <Avatar
+                              address={conversationType === 'group'
+                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                                : peerAddress}
+                              size="sm"
+                            />
+                          )}
+                        </div>
+                      )}
+                      <div className="flex flex-col">
+                        {!isOwnMessage && isFirstInGroup && (
+                          <SenderName address={conversationType === 'group'
+                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                            : peerAddress}
+                          />
+                        )}
+                        <div className="bg-[#F3F4F5] border border-[rgba(0,0,0,0.1)] rounded-[16px] px-4 py-3 text-[#717680] text-sm">
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="w-4 h-4" />
+                            <span>Image unavailable - reload required</span>
+                          </div>
+                        </div>
+                        {isLastInGroup && (
+                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
+                            {formatTime(msg.sentAtNs)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
+
                 if (isImage) {
                   const attachmentContent = msg.content as RemoteAttachmentContent;
                   return (

@@ -70,6 +70,49 @@ const CONTENT_TYPE_REACTION = 'reaction';
 const CONTENT_TYPE_REPLY = 'reply';
 const CONTENT_TYPE_REMOTE_ATTACHMENT = 'remoteAttachment';
 
+// CDN URL for trusted image attachments
+const TRUSTED_CDN_PATTERN = 'chat-assets.toolsforhumanity.com';
+
+/**
+ * Try to decode a raw remote attachment from encodedContent
+ * This handles messages that were synced before the codec was registered
+ */
+async function tryDecodeRawRemoteAttachment(msg: {
+  content: unknown;
+  contentType?: { typeId?: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  encodedContent?: any;
+}): Promise<boolean> {
+  const typeId = msg.contentType?.typeId;
+  const content = msg.content;
+
+  // Check if this looks like a raw/undecoded remote attachment
+  // It will be a string containing the CDN URL instead of a proper object
+  const isRawRemoteAttachment =
+    typeId === CONTENT_TYPE_REMOTE_ATTACHMENT &&
+    typeof content === 'string' &&
+    content.includes(TRUSTED_CDN_PATTERN);
+
+  if (!isRawRemoteAttachment || !msg.encodedContent) {
+    return false;
+  }
+
+  try {
+    const { RemoteAttachmentCodec } = await import('@xmtp/content-type-remote-attachment');
+    const codec = new RemoteAttachmentCodec();
+    // encodedContent is the full EncodedContent object from XMTP
+    const decoded = codec.decode(msg.encodedContent);
+
+    // Mutate the message content to the decoded value
+    (msg as { content: unknown }).content = decoded;
+    console.log('[StreamManager] Decoded raw remote attachment');
+    return true;
+  } catch (error) {
+    console.error('[StreamManager] Failed to decode raw remote attachment:', error);
+    return false;
+  }
+}
+
 // Message loading limits
 const BATCH_SIZE = 50;             // Messages to fetch per batch
 const MIN_DISPLAYABLE_MESSAGES = 30; // Minimum displayable messages we want initially
@@ -551,6 +594,11 @@ class XMTPStreamManager {
             continue;
           }
 
+          // Try to decode raw remote attachments
+          if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
+            await tryDecodeRawRemoteAttachment(msg);
+          }
+
           if (!currentIdSet.has(msg.id)) {
             messageCache.set(msg.id, msg as unknown as DecodedMessage);
             newMessageIds.push(msg.id);
@@ -972,6 +1020,11 @@ class XMTPStreamManager {
             continue;
           }
 
+          // Try to decode raw remote attachments (messages synced before codec was registered)
+          if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
+            await tryDecodeRawRemoteAttachment(msg);
+          }
+
           // This is a displayable message
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
           displayableIds.push(msg.id);
@@ -1037,6 +1090,11 @@ class XMTPStreamManager {
         if (typeId === CONTENT_TYPE_REACTION) {
           this.processReaction(msg as unknown as DecodedMessage);
           continue;
+        }
+
+        // Try to decode raw remote attachments
+        if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
+          await tryDecodeRawRemoteAttachment(msg);
         }
 
         if (!currentIdSet.has(msg.id)) {
@@ -1116,6 +1174,11 @@ class XMTPStreamManager {
             continue;
           }
 
+          // Try to decode raw remote attachments
+          if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
+            await tryDecodeRawRemoteAttachment(msg);
+          }
+
           // This is a displayable message
           if (!messageCache.has(msg.id)) {
             messageCache.set(msg.id, msg as unknown as DecodedMessage);
@@ -1188,6 +1251,10 @@ class XMTPStreamManager {
           // Skip if we already have this message
           if (messageCache.has(msg.id)) continue;
 
+          // Try to decode raw remote attachments (shouldn't be needed for streaming, but just in case)
+          if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
+            await tryDecodeRawRemoteAttachment(msg);
+          }
 
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
 
