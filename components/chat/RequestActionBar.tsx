@@ -1,23 +1,34 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useSetAtom } from 'jotai';
-import { Loader2 } from 'lucide-react';
-import { streamManager } from '@/lib/xmtp/StreamManager';
-import { showMessageRequestsAtom, selectedConversationIdAtom } from '@/stores/ui';
+import { useState } from "react";
+import { useSetAtom } from "jotai";
+import { Loader2 } from "lucide-react";
+import { streamManager } from "@/lib/xmtp/StreamManager";
+import { selectedConversationIdAtom } from "@/stores/ui";
+import { useUsername } from "@/hooks/useUsername";
 
 interface RequestActionBarProps {
   conversationId: string;
+  peerAddress?: string;
 }
 
-export function RequestActionBar({ conversationId }: RequestActionBarProps) {
+export function RequestActionBar({
+  conversationId,
+  peerAddress,
+}: RequestActionBarProps) {
   const [isAccepting, setIsAccepting] = useState(false);
-  const [isBlocking, setIsBlocking] = useState(false);
-  const setShowRequests = useSetAtom(showMessageRequestsAtom);
+  const [isDeleting, setIsDeleting] = useState(false);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
+  const { displayName } = useUsername(peerAddress);
+
+  const senderName =
+    displayName ||
+    (peerAddress
+      ? `${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)}`
+      : "this user");
 
   const handleAccept = async () => {
-    if (isAccepting || isBlocking) return;
+    if (isAccepting || isDeleting) return;
     setIsAccepting(true);
 
     try {
@@ -27,56 +38,60 @@ export function RequestActionBar({ conversationId }: RequestActionBarProps) {
         // The UI will automatically switch to showing the regular input
       }
     } catch (error) {
-      console.error('Failed to accept conversation:', error);
+      console.error("Failed to accept conversation:", error);
     } finally {
       setIsAccepting(false);
     }
   };
 
-  const handleBlock = async () => {
-    if (isAccepting || isBlocking) return;
-    setIsBlocking(true);
+  const handleDelete = async () => {
+    if (isAccepting || isDeleting) return;
+    setIsDeleting(true);
 
     try {
       const success = await streamManager.rejectConversation(conversationId);
       if (success) {
         // Clear selection and go back to requests view
         setSelectedId(null);
-        // Stay in requests view if we were viewing requests
       }
     } catch (error) {
-      console.error('Failed to block conversation:', error);
+      console.error("Failed to delete conversation:", error);
     } finally {
-      setIsBlocking(false);
+      setIsDeleting(false);
     }
   };
 
-  const isLoading = isAccepting || isBlocking;
+  const isLoading = isAccepting || isDeleting;
 
   return (
-    <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
-      <div className="flex gap-3">
-        {/* Block Button */}
+    <div className="shrink-0 bg-white pb-4">
+      {/* Warning text */}
+      <div className="px-6 py-3">
+        <p className="text-[14px] text-[#717680] text-center leading-[1.4]">
+          You have received a message from @{senderName}. This could be a spam
+          or phishing attempt. Only accept the message if you trust the sender.
+        </p>
+      </div>
+
+      {/* Buttons */}
+      <div className="flex gap-3 px-6">
+        {/* Delete Button */}
         <button
-          onClick={handleBlock}
+          onClick={handleDelete}
           disabled={isLoading}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-[#F5F5F5] text-[#717680] font-medium rounded-xl hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 h-11 flex items-center justify-center gap-2 border border-[#EBECEF] text-[#181818] font-medium text-[15px] rounded-full hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isBlocking ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : null}
-          Block
+          {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+          Delete
         </button>
 
         {/* Accept Button */}
         <button
           onClick={handleAccept}
           disabled={isLoading}
-          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-[#005CFF] text-white font-medium rounded-xl hover:bg-[#0052E0] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 h-11 flex items-center justify-center gap-2 bg-[#181818] text-white font-medium text-[15px] rounded-full hover:bg-[#2a2a2a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {isAccepting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : null}
+          {isAccepting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
           Accept
         </button>
       </div>

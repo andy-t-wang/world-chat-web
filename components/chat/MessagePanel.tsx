@@ -1354,7 +1354,7 @@ export function MessagePanel({
 
       {/* Input Area or Action Bar for Message Requests */}
       {isMessageRequest ? (
-        <RequestActionBar conversationId={conversationId} />
+        <RequestActionBar conversationId={conversationId} peerAddress={peerAddress} />
       ) : (
         <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
           <div className="flex items-center gap-2">
