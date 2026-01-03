@@ -35,7 +35,7 @@ function GlobalSettingsDropdown() {
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 top-full mt-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
+        <div className="absolute right-0 bottom-full mb-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
           <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider">
             Privacy
           </div>
@@ -108,10 +108,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
       {/* Header */}
       <header className="shrink-0 px-4 py-3 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-1">
-            <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
-            <GlobalSettingsDropdown />
-          </div>
+          <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
           <button
             onClick={onNewChat}
             className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
@@ -148,9 +145,15 @@ export function Sidebar({ onNewChat }: SidebarProps) {
         </div>
       </header>
 
-      {/* Conversation List */}
-      <div className="flex-1 overflow-hidden">
-        <ConversationList searchQuery={debouncedQuery} />
+      {/* Conversation List - with bottom padding for pinned settings */}
+      <div className="flex-1 overflow-hidden relative">
+        <ConversationList searchQuery={debouncedQuery} bottomPadding={64} />
+
+        {/* Pinned Settings Footer */}
+        <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-white via-white to-transparent pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 px-4 py-3 pointer-events-auto flex justify-end">
+          <GlobalSettingsDropdown />
+        </div>
       </div>
     </aside>
   );

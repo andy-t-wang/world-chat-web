@@ -170,7 +170,7 @@ export function ConversationItem(props: ConversationItemProps) {
           {/* Unread: dark text + semibold, Read: gray text + normal weight */}
           <div className={`text-[14px] leading-[1.3] truncate ${
             isSelected
-              ? 'text-white/70'
+              ? 'text-white/90'
               : unreadCount > 0
                 ? 'text-[#181818] font-semibold'
                 : 'text-[#717680]'
@@ -183,7 +183,7 @@ export function ConversationItem(props: ConversationItemProps) {
         <div className="flex flex-col items-end gap-1 shrink-0">
           {/* Timestamp */}
           {timestamp && (
-            <span className={`text-[13px] leading-[1.3] ${isSelected ? 'text-white/70' : 'text-[#9BA3AE]'}`}>
+            <span className={`text-[13px] leading-[1.3] ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`}>
               {timestamp}
             </span>
           )}
@@ -191,10 +191,10 @@ export function ConversationItem(props: ConversationItemProps) {
           {/* Indicators */}
           <div className="flex items-center gap-1.5">
             {isMuted && (
-              <BellOff className={`w-4 h-4 ${isSelected ? 'text-white/70' : 'text-[#9BA3AE]'}`} />
+              <BellOff className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
             )}
             {isPinned && (
-              <Pin className={`w-4 h-4 ${isSelected ? 'text-white/70' : 'text-[#9BA3AE]'}`} />
+              <Pin className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
             )}
             {unreadCount > 0 && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${

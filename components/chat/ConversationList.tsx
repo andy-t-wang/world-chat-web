@@ -15,12 +15,14 @@ interface ConversationListProps {
   requestCount?: number;
   onRequestsClick?: () => void;
   searchQuery?: string;
+  bottomPadding?: number;
 }
 
 export function ConversationList({
   requestCount = 0,
   onRequestsClick,
   searchQuery = '',
+  bottomPadding = 0,
 }: ConversationListProps) {
   const parentRef = useRef<HTMLDivElement>(null);
   const selectedId = useAtomValue(selectedConversationIdAtom);
@@ -183,7 +185,7 @@ export function ConversationList({
       >
         <div
           style={{
-            height: virtualizer.getTotalSize(),
+            height: virtualizer.getTotalSize() + bottomPadding,
             position: 'relative',
           }}
         >
