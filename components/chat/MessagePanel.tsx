@@ -1211,7 +1211,10 @@ export function MessagePanel({
       {/* Input Area */}
       <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
         <div className="flex items-center gap-2">
-          <button className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0">
+          <button
+            onClick={() => alert('Coming soon! Ping Takis to work on this 📎')}
+            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
+          >
             <Paperclip className="w-5 h-5 text-[#717680]" />
           </button>
           <div className="flex-1 relative flex items-center">

@@ -855,20 +855,24 @@ class XMTPStreamManager {
         for await (const conv of streamProxy as AsyncIterable<Conversation>) {
           if (signal.aborted) break;
 
-          // Only process allowed conversations
+          // Check consent state - only show Allowed conversations in the list
+          // But sync Unknown ones too in case consent changed on another device
           const consentState = await conv.consentState();
-          if (consentState !== ConsentState.Allowed) {
-            continue;
-          }
 
+          // Store the conversation regardless of consent
           this.conversations.set(conv.id, conv);
           // New streamed conversations - sync to get initial messages
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
-          // Only add to list if it has displayable messages or is selected
+          // Only add to visible list if:
+          // 1. Consent is Allowed (or we responded on another device making it Allowed)
+          // 2. It has displayable messages or is selected
           const selectedId = store.get(selectedConversationIdAtom);
-          if (metadata.lastMessagePreview || conv.id === selectedId) {
+          const shouldShow = consentState === ConsentState.Allowed &&
+            (metadata.lastMessagePreview || conv.id === selectedId);
+
+          if (shouldShow) {
             const currentIds = store.get(conversationIdsAtom);
             if (!currentIds.includes(conv.id)) {
               store.set(conversationIdsAtom, [conv.id, ...currentIds]);
@@ -1244,8 +1248,10 @@ class XMTPStreamManager {
 
     const stream = async () => {
       try {
+        // Stream both Allowed AND Unknown - we'll handle consent inline
+        // This catches conversations where consent changed on another device
         const streamProxy = await this.client!.conversations.streamAllMessages({
-          consentStates: [ConsentState.Allowed],
+          consentStates: [ConsentState.Allowed, ConsentState.Unknown],
         });
 
         // Reset restart counter on successful connection
@@ -1356,12 +1362,32 @@ class XMTPStreamManager {
           }
 
           // Add to conversation list if not already there
-          // Do this even if metadata fetch failed - the conversation clearly exists if we got a message
+          // Check consent: only add if Allowed OR if it's our own message (responded on another device)
           const currentConvIds = store.get(conversationIdsAtom);
           const hasDisplayableContent = content || (metadata && metadata.lastMessagePreview);
+          const isOwnMsg = msg.senderInboxId === this.client?.inboxId;
 
-          if (!currentConvIds.includes(conversationId) && hasDisplayableContent) {
-            console.log('[StreamManager] Adding previously-filtered conversation to list:', conversationId);
+          // Re-check consent state from the conversation (it may have changed on another device)
+          const conv = this.conversations.get(conversationId);
+          let consentAllowed = false;
+          if (conv) {
+            try {
+              const consentState = await conv.consentState();
+              consentAllowed = consentState === ConsentState.Allowed;
+            } catch {
+              // If we can't check, assume allowed if it's our own message
+              consentAllowed = isOwnMsg;
+            }
+          } else {
+            // If we don't have the conversation, allow our own messages
+            consentAllowed = isOwnMsg;
+          }
+
+          // Add to list if: has content AND (consent allowed OR own message)
+          const shouldAdd = hasDisplayableContent && (consentAllowed || isOwnMsg);
+
+          if (!currentConvIds.includes(conversationId) && shouldAdd) {
+            console.log('[StreamManager] Adding conversation to list:', conversationId, { consentAllowed, isOwnMsg });
             store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
             // Trigger UI update even if we don't have full metadata
             this.incrementMetadataVersion();
