@@ -104,15 +104,27 @@ export default function Home() {
 
   useEffect(() => {
     // Try to restore existing session first
-    restoreSession().then((restored) => {
-      if (restored) {
-        // Session restored, redirect to chat
-        router.push("/chat");
-      } else {
-        // No session, start QR flow
-        startSession();
-      }
-    });
+    restoreSession()
+      .then((restored) => {
+        if (restored) {
+          // Session restored, redirect to chat
+          router.push("/chat");
+        } else {
+          // No session, start QR flow
+          startSession();
+        }
+      })
+      .catch((error) => {
+        // Check if another tab has the session
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage === "TAB_LOCKED") {
+          // Redirect to chat page which will show the "open in another tab" message
+          router.push("/chat");
+        } else {
+          // Other error, start QR flow
+          startSession();
+        }
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

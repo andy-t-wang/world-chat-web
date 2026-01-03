@@ -1,17 +1,16 @@
-'use client';
+"use client";
 
-import { useEffect, useState, memo, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAtomValue } from 'jotai';
-import { Sidebar, MessagePanel, EmptyState } from '@/components/chat';
-import { NewConversationModal } from '@/components/chat/NewConversationModal';
-import { selectedConversationIdAtom } from '@/stores/ui';
-import { clientStateAtom } from '@/stores/client';
-import { useConversationMetadata } from '@/hooks/useConversations';
-import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
-import { hasQRSession } from '@/lib/auth/session';
-import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-lock';
-import { Loader2, MessageCircle, AlertCircle, Monitor } from 'lucide-react';
+import { useEffect, useState, memo, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { useAtomValue } from "jotai";
+import { Sidebar, MessagePanel, EmptyState } from "@/components/chat";
+import { NewConversationModal } from "@/components/chat/NewConversationModal";
+import { selectedConversationIdAtom } from "@/stores/ui";
+import { clientStateAtom } from "@/stores/client";
+import { useConversationMetadata } from "@/hooks/useConversations";
+import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
+import { hasQRSession } from "@/lib/auth/session";
+import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
 const MemoizedMessagePanel = memo(MessagePanel);
@@ -43,15 +42,7 @@ export default function ChatPage() {
     // Check session on each attempt (might have been cleared)
     if (!hasQRSession()) {
       setRestorationAttempted(true);
-      router.push('/');
-      return;
-    }
-
-    // Check if another tab has the XMTP lock
-    if (isLockedByAnotherTab()) {
-      console.log('[ChatPage] Another tab has the XMTP lock');
-      setIsLockedByOtherTab(true);
-      setRestorationAttempted(true);
+      router.push("/");
       return;
     }
 
@@ -60,34 +51,30 @@ export default function ChatPage() {
     setIsLockedByOtherTab(false);
 
     try {
-      // Acquire the tab lock before restoring
-      const lockAcquired = acquireTabLock();
-      if (!lockAcquired) {
-        console.log('[ChatPage] Failed to acquire tab lock');
-        setIsLockedByOtherTab(true);
-        setRestorationAttempted(true);
-        setIsRestoring(false);
-        return;
-      }
-
       const success = await restoreSession();
-      console.log('[ChatPage] Session restoration:', success ? 'success' : 'failed');
+      console.log(
+        "[ChatPage] Session restoration:",
+        success ? "success" : "failed"
+      );
 
       if (!success) {
-        // Release lock on failure
-        releaseTabLock();
         // Check if session was cleared (expired) vs transient error
         if (!hasQRSession()) {
-          router.push('/');
+          router.push("/");
         } else {
           setRestorationFailed(true);
         }
       }
     } catch (error) {
-      console.error('[ChatPage] Session restoration error:', error);
-      releaseTabLock();
-      if (!hasQRSession()) {
-        router.push('/');
+      console.error("[ChatPage] Session restoration error:", error);
+
+      // Check if it's a tab lock error
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      if (errorMessage === "TAB_LOCKED") {
+        setIsLockedByOtherTab(true);
+      } else if (!hasQRSession()) {
+        router.push("/");
       } else {
         setRestorationFailed(true);
       }
@@ -115,7 +102,7 @@ export default function ChatPage() {
           <div className="flex items-center gap-2">
             <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
             <span className="text-[#717680]">
-              {isRestoring ? 'Restoring session...' : 'Loading...'}
+              {isRestoring ? "Loading..." : "Loading..."}
             </span>
           </div>
         </div>
@@ -131,9 +118,12 @@ export default function ChatPage() {
           <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
             <Monitor className="w-8 h-8 text-[#005CFF]" />
           </div>
-          <h2 className="text-lg font-semibold text-[#181818]">Chat Open in Another Tab</h2>
+          <h2 className="text-lg font-semibold text-[#181818]">
+            Chat Open in Another Tab
+          </h2>
           <p className="text-[#717680]">
-            World Chat is already open in another browser tab. Please close the other tab or use it instead.
+            World Chat is already open in another browser tab. Please close the
+            other tab or use it instead.
           </p>
           <button
             onClick={() => {
@@ -158,9 +148,12 @@ export default function ChatPage() {
           <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
-          <h2 className="text-lg font-semibold text-[#181818]">Connection Failed</h2>
+          <h2 className="text-lg font-semibold text-[#181818]">
+            Connection Failed
+          </h2>
           <p className="text-[#717680]">
-            {clientState.error?.message || 'Failed to restore session. Please try again.'}
+            {clientState.error?.message ||
+              "Failed to restore session. Please try again."}
           </p>
           <div className="flex gap-3">
             <button
@@ -174,7 +167,7 @@ export default function ChatPage() {
               Try Again
             </button>
             <button
-              onClick={() => router.push('/')}
+              onClick={() => router.push("/")}
               className="px-4 py-2 bg-gray-100 text-[#181818] rounded-lg hover:bg-gray-200 transition-colors"
             >
               Login Again
@@ -202,7 +195,7 @@ export default function ChatPage() {
 
         {/* Right Panel */}
         {selectedId && conversationMetadata ? (
-          conversationMetadata.conversationType === 'group' ? (
+          conversationMetadata.conversationType === "group" ? (
             <MemoizedMessagePanel
               key={selectedId}
               conversationId={selectedId}

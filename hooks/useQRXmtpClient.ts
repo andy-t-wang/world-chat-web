@@ -8,6 +8,7 @@ import { clientLifecycleAtom, clientStateAtom } from '@/stores/client';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import { RemoteSigner } from '@/lib/signing-relay';
 import { clearSession } from '@/lib/auth/session';
+import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-lock';
 
 const XMTP_SESSION_KEY = 'xmtp-session-cache';
 
@@ -109,6 +110,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
   /**
    * Try to restore session from cache (for page reloads)
    * Returns true if successful, false if QR login is needed
+   * Throws 'TAB_LOCKED' error if another tab has the XMTP client
    */
   const restoreSession = useCallback(async (): Promise<boolean> => {
     if (restoringRef.current || initializingRef.current || client) {
@@ -119,6 +121,18 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     if (!cachedSession) {
       console.log('[QRXmtpClient] No cached session to restore');
       return false;
+    }
+
+    // Check if another tab has the XMTP client
+    if (isLockedByAnotherTab()) {
+      console.log('[QRXmtpClient] Another tab has the XMTP client');
+      throw new Error('TAB_LOCKED');
+    }
+
+    // Try to acquire the lock
+    if (!acquireTabLock()) {
+      console.log('[QRXmtpClient] Failed to acquire tab lock');
+      throw new Error('TAB_LOCKED');
     }
 
     restoringRef.current = true;
@@ -176,6 +190,9 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     } catch (error) {
       console.error('[QRXmtpClient] Failed to restore session:', error);
 
+      // Release the tab lock on failure
+      releaseTabLock();
+
       // Only clear session if it's truly invalid (signing was required)
       // For other errors (network, etc.), keep session so user can retry
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -204,6 +221,18 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     async (signer: ReturnType<RemoteSigner['getSigner']>) => {
       if (initializingRef.current) {
         return;
+      }
+
+      // Check if another tab has the XMTP client
+      if (isLockedByAnotherTab()) {
+        console.log('[QRXmtpClient] Another tab has the XMTP client');
+        throw new Error('TAB_LOCKED');
+      }
+
+      // Try to acquire the lock
+      if (!acquireTabLock()) {
+        console.log('[QRXmtpClient] Failed to acquire tab lock');
+        throw new Error('TAB_LOCKED');
       }
 
       initializingRef.current = true;
@@ -259,6 +288,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         await streamManager.initialize(xmtpClient);
       } catch (error) {
         console.error('Failed to initialize XMTP client with remote signer:', error);
+        // Release the tab lock on failure
+        releaseTabLock();
         dispatch({
           type: 'INIT_ERROR',
           error: error instanceof Error ? error : new Error('Failed to initialize XMTP'),
