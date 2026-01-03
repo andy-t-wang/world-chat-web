@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useAtomValue, useAtom } from 'jotai';
-import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut, Clock } from 'lucide-react';
+import { MoreHorizontal, Paperclip, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut, Clock } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
@@ -1364,18 +1364,15 @@ export function MessagePanel({
             >
               <Paperclip className="w-5 h-5 text-[#717680]" />
             </button>
-            <div className="flex-1 relative flex items-center">
+            <div className="flex-1">
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Write a message..."
                 rows={1}
-                className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
+                className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
               />
-              <button className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Smile className="w-5 h-5 text-[#9BA3AE] hover:text-[#717680] transition-colors" />
-              </button>
             </div>
             <button
               onClick={handleSend}
