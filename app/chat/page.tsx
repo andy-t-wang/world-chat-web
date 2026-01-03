@@ -10,7 +10,8 @@ import { clientStateAtom } from '@/stores/client';
 import { useConversationMetadata } from '@/hooks/useConversations';
 import { useQRXmtpClient } from '@/hooks/useQRXmtpClient';
 import { hasQRSession } from '@/lib/auth/session';
-import { Loader2, MessageCircle, AlertCircle } from 'lucide-react';
+import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-lock';
+import { Loader2, MessageCircle, AlertCircle, Monitor } from 'lucide-react';
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
 const MemoizedMessagePanel = memo(MessagePanel);
@@ -24,6 +25,7 @@ export default function ChatPage() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [restorationAttempted, setRestorationAttempted] = useState(false);
   const [restorationFailed, setRestorationFailed] = useState(false);
+  const [isLockedByOtherTab, setIsLockedByOtherTab] = useState(false);
   const restorationRef = useRef(false);
 
   const hasXmtpClient = clientState.client !== null;
@@ -45,14 +47,35 @@ export default function ChatPage() {
       return;
     }
 
+    // Check if another tab has the XMTP lock
+    if (isLockedByAnotherTab()) {
+      console.log('[ChatPage] Another tab has the XMTP lock');
+      setIsLockedByOtherTab(true);
+      setRestorationAttempted(true);
+      return;
+    }
+
     setIsRestoring(true);
     setRestorationFailed(false);
+    setIsLockedByOtherTab(false);
 
     try {
+      // Acquire the tab lock before restoring
+      const lockAcquired = acquireTabLock();
+      if (!lockAcquired) {
+        console.log('[ChatPage] Failed to acquire tab lock');
+        setIsLockedByOtherTab(true);
+        setRestorationAttempted(true);
+        setIsRestoring(false);
+        return;
+      }
+
       const success = await restoreSession();
       console.log('[ChatPage] Session restoration:', success ? 'success' : 'failed');
 
       if (!success) {
+        // Release lock on failure
+        releaseTabLock();
         // Check if session was cleared (expired) vs transient error
         if (!hasQRSession()) {
           router.push('/');
@@ -62,6 +85,7 @@ export default function ChatPage() {
       }
     } catch (error) {
       console.error('[ChatPage] Session restoration error:', error);
+      releaseTabLock();
       if (!hasQRSession()) {
         router.push('/');
       } else {
@@ -94,6 +118,33 @@ export default function ChatPage() {
               {isRestoring ? 'Restoring session...' : 'Loading...'}
             </span>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show UI when another tab has the XMTP lock
+  if (isLockedByOtherTab) {
+    return (
+      <div className="flex w-full h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
+          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
+            <Monitor className="w-8 h-8 text-[#005CFF]" />
+          </div>
+          <h2 className="text-lg font-semibold text-[#181818]">Chat Open in Another Tab</h2>
+          <p className="text-[#717680]">
+            World Chat is already open in another browser tab. Please close the other tab or use it instead.
+          </p>
+          <button
+            onClick={() => {
+              restorationRef.current = false;
+              setIsLockedByOtherTab(false);
+              attemptRestore();
+            }}
+            className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+          >
+            Try Again
+          </button>
         </div>
       </div>
     );
