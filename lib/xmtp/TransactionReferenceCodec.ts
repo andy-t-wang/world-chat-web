@@ -118,19 +118,69 @@ export class TransactionReferenceCodec implements ContentCodec<TransactionRefere
  * Format token amount from smallest unit to human readable
  */
 export function formatTokenAmount(amount: string, decimals: number): string {
-  const value = BigInt(amount);
-  const divisor = BigInt(10 ** decimals);
-  const integerPart = value / divisor;
-  const fractionalPart = value % divisor;
-
-  if (fractionalPart === 0n) {
-    return integerPart.toString();
+  // Handle scientific notation in amount string
+  let amountStr = amount;
+  if (amount.includes('e') || amount.includes('E')) {
+    const num = parseFloat(amount);
+    if (Number.isFinite(num)) {
+      amountStr = num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+    } else {
+      return '0';
+    }
   }
 
-  const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
-  // Trim trailing zeros but keep at least 2 decimal places for USD
-  const trimmed = fractionalStr.replace(/0+$/, '').slice(0, 2).padEnd(2, '0');
-  return `${integerPart}.${trimmed}`;
+  try {
+    const value = BigInt(amountStr);
+    const divisor = BigInt(10 ** decimals);
+    const integerPart = value / divisor;
+    const fractionalPart = value % divisor;
+
+    if (fractionalPart === 0n) {
+      return integerPart.toString();
+    }
+
+    const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+    // Trim trailing zeros but keep at least 2 decimal places for USD
+    const trimmed = fractionalStr.replace(/0+$/, '').slice(0, 2).padEnd(2, '0');
+    return `${integerPart}.${trimmed}`;
+  } catch (e) {
+    console.error('[formatTokenAmount] Failed to parse amount:', amount, e);
+    return '0';
+  }
+}
+
+/**
+ * Format token amount with full precision (for tooltips)
+ */
+export function formatFullTokenAmount(amount: string, decimals: number): string {
+  // Handle scientific notation in amount string
+  let amountStr = amount;
+  if (amount.includes('e') || amount.includes('E')) {
+    const num = parseFloat(amount);
+    if (Number.isFinite(num)) {
+      amountStr = num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+    } else {
+      return '0';
+    }
+  }
+
+  try {
+    const value = BigInt(amountStr);
+    const divisor = BigInt(10 ** decimals);
+    const integerPart = value / divisor;
+    const fractionalPart = value % divisor;
+
+    if (fractionalPart === 0n) {
+      return integerPart.toString();
+    }
+
+    const fractionalStr = fractionalPart.toString().padStart(decimals, '0');
+    // Show all significant digits (trim only trailing zeros)
+    const trimmed = fractionalStr.replace(/0+$/, '');
+    return `${integerPart}.${trimmed}`;
+  } catch (e) {
+    return '0';
+  }
 }
 
 /**
@@ -205,6 +255,31 @@ export function isXMTPTransactionFormat(content: unknown): content is XMTPTransa
 }
 
 /**
+ * Convert a number (possibly in scientific notation) to a BigInt-safe string
+ * Handles cases like 1.6213998842320482e+21
+ */
+function toBigIntString(value: number | string): string {
+  if (typeof value === 'string') {
+    // Already a string, but might still be in scientific notation
+    if (!value.includes('e') && !value.includes('E')) {
+      return value;
+    }
+    value = parseFloat(value);
+  }
+
+  // Handle scientific notation by using toLocaleString with no grouping
+  // This converts 1.6213998842320482e+21 to "1621399884232048200000"
+  if (Number.isFinite(value)) {
+    // For very large numbers, use toLocaleString to avoid scientific notation
+    // Note: This may lose precision for numbers > Number.MAX_SAFE_INTEGER
+    // but that's inherent to JavaScript's number type
+    return value.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+  }
+
+  return '0';
+}
+
+/**
  * Convert XMTP format to our internal format
  */
 export function normalizeTransactionReference(content: TransactionReference | XMTPTransactionReference): TransactionReference {
@@ -212,7 +287,7 @@ export function normalizeTransactionReference(content: TransactionReference | XM
     return {
       txHash: content.reference,
       chainId: parseInt(content.networkId, 10),
-      amount: content.metadata.amount.toString(),
+      amount: toBigIntString(content.metadata.amount),
       token: {
         symbol: content.metadata.currency,
         decimals: content.metadata.decimals,

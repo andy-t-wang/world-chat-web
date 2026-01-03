@@ -1,43 +1,68 @@
-'use client';
+"use client";
 
-import { Loader2, ArrowUpRight, XCircle } from 'lucide-react';
+import { Loader2, ArrowUpRight, XCircle, Check } from "lucide-react";
 import type {
   TransactionReference,
   TransactionStatus,
   PaymentType,
-} from '@/lib/xmtp/TransactionReferenceCodec';
-import { formatTokenAmount } from '@/lib/xmtp/TransactionReferenceCodec';
-import { useTransactionDetails } from '@/hooks/useTransactionDetails';
+} from "@/lib/xmtp/TransactionReferenceCodec";
+import {
+  formatTokenAmount,
+  formatFullTokenAmount,
+} from "@/lib/xmtp/TransactionReferenceCodec";
+import { useTransactionDetails } from "@/hooks/useTransactionDetails";
+import { assetMetadata } from "@/config/tokens";
 
-// US Flag SVG component (World Chain uses USD as primary currency display)
-function USFlag({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 20 20"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <clipPath id="flagClip">
-        <circle cx="10" cy="10" r="10" />
-      </clipPath>
-      <g clipPath="url(#flagClip)">
-        <rect width="20" height="20" fill="#B22234" />
-        <rect y="1.54" width="20" height="1.54" fill="white" />
-        <rect y="4.62" width="20" height="1.54" fill="white" />
-        <rect y="7.7" width="20" height="1.54" fill="white" />
-        <rect y="10.78" width="20" height="1.54" fill="white" />
-        <rect y="13.86" width="20" height="1.54" fill="white" />
-        <rect y="16.94" width="20" height="1.54" fill="white" />
-        <rect width="8" height="10.78" fill="#3C3B6E" />
-      </g>
-    </svg>
+// Get token metadata by symbol
+function getTokenMetadata(symbol: string) {
+  // Normalize symbol for lookup (handle USDC.e -> USDCE, etc.)
+  const normalizedSymbol = symbol.toUpperCase().replace(".", "");
+
+  return assetMetadata.find(
+    (token) =>
+      token.symbol?.toUpperCase() === normalizedSymbol ||
+      token.asset?.toUpperCase() === normalizedSymbol
   );
+}
+
+// Token icon component with size variants
+function TokenIcon({
+  symbol,
+  size = "md",
+}: {
+  symbol: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const metadata = getTokenMetadata(symbol);
+  const iconUrl = metadata?.icon;
+
+  const sizeClasses = {
+    sm: "w-5 h-5",
+    md: "w-8 h-8",
+    lg: "w-10 h-10",
+  };
+
+  const pixelSize = { sm: 20, md: 32, lg: 40 };
+
+  if (iconUrl) {
+    return (
+      <img
+        src={iconUrl}
+        alt={symbol}
+        className={`rounded-full ${sizeClasses[size]}`}
+        width={pixelSize[size]}
+        height={pixelSize[size]}
+      />
+    );
+  }
+
+  return <div className={`rounded-full bg-gray-300 ${sizeClasses[size]}`} />;
 }
 
 interface PaymentMessageProps {
   txRef: TransactionReference;
   isOwnMessage: boolean;
+  sentAtNs?: bigint;
   onViewTransaction?: () => void;
 }
 
@@ -48,42 +73,42 @@ interface PaymentMessageProps {
 export function PaymentMessage({
   txRef,
   isOwnMessage,
-  onViewTransaction,
+  sentAtNs,
 }: PaymentMessageProps) {
-  const { details, isLoading } = useTransactionDetails(txRef);
+  const { details, isLoading } = useTransactionDetails(txRef, sentAtNs);
 
   // Use fetched details or fall back to reference data
-  const status: TransactionStatus = details?.status || 'pending';
+  const status: TransactionStatus = details?.status || "pending";
   const amount = details?.amount || txRef.amount;
   const token = details?.token || txRef.token;
   const description = details?.description || txRef.description;
   const type = txRef.type;
 
-  // Format amount for display (token amount with symbol)
-  const formattedAmount = `${formatTokenAmount(amount, token.decimals)} ${token.symbol}`;
-
-  // Determine status display text
-  const getStatusText = (): string => {
-    if (status === 'pending') return 'Pending';
-    if (status === 'failed') return 'Failed';
-    if (type === 'request') return 'Request';
-    return isOwnMessage ? 'Sent' : 'Received';
-  };
+  // Format amount for display (number only, symbol separate)
+  const formattedAmount = formatTokenAmount(amount, token.decimals);
+  const fullAmount = formatFullTokenAmount(amount, token.decimals);
 
   // Explorer URL for World Chain - use actual tx hash if available (for ERC-4337 userOps)
   const txHashForExplorer = details?.actualTxHash || txRef.txHash;
   const explorerUrl = `https://worldchain-mainnet.explorer.alchemy.com/tx/${txHashForExplorer}`;
+
+  // Get token metadata for styling
+  const tokenMetadata = getTokenMetadata(token.symbol);
+  const primaryColor = tokenMetadata?.primaryColor || "#005CFF";
+  const tokenName = tokenMetadata?.name || token.symbol;
 
   if (isOwnMessage) {
     return (
       <SenderPaymentBubble
         status={status}
         amount={formattedAmount}
+        fullAmount={fullAmount}
+        tokenSymbol={token.symbol}
+        tokenName={tokenName}
         description={description}
-        statusText={getStatusText()}
         isLoading={isLoading}
         explorerUrl={explorerUrl}
-        onViewTransaction={onViewTransaction}
+        primaryColor={primaryColor}
       />
     );
   }
@@ -92,12 +117,14 @@ export function PaymentMessage({
     <RecipientPaymentBubble
       status={status}
       amount={formattedAmount}
+      fullAmount={fullAmount}
+      tokenSymbol={token.symbol}
+      tokenName={tokenName}
       description={description}
-      statusText={getStatusText()}
       type={type}
       isLoading={isLoading}
       explorerUrl={explorerUrl}
-      onViewTransaction={onViewTransaction}
+      primaryColor={primaryColor}
     />
   );
 }
@@ -105,62 +132,96 @@ export function PaymentMessage({
 interface SenderPaymentBubbleProps {
   status: TransactionStatus;
   amount: string;
+  fullAmount: string;
+  tokenSymbol: string;
+  tokenName: string;
   description?: string;
-  statusText: string;
   isLoading: boolean;
   explorerUrl: string;
-  onViewTransaction?: () => void;
+  primaryColor: string;
 }
 
 /**
- * Sender payment bubble (blue background)
+ * Sender payment bubble - refined design with token branding
  */
 function SenderPaymentBubble({
   status,
   amount,
+  fullAmount,
+  tokenSymbol,
+  tokenName,
   description,
-  statusText,
   isLoading,
   explorerUrl,
+  primaryColor,
 }: SenderPaymentBubbleProps) {
-  const isFailed = status === 'failed';
-  const isPending = status === 'pending';
+  const isFailed = status === "failed";
+  const isPending = status === "pending" || isLoading;
+  const isConfirmed = status === "confirmed";
 
   return (
-    <div className="bg-[#005CFF] rounded-[16px] p-3 w-[208px]">
-      {/* Status badge */}
-      <div className="inline-flex items-center gap-1 bg-white/20 rounded-full pl-0.5 pr-2 py-0.5 mb-6">
-        {isPending || isLoading ? (
-          <Loader2 className="w-5 h-5 text-white animate-spin" />
-        ) : isFailed ? (
-          <XCircle className="w-5 h-5 text-white" />
-        ) : (
-          <USFlag className="w-5 h-5" />
-        )}
-        <span className="text-[13px] text-white leading-[1.2]">{statusText}</span>
-      </div>
+    <div
+      className="rounded-[20px] p-3.5 w-[200px] relative overflow-hidden"
+      style={{ backgroundColor: primaryColor }}
+    >
+      {/* Subtle gradient overlay for depth */}
+      <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none" />
 
-      {/* Amount and description */}
-      <div className="flex flex-col gap-1">
-        <p
-          className={`text-[30px] font-medium text-white leading-[1.2] tracking-[-1px] ${
-            isFailed ? 'line-through opacity-50' : ''
-          }`}
-        >
-          {amount}
-        </p>
+      <div className="relative">
+        {/* Header: Token icon + status */}
+        <div className="flex items-center justify-between mb-2">
+          <TokenIcon symbol={tokenSymbol} size="md" />
+          <div className="flex items-center gap-1">
+            {isPending ? (
+              <Loader2 className="w-3.5 h-3.5 text-white/70 animate-spin" />
+            ) : isFailed ? (
+              <XCircle className="w-3.5 h-3.5 text-white/70" />
+            ) : (
+              <Check className="w-3.5 h-3.5 text-white/70" />
+            )}
+            <span className="text-[11px] text-white/70 font-medium uppercase tracking-wide">
+              {isPending ? "Pending" : isFailed ? "Failed" : "Sent"}
+            </span>
+          </div>
+        </div>
+
+        {/* Amount display - number prominent, symbol subtle */}
+        <div className={`mb-1 ${isFailed ? "opacity-50" : ""}`}>
+          <div
+            className="flex items-baseline gap-1.5 cursor-default"
+            title={`${fullAmount} ${tokenSymbol}`}
+          >
+            <span
+              className={`text-[28px] font-semibold text-white leading-none tracking-tight tabular-nums ${
+                isFailed ? "line-through" : ""
+              }`}
+            >
+              {amount}
+            </span>
+            <span className="text-[14px] font-medium text-white/80">
+              {tokenSymbol}
+            </span>
+          </div>
+          <p className="text-[12px] font-bold text-white/60 mt-0.5">{tokenName}</p>
+        </div>
+
+        {/* Description if present */}
         {description && (
-          <p className="text-[15px] text-white leading-[1.3]">{description}</p>
+          <p className="text-[13px] text-white/80 leading-snug mt-2 line-clamp-2">
+            {description}
+          </p>
         )}
-        {status === 'confirmed' && (
+
+        {/* Explorer link for confirmed */}
+        {isConfirmed && (
           <a
             href={explorerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 text-white hover:opacity-80 transition-opacity mt-1"
+            className="inline-flex items-center gap-1 text-white/70 hover:text-white transition-colors mt-3 group"
           >
-            <ArrowUpRight className="w-[18px] h-[18px]" />
-            <span className="text-[15px] leading-[1.3]">View on explorer</span>
+            <span className="text-[12px] font-medium">View transaction</span>
+            <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
           </a>
         )}
       </div>
@@ -171,72 +232,97 @@ function SenderPaymentBubble({
 interface RecipientPaymentBubbleProps {
   status: TransactionStatus;
   amount: string;
+  fullAmount: string;
+  tokenSymbol: string;
+  tokenName: string;
   description?: string;
-  statusText: string;
   type: PaymentType;
   isLoading: boolean;
   explorerUrl: string;
-  onViewTransaction?: () => void;
+  primaryColor: string;
 }
 
 /**
- * Recipient payment bubble (gray background)
+ * Recipient payment bubble - clean white card with token accent
  */
 function RecipientPaymentBubble({
   status,
   amount,
+  fullAmount,
+  tokenSymbol,
+  tokenName,
   description,
-  statusText,
   type,
   isLoading,
   explorerUrl,
+  primaryColor,
 }: RecipientPaymentBubbleProps) {
-  const isPending = status === 'pending';
-  const isRequest = type === 'request';
+  const isPending = status === "pending" || isLoading;
+  const isConfirmed = status === "confirmed";
+  const isRequest = type === "request";
 
   return (
-    <div className="bg-white rounded-[16px] p-3 w-[208px]">
-      {/* Status badge */}
-      <div className="inline-flex items-center gap-1 bg-white border border-[#F3F4F5] rounded-full pl-0.5 pr-2 py-0.5 mb-6">
-        {isPending || isLoading ? (
-          <Loader2 className="w-5 h-5 text-[#9BA3AE] animate-spin" />
-        ) : (
-          <USFlag className="w-5 h-5" />
-        )}
-        <span className="text-[13px] text-[#181818] leading-[1.2]">{statusText}</span>
-      </div>
-
-      {/* Amount and description */}
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-[30px] font-medium text-[#181818] leading-[1.2] tracking-[-1px]">
-            {amount}
-          </p>
-          {description && (
-            <p className="text-[15px] text-[#181818] leading-[1.3]">{description}</p>
+    <div className="bg-white rounded-[20px] p-4 w-[200px] shadow-sm border border-gray-100">
+      {/* Header: Token icon + status */}
+      <div className="flex items-center justify-between mb-2">
+        <TokenIcon symbol={tokenSymbol} size="md" />
+        <div className="flex items-center gap-1">
+          {isPending ? (
+            <Loader2 className="w-3.5 h-3.5 text-[#9BA3AE] animate-spin" />
+          ) : (
+            <Check className="w-3.5 h-3.5 text-[#00C230]" />
           )}
+          <span className="text-[11px] text-[#717680] font-medium uppercase tracking-wide">
+            {isPending ? "Pending" : isRequest ? "Request" : "Received"}
+          </span>
         </div>
-
-        {/* Action button for requests */}
-        {isRequest && status !== 'confirmed' && (
-          <button className="w-full h-8 bg-[#181818] text-white text-[13px] font-medium rounded-full hover:bg-[#333] transition-colors">
-            Pay
-          </button>
-        )}
-
-        {/* View on explorer link */}
-        {status === 'confirmed' && (
-          <a
-            href={explorerUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[#181818] hover:opacity-70 transition-opacity"
-          >
-            <ArrowUpRight className="w-[18px] h-[18px]" />
-            <span className="text-[15px] leading-[1.3]">View on explorer</span>
-          </a>
-        )}
       </div>
+
+      {/* Amount display */}
+      <div className="mb-1">
+        <div
+          className="flex items-baseline gap-1.5 cursor-default"
+          title={`${fullAmount} ${tokenSymbol}`}
+        >
+          <span className="text-[28px] font-semibold text-[#181818] leading-none tracking-tight tabular-nums">
+            {amount}
+          </span>
+          <span className="text-[14px] font-medium text-[#717680]">
+            {tokenSymbol}
+          </span>
+        </div>
+        <p className="text-[12px] text-[#9BA3AE] mt-0.5">{tokenName}</p>
+      </div>
+
+      {/* Description if present */}
+      {description && (
+        <p className="text-[13px] text-[#717680] leading-snug mt-2 line-clamp-2">
+          {description}
+        </p>
+      )}
+
+      {/* Action button for payment requests */}
+      {isRequest && !isConfirmed && (
+        <button
+          className="w-full h-9 text-white text-[13px] font-semibold rounded-full hover:opacity-90 transition-opacity mt-3"
+          style={{ backgroundColor: primaryColor }}
+        >
+          Pay Now
+        </button>
+      )}
+
+      {/* Explorer link for confirmed */}
+      {isConfirmed && (
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-[#717680] hover:text-[#181818] transition-colors mt-3 group"
+        >
+          <span className="text-[12px] font-medium">View transaction</span>
+          <ArrowUpRight className="w-3 h-3 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
+        </a>
+      )}
     </div>
   );
 }
@@ -251,14 +337,17 @@ export function PaymentPreview({
   txRef: TransactionReference;
   isOwnMessage: boolean;
 }) {
-  const formattedAmount = `${formatTokenAmount(txRef.amount, txRef.token.decimals)} ${txRef.token.symbol}`;
+  const formattedAmount = `${formatTokenAmount(
+    txRef.amount,
+    txRef.token.decimals
+  )} ${txRef.token.symbol}`;
   const prefix = isOwnMessage
-    ? txRef.type === 'request'
-      ? 'Requested'
-      : 'Sent'
-    : txRef.type === 'request'
-      ? 'Payment request'
-      : 'Received';
+    ? txRef.type === "request"
+      ? "Requested"
+      : "Sent"
+    : txRef.type === "request"
+    ? "Payment request"
+    : "Received";
 
   return (
     <span className="text-[14px] text-[#717680]">

@@ -7,10 +7,16 @@ import type { TransactionDetails, TransactionReference } from '@/lib/xmtp/Transa
 const transactionCache = new Map<string, TransactionDetails>();
 const pendingRequests = new Map<string, Promise<TransactionDetails | null>>();
 
+// 5 minutes in nanoseconds
+const CONFIRM_AFTER_NS = BigInt(5 * 60 * 1000) * 1_000_000n;
+
 /**
  * Hook to fetch and cache transaction details
+ * @param txRef - Transaction reference from the message
+ * @param sentAtNs - Message sent timestamp in nanoseconds (optional)
+ *                   If provided and message is > 5 minutes old, assumes confirmed
  */
-export function useTransactionDetails(txRef: TransactionReference | null) {
+export function useTransactionDetails(txRef: TransactionReference | null, sentAtNs?: bigint) {
   const [details, setDetails] = useState<TransactionDetails | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -87,6 +93,20 @@ export function useTransactionDetails(txRef: TransactionReference | null) {
       return;
     }
 
+    // If message is older than 5 minutes, assume confirmed without fetching
+    if (sentAtNs) {
+      const nowNs = BigInt(Date.now()) * 1_000_000n;
+      const ageNs = nowNs - sentAtNs;
+      if (ageNs > CONFIRM_AFTER_NS) {
+        setDetails({
+          ...txRef,
+          status: 'confirmed',
+        });
+        setIsLoading(false);
+        return;
+      }
+    }
+
     let cancelled = false;
     let pollInterval: ReturnType<typeof setInterval> | null = null;
 
@@ -135,7 +155,7 @@ export function useTransactionDetails(txRef: TransactionReference | null) {
         clearInterval(pollInterval);
       }
     };
-  }, [txRef, fetchDetails]);
+  }, [txRef, sentAtNs, fetchDetails]);
 
   // Refresh function for pending transactions
   const refresh = useCallback(() => {

@@ -1,37 +1,66 @@
-'use client';
+"use client";
 
-import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
-import { useAtomValue, useAtom } from 'jotai';
-import { MoreHorizontal, Paperclip, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut, Clock } from 'lucide-react';
-import { Avatar } from '@/components/ui/Avatar';
-import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { MessageText, MessageLinkPreview } from './MessageContent';
-import { isJustUrl, extractUrls } from './LinkPreview';
-import { PaymentMessage } from './PaymentMessage';
-import { ImageMessage } from './ImageMessage';
-import { ImageGrid } from './ImageGrid';
-import { MultiAttachmentMessage } from './MultiAttachmentMessage';
-import { RequestActionBar } from './RequestActionBar';
-import { MessageContextMenu } from './MessageContextMenu';
-import { ReplyPreview } from './ReplyPreview';
-import { ReplyBubble } from './ReplyBubble';
-import { ReactionDetailsMenu } from './ReactionDetailsMenu';
-import { chatBackgroundStyle } from './ChatBackground';
-import { replyingToAtom } from '@/stores/ui';
-import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
-import type { RemoteAttachmentContent } from '@/types/attachments';
-import { isMultiAttachment, isSingleAttachment, isMultiAttachmentWrapper, extractAttachments } from '@/types/attachments';
-import { useUsername } from '@/hooks/useUsername';
-import { useMessages } from '@/hooks/useMessages';
-import { xmtpClientAtom } from '@/stores/client';
-import { readReceiptVersionAtom, reactionsVersionAtom } from '@/stores/messages';
-import { linkPreviewEnabledAtom } from '@/stores/settings';
-import { streamManager } from '@/lib/xmtp/StreamManager';
-import type { DecodedMessage } from '@xmtp/browser-sdk';
-import type { PendingMessage } from '@/types/messages';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+  useLayoutEffect,
+} from "react";
+import { useAtomValue, useAtom } from "jotai";
+import {
+  MoreHorizontal,
+  Paperclip,
+  Send,
+  Loader2,
+  AlertCircle,
+  RotateCcw,
+  Lock,
+  LogOut,
+  Clock,
+} from "lucide-react";
+import { Avatar } from "@/components/ui/Avatar";
+import { VerificationBadge } from "@/components/ui/VerificationBadge";
+import { MessageText, MessageLinkPreview } from "./MessageContent";
+import { isJustUrl, extractUrls } from "./LinkPreview";
+import { PaymentMessage } from "./PaymentMessage";
+import { ImageMessage } from "./ImageMessage";
+import { ImageGrid } from "./ImageGrid";
+import { MultiAttachmentMessage } from "./MultiAttachmentMessage";
+import { RequestActionBar } from "./RequestActionBar";
+import { MessageContextMenu } from "./MessageContextMenu";
+import { ReplyPreview } from "./ReplyPreview";
+import { ReplyBubble } from "./ReplyBubble";
+import { ReactionDetailsMenu } from "./ReactionDetailsMenu";
+import { chatBackgroundStyle } from "./ChatBackground";
+import { replyingToAtom } from "@/stores/ui";
+import {
+  isTransactionReference,
+  normalizeTransactionReference,
+  type TransactionReference,
+} from "@/lib/xmtp/TransactionReferenceCodec";
+import type { RemoteAttachmentContent } from "@/types/attachments";
+import {
+  isMultiAttachment,
+  isSingleAttachment,
+  isMultiAttachmentWrapper,
+  extractAttachments,
+} from "@/types/attachments";
+import { useUsername } from "@/hooks/useUsername";
+import { useMessages } from "@/hooks/useMessages";
+import { xmtpClientAtom } from "@/stores/client";
+import {
+  readReceiptVersionAtom,
+  reactionsVersionAtom,
+} from "@/stores/messages";
+import { linkPreviewEnabledAtom } from "@/stores/settings";
+import { streamManager } from "@/lib/xmtp/StreamManager";
+import type { DecodedMessage } from "@xmtp/browser-sdk";
+import type { PendingMessage } from "@/types/messages";
 
 // Common reaction emojis
-const REACTION_EMOJIS = ['❤️', '👍', '👎', '😂', '😮', '😢'];
+const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢"];
 
 // Reaction picker component
 interface ReactionPickerProps {
@@ -49,8 +78,8 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
         onClose();
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
   return (
@@ -81,7 +110,13 @@ interface MessageReactionsProps {
   ownInboxId?: string;
 }
 
-function MessageReactions({ messageId, isOwnMessage, memberPreviews, peerAddress, ownInboxId }: MessageReactionsProps) {
+function MessageReactions({
+  messageId,
+  isOwnMessage,
+  memberPreviews,
+  peerAddress,
+  ownInboxId,
+}: MessageReactionsProps) {
   const _reactionsVersion = useAtomValue(reactionsVersionAtom);
   const reactions = streamManager.getReactions(messageId);
   const [reactionMenu, setReactionMenu] = useState<{
@@ -103,7 +138,9 @@ function MessageReactions({ messageId, isOwnMessage, memberPreviews, peerAddress
     if (isYou) {
       address = undefined; // Will show "You"
     } else if (memberPreviews) {
-      address = memberPreviews.find(m => m.inboxId === r.senderInboxId)?.address;
+      address = memberPreviews.find(
+        (m) => m.inboxId === r.senderInboxId
+      )?.address;
     } else {
       address = peerAddress;
     }
@@ -111,7 +148,11 @@ function MessageReactions({ messageId, isOwnMessage, memberPreviews, peerAddress
     return acc;
   }, {} as Record<string, Array<{ inboxId: string; address?: string; isYou?: boolean }>>);
 
-  const handleContextMenu = (e: React.MouseEvent, emoji: string, reactors: Array<{ inboxId: string; address?: string; isYou?: boolean }>) => {
+  const handleContextMenu = (
+    e: React.MouseEvent,
+    emoji: string,
+    reactors: Array<{ inboxId: string; address?: string; isYou?: boolean }>
+  ) => {
     e.preventDefault();
     e.stopPropagation();
     setReactionMenu({
@@ -123,17 +164,27 @@ function MessageReactions({ messageId, isOwnMessage, memberPreviews, peerAddress
 
   return (
     <>
-      <div className={`flex gap-1 -mt-2 relative z-10 ${isOwnMessage ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
+      <div
+        className={`flex gap-1 -mt-2 relative z-10 ${
+          isOwnMessage ? "justify-end pr-1" : "justify-start pl-1"
+        }`}
+      >
         {Object.entries(grouped).map(([emoji, reactors]) => (
           <div
             key={emoji}
             className="inline-flex items-center h-[24px] px-[9px] bg-[#F3F4F5] border-2 border-white rounded-[13px] text-[16px] cursor-pointer hover:bg-[#EBECEF] transition-colors"
             onContextMenu={(e) => handleContextMenu(e, emoji, reactors)}
             onClick={(e) => handleContextMenu(e, emoji, reactors)}
-            title={`${reactors.length} ${reactors.length === 1 ? 'reaction' : 'reactions'}`}
+            title={`${reactors.length} ${
+              reactors.length === 1 ? "reaction" : "reactions"
+            }`}
           >
             <span>{emoji}</span>
-            {reactors.length > 1 && <span className="text-xs text-[#717680] ml-1">{reactors.length}</span>}
+            {reactors.length > 1 && (
+              <span className="text-xs text-[#717680] ml-1">
+                {reactors.length}
+              </span>
+            )}
           </div>
         ))}
       </div>
@@ -157,17 +208,23 @@ interface MemberPreview {
 // Helper component to display sender name above messages
 function SenderName({ address }: { address: string | undefined }) {
   const { displayName } = useUsername(address);
-  const name = displayName ?? (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Unknown');
+  const name =
+    displayName ??
+    (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Unknown");
 
   return (
-    <span className="text-[13px] text-[#717680] mb-1 ml-1 block">
-      {name}
-    </span>
+    <span className="text-[13px] text-[#717680] mb-1 ml-1 block">{name}</span>
   );
 }
 
 // Animated wrapper for messages - fades up on mount
-function AnimatedMessageWrapper({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+function AnimatedMessageWrapper({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -182,7 +239,7 @@ function AnimatedMessageWrapper({ children, className = '' }: { children: React.
       className={`transition-all duration-200 ease-out ${className}`}
       style={{
         opacity: isVisible ? 1 : 0,
-        transform: isVisible ? 'translateY(0)' : 'translateY(10px)',
+        transform: isVisible ? "translateY(0)" : "translateY(10px)",
       }}
     >
       {children}
@@ -197,17 +254,35 @@ interface PendingMessageBubbleProps {
   isVerified?: boolean;
 }
 
-function PendingMessageBubble({ pending, onRetry, isVerified = false }: PendingMessageBubbleProps) {
+function PendingMessageBubble({
+  pending,
+  onRetry,
+  isVerified = false,
+}: PendingMessageBubbleProps) {
   // Format current time for the timestamp
-  const timeString = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const timeString = new Date().toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
   // Use gray for unverified conversations
-  const bubbleBg = pending.status === 'failed' ? 'bg-red-100' : (isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]');
+  const bubbleBg =
+    pending.status === "failed"
+      ? "bg-red-100"
+      : isVerified
+      ? "bg-[#005CFF]"
+      : "bg-[#717680]";
 
   return (
     <AnimatedMessageWrapper className="flex flex-col items-end mt-3">
       <div className="max-w-[300px]">
-        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${bubbleBg}`}>
-          <p className={`text-[15px] leading-[1.35] ${pending.status === 'failed' ? 'text-red-800' : 'text-white'}`}>
+        <div
+          className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${bubbleBg}`}
+        >
+          <p
+            className={`text-[15px] leading-[1.35] ${
+              pending.status === "failed" ? "text-red-800" : "text-white"
+            }`}
+          >
             {pending.content}
           </p>
         </div>
@@ -217,10 +292,10 @@ function PendingMessageBubble({ pending, onRetry, isVerified = false }: PendingM
         <span className="text-[11px] text-[#717680] font-medium">
           {timeString}
         </span>
-        {pending.status === 'sending' && (
+        {pending.status === "sending" && (
           <Clock className="w-3 h-3 text-[#717680]" />
         )}
-        {pending.status === 'failed' && (
+        {pending.status === "failed" && (
           <>
             <AlertCircle className="w-3 h-3 text-red-500" />
             <button
@@ -239,13 +314,19 @@ function PendingMessageBubble({ pending, onRetry, isVerified = false }: PendingM
 
 // Display item types for rendering
 type DisplayItem =
-  | { type: 'date-separator'; date: string; id: string }
-  | { type: 'message'; id: string; isFirstInGroup: boolean; isLastInGroup: boolean; showAvatar: boolean }
-  | { type: 'pending'; id: string };
+  | { type: "date-separator"; date: string; id: string }
+  | {
+      type: "message";
+      id: string;
+      isFirstInGroup: boolean;
+      isLastInGroup: boolean;
+      showAvatar: boolean;
+    }
+  | { type: "pending"; id: string };
 
 interface MessagePanelProps {
   conversationId: string;
-  conversationType: 'dm' | 'group';
+  conversationType: "dm" | "group";
   peerAddress?: string;
   name?: string;
   avatarUrl?: string | null;
@@ -274,8 +355,7 @@ export function MessagePanel({
   memberPreviews,
   isMessageRequest = false,
 }: MessagePanelProps) {
-
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
@@ -301,19 +381,26 @@ export function MessagePanel({
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { displayName } = useUsername(conversationType === 'dm' ? peerAddress : null);
-  const name = conversationType === 'group'
-    ? (groupName || 'Group Chat')
-    : (nameOverride ?? displayName);
+  const { displayName } = useUsername(
+    conversationType === "dm" ? peerAddress : null
+  );
+  const name =
+    conversationType === "group"
+      ? groupName || "Group Chat"
+      : nameOverride ?? displayName;
 
   // Build group subtitle with verified/unverified counts
-  const groupSubtitle: { verified: number; unverified: number } | { total: number } | undefined = conversationType === 'group'
-    ? (verifiedCount !== undefined && unverifiedCount !== undefined)
-      ? { verified: verifiedCount, unverified: unverifiedCount }
-      : memberCount
+  const groupSubtitle:
+    | { verified: number; unverified: number }
+    | { total: number }
+    | undefined =
+    conversationType === "group"
+      ? verifiedCount !== undefined && unverifiedCount !== undefined
+        ? { verified: verifiedCount, unverified: unverifiedCount }
+        : memberCount
         ? { total: memberCount }
         : undefined
-    : undefined;
+      : undefined;
 
   const client = useAtomValue(xmtpClientAtom);
   const _readReceiptVersion = useAtomValue(readReceiptVersionAtom);
@@ -331,33 +418,44 @@ export function MessagePanel({
     getMessage,
   } = useMessages(conversationId);
 
-  const ownInboxId = client?.inboxId ?? '';
+  const ownInboxId = client?.inboxId ?? "";
 
   // Check if message should be displayed
   const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
     const typeId = (msg.contentType as { typeId?: string })?.typeId;
-    if (typeId === 'readReceipt') return false;
+    if (typeId === "readReceipt") return false;
     // Transaction references are displayed as payment cards
-    if (typeId === 'transactionReference') return true;
+    if (typeId === "transactionReference") return true;
     // Remote attachments (images) are displayed as image cards - single or multi
     // Handle both old and new naming conventions
-    if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
-        typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') return true;
+    if (
+      typeId === "remoteAttachment" ||
+      typeId === "remoteStaticAttachment" ||
+      typeId === "multiRemoteAttachment" ||
+      typeId === "multiRemoteStaticAttachment"
+    )
+      return true;
     return true;
   }, []);
 
   // Extract message text content
   const getMessageText = useCallback((msg: DecodedMessage): string | null => {
     const typeId = (msg.contentType as { typeId?: string })?.typeId;
-    if (typeId === 'readReceipt') return null;
+    if (typeId === "readReceipt") return null;
     // Transaction references render as payment cards, not text
-    if (typeId === 'transactionReference') return null;
+    if (typeId === "transactionReference") return null;
     // Remote attachments render as image cards, not text (handle both old and new naming)
-    if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
-        typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') return null;
+    if (
+      typeId === "remoteAttachment" ||
+      typeId === "remoteStaticAttachment" ||
+      typeId === "multiRemoteAttachment" ||
+      typeId === "multiRemoteStaticAttachment"
+    )
+      return null;
     // Also check content shape for remote attachments (single or multi)
-    if (isSingleAttachment(msg.content) || isMultiAttachment(msg.content)) return null;
-    if (typeId === 'reaction') {
+    if (isSingleAttachment(msg.content) || isMultiAttachment(msg.content))
+      return null;
+    if (typeId === "reaction") {
       const content = msg.content as { content?: string } | undefined;
       return content?.content ? `Reacted ${content.content}` : null;
     }
@@ -366,7 +464,9 @@ export function MessagePanel({
 
     // If content is undefined, try to decode from encodedContent
     if (content === undefined || content === null) {
-      const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
+      const encodedContent = (
+        msg as { encodedContent?: { content?: Uint8Array } }
+      ).encodedContent;
       if (encodedContent?.content) {
         try {
           const decoded = new TextDecoder().decode(encodedContent.content);
@@ -384,21 +484,24 @@ export function MessagePanel({
     }
 
     // Check for raw image attachment data (undecoded) - don't display as text
-    if (typeof content === 'string') {
+    if (typeof content === "string") {
       // If it looks like raw remote attachment data (contains CDN URL), don't display
-      if (content.includes('chat-assets.toolsforhumanity.com')) {
+      if (content.includes("chat-assets.toolsforhumanity.com")) {
         return null;
       }
       return content;
     }
-    if (content && typeof content === 'object') {
-      if ('text' in content && typeof (content as { text?: unknown }).text === 'string') {
+    if (content && typeof content === "object") {
+      if (
+        "text" in content &&
+        typeof (content as { text?: unknown }).text === "string"
+      ) {
         return (content as { text: string }).text;
       }
-      if ('content' in content) {
+      if ("content" in content) {
         const nested = (content as { content: unknown }).content;
-        if (typeof nested === 'string') return nested;
-        if (nested && typeof nested === 'object' && 'text' in nested) {
+        if (typeof nested === "string") return nested;
+        if (nested && typeof nested === "object" && "text" in nested) {
           return (nested as { text: string }).text;
         }
       }
@@ -406,7 +509,7 @@ export function MessagePanel({
 
     // Fallback: try to get fallback text from the message
     const fallback = (msg as { fallback?: string }).fallback;
-    if (fallback && typeof fallback === 'string') {
+    if (fallback && typeof fallback === "string") {
       return fallback;
     }
 
@@ -419,21 +522,31 @@ export function MessagePanel({
     const now = new Date();
 
     // Reset time parts for accurate day comparison
-    const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const dateOnly = new Date(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate()
+    );
     const nowOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const diffDays = Math.floor((nowOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24));
+    const diffDays = Math.floor(
+      (nowOnly.getTime() - dateOnly.getTime()) / (1000 * 60 * 60 * 24)
+    );
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
 
     // Within the last week, show day of week
     if (diffDays < 7) {
-      return date.toLocaleDateString(undefined, { weekday: 'long' });
+      return date.toLocaleDateString(undefined, { weekday: "long" });
     }
 
     // Older than a week, show full date
-    return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+    return date.toLocaleDateString(undefined, {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
   }, []);
 
   // Get date key for grouping
@@ -450,21 +563,28 @@ export function MessagePanel({
 
     // First, collect valid message data
     const reversedIds = [...messageIds].reverse();
-    const messageData: Array<{ id: string; senderId: string; dateKey: string; sentAtNs: bigint }> = [];
+    const messageData: Array<{
+      id: string;
+      senderId: string;
+      dateKey: string;
+      sentAtNs: bigint;
+    }> = [];
 
     for (const id of reversedIds) {
       const msg = getMessage(id);
       if (!msg) continue;
 
       const typeId = (msg.contentType as { typeId?: string })?.typeId;
-      if (typeId === 'readReceipt') continue;
+      if (typeId === "readReceipt") continue;
 
       // Check if has displayable content
       let content = msg.content;
 
       // If content is undefined, try to decode from encodedContent
       if (content === undefined || content === null) {
-        const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
+        const encodedContent = (
+          msg as { encodedContent?: { content?: Uint8Array } }
+        ).encodedContent;
         if (encodedContent?.content) {
           try {
             const decoded = new TextDecoder().decode(encodedContent.content);
@@ -482,27 +602,33 @@ export function MessagePanel({
       let hasDisplayableContent = false;
 
       // String content (basic text messages)
-      if (typeof content === 'string' && content.length > 0) {
+      if (typeof content === "string" && content.length > 0) {
         hasDisplayableContent = true;
-      } else if (content && typeof content === 'object') {
+      } else if (content && typeof content === "object") {
         // Text content in object form
-        if ('text' in content) hasDisplayableContent = true;
+        if ("text" in content) hasDisplayableContent = true;
         // Reply content (nested)
-        else if ('content' in content) hasDisplayableContent = true;
+        else if ("content" in content) hasDisplayableContent = true;
         // Transaction references - our format
-        else if ('txHash' in content) hasDisplayableContent = true;
+        else if ("txHash" in content) hasDisplayableContent = true;
         // Transaction references - XMTP format (World App)
-        else if ('reference' in content) hasDisplayableContent = true;
+        else if ("reference" in content) hasDisplayableContent = true;
         // Remote attachments (images) - single or multi
-        else if (isSingleAttachment(content) || isMultiAttachment(content)) hasDisplayableContent = true;
+        else if (isSingleAttachment(content) || isMultiAttachment(content))
+          hasDisplayableContent = true;
       }
 
       // Always show reactions, transaction references, and images by typeId
-      if (typeId === 'reaction') hasDisplayableContent = true;
-      if (typeId === 'transactionReference') hasDisplayableContent = true;
+      if (typeId === "reaction") hasDisplayableContent = true;
+      if (typeId === "transactionReference") hasDisplayableContent = true;
       // Handle both old and new attachment type naming
-      if (typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment' ||
-          typeId === 'multiRemoteAttachment' || typeId === 'multiRemoteStaticAttachment') hasDisplayableContent = true;
+      if (
+        typeId === "remoteAttachment" ||
+        typeId === "remoteStaticAttachment" ||
+        typeId === "multiRemoteAttachment" ||
+        typeId === "multiRemoteStaticAttachment"
+      )
+        hasDisplayableContent = true;
 
       if (!hasDisplayableContent) continue;
 
@@ -526,19 +652,21 @@ export function MessagePanel({
       // Add date separator if date changed
       if (!prev || prev.dateKey !== curr.dateKey) {
         items.push({
-          type: 'date-separator',
+          type: "date-separator",
           date: formatDateSeparator(curr.sentAtNs),
           id: `date-${curr.dateKey}`,
         });
       }
 
       // Determine if first/last in group
-      const isFirstInGroup = !prev ||
+      const isFirstInGroup =
+        !prev ||
         prev.senderId !== curr.senderId ||
         prev.dateKey !== curr.dateKey ||
         curr.sentAtNs - prev.sentAtNs > fiveMinutesNs;
 
-      const isLastInGroup = !next ||
+      const isLastInGroup =
+        !next ||
         next.senderId !== curr.senderId ||
         next.dateKey !== curr.dateKey ||
         next.sentAtNs - curr.sentAtNs > fiveMinutesNs;
@@ -546,7 +674,7 @@ export function MessagePanel({
       const isOwnMessage = curr.senderId === ownInboxId;
 
       items.push({
-        type: 'message',
+        type: "message",
         id: curr.id,
         isFirstInGroup,
         isLastInGroup,
@@ -563,18 +691,20 @@ export function MessagePanel({
         const msg = getMessage(msgId);
         if (!msg) return false;
         // Check if content matches and it's an own message
-        const msgContent = typeof msg.content === 'string' ? msg.content : '';
-        return msgContent === pending.content && msg.senderInboxId === ownInboxId;
+        const msgContent = typeof msg.content === "string" ? msg.content : "";
+        return (
+          msgContent === pending.content && msg.senderInboxId === ownInboxId
+        );
       });
 
       if (!matchingRealMessage) {
-        items.push({ type: 'pending', id: pending.id });
+        items.push({ type: "pending", id: pending.id });
       }
     }
 
     return items;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [messageIds.join(','), pendingMessages.length, ownInboxId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageIds.join(","), pendingMessages.length, ownInboxId]);
 
   // Scroll to bottom on new messages
   const prevDisplayCountRef = useRef(0);
@@ -624,13 +754,13 @@ export function MessagePanel({
     if (!message.trim() || isSending) return;
     const content = message.trim();
     const replyToId = replyingTo?.messageId;
-    setMessage('');
+    setMessage("");
     setReplyingTo(null); // Clear reply state
     setIsSending(true);
     try {
       await sendMessage(content, replyToId);
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error("Failed to send message:", error);
     } finally {
       setIsSending(false);
     }
@@ -640,12 +770,12 @@ export function MessagePanel({
     try {
       await retryMessage(pendingId);
     } catch (error) {
-      console.error('Failed to retry message:', error);
+      console.error("Failed to retry message:", error);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -653,19 +783,30 @@ export function MessagePanel({
 
   const formatTime = (ns: bigint): string => {
     const date = new Date(Number(ns / BigInt(1_000_000)));
-    return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    return date.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   };
 
   // Handle right-click to show context menu
-  const handleMessageContextMenu = useCallback((e: React.MouseEvent, messageId: string, content: string, senderAddress: string) => {
-    e.preventDefault();
-    setContextMenu({
-      messageId,
-      content,
-      senderAddress,
-      position: { x: e.clientX, y: e.clientY },
-    });
-  }, []);
+  const handleMessageContextMenu = useCallback(
+    (
+      e: React.MouseEvent,
+      messageId: string,
+      content: string,
+      senderAddress: string
+    ) => {
+      e.preventDefault();
+      setContextMenu({
+        messageId,
+        content,
+        senderAddress,
+        position: { x: e.clientX, y: e.clientY },
+      });
+    },
+    []
+  );
 
   // Handle reply from context menu
   const handleReply = useCallback(() => {
@@ -686,15 +827,22 @@ export function MessagePanel({
   }, [contextMenu]);
 
   // Handle reaction selection
-  const handleReactionSelect = useCallback(async (emoji: string) => {
-    if (!reactionPicker) return;
-    try {
-      await streamManager.sendReaction(conversationId, reactionPicker.messageId, emoji);
-    } catch (error) {
-      console.error('Failed to send reaction:', error);
-    }
-    setReactionPicker(null);
-  }, [conversationId, reactionPicker]);
+  const handleReactionSelect = useCallback(
+    async (emoji: string) => {
+      if (!reactionPicker) return;
+      try {
+        await streamManager.sendReaction(
+          conversationId,
+          reactionPicker.messageId,
+          emoji
+        );
+      } catch (error) {
+        console.error("Failed to send reaction:", error);
+      }
+      setReactionPicker(null);
+    },
+    [conversationId, reactionPicker]
+  );
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -704,28 +852,38 @@ export function MessagePanel({
         setShowMenu(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [showMenu]);
 
   // Handle leave group
   const handleLeaveGroup = useCallback(async () => {
-    if (!client || !client.inboxId || conversationType !== 'group' || isLeavingGroup) return;
+    if (
+      !client ||
+      !client.inboxId ||
+      conversationType !== "group" ||
+      isLeavingGroup
+    )
+      return;
 
     setIsLeavingGroup(true);
     setShowMenu(false);
 
     try {
-      const conversation = await client.conversations.getConversationById(conversationId);
-      if (conversation && 'removeMembers' in conversation) {
+      const conversation = await client.conversations.getConversationById(
+        conversationId
+      );
+      if (conversation && "removeMembers" in conversation) {
         // Remove self from group using removeMembers with own inboxId
-        const group = conversation as { removeMembers: (ids: string[]) => Promise<void> };
+        const group = conversation as {
+          removeMembers: (ids: string[]) => Promise<void>;
+        };
         await group.removeMembers([client.inboxId]);
         // Remove from local conversation list
         streamManager.removeConversation(conversationId);
       }
     } catch (error) {
-      console.error('Failed to leave group:', error);
+      console.error("Failed to leave group:", error);
     } finally {
       setIsLeavingGroup(false);
     }
@@ -736,27 +894,42 @@ export function MessagePanel({
       {/* Header */}
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-3">
-          {conversationType === 'group' ? (
-            <Avatar isGroup groupName={groupName} imageUrl={avatarUrl} memberPreviews={memberPreviews} size="md" />
+          {conversationType === "group" ? (
+            <Avatar
+              isGroup
+              groupName={groupName}
+              imageUrl={avatarUrl}
+              memberPreviews={memberPreviews}
+              size="md"
+            />
           ) : (
-            <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="md" />
+            <Avatar
+              address={peerAddress}
+              name={nameOverride}
+              imageUrl={avatarUrl}
+              size="md"
+            />
           )}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-[#181818]">{name}</span>
-              {isVerified && conversationType === 'dm' && <VerificationBadge size="sm" />}
+              {isVerified && conversationType === "dm" && (
+                <VerificationBadge size="sm" />
+              )}
             </div>
             {subtitle && (
               <span className="text-sm text-[#717680]">{subtitle}</span>
             )}
             {!subtitle && groupSubtitle && (
               <div className="flex items-center gap-1 text-sm text-[#717680]">
-                {'verified' in groupSubtitle ? (
+                {"verified" in groupSubtitle ? (
                   <>
                     <VerificationBadge size="xs" />
                     <span>
-                      {groupSubtitle.verified} {groupSubtitle.verified === 1 ? 'human' : 'humans'}
-                      {groupSubtitle.unverified > 0 && `, ${groupSubtitle.unverified} not verified`}
+                      {groupSubtitle.verified}{" "}
+                      {groupSubtitle.verified === 1 ? "human" : "humans"}
+                      {groupSubtitle.unverified > 0 &&
+                        `, ${groupSubtitle.unverified} not verified`}
                     </span>
                   </>
                 ) : (
@@ -767,7 +940,7 @@ export function MessagePanel({
           </div>
         </div>
         {/* Menu button - only show for groups */}
-        {conversationType === 'group' && (
+        {conversationType === "group" && (
           <div className="relative" ref={menuRef}>
             <button
               onClick={() => setShowMenu(!showMenu)}
@@ -844,410 +1017,706 @@ export function MessagePanel({
               {/* Find the last own message to only show status there */}
               {(() => {
                 // Find the last own message ID (excluding pending)
-                const lastOwnMessageId = displayItems.reduce<string | null>((acc, item) => {
-                  if (item.type === 'message') {
-                    const msg = getMessage(item.id);
-                    if (msg && msg.senderInboxId === ownInboxId) {
-                      return item.id;
+                const lastOwnMessageId = displayItems.reduce<string | null>(
+                  (acc, item) => {
+                    if (item.type === "message") {
+                      const msg = getMessage(item.id);
+                      if (msg && msg.senderInboxId === ownInboxId) {
+                        return item.id;
+                      }
                     }
-                  }
-                  return acc;
-                }, null);
+                    return acc;
+                  },
+                  null
+                );
 
                 return displayItems.map((item, index) => {
-                // Date separator - show encryption banner after first date separator
-                if (item.type === 'date-separator') {
-                  const isFirstDateSeparator = displayItems.findIndex(i => i.type === 'date-separator') === index;
-                  return (
-                    <div key={item.id}>
-                      <div className="flex items-center justify-center py-4">
-                        <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
-                          {item.date}
-                        </span>
-                      </div>
-                      {/* E2EE Banner - shown after first date separator */}
-                      {isFirstDateSeparator && (
-                        <div className="flex items-center justify-center pb-4">
-                          <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
-                            <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                              <Lock className="w-[11px] h-[11px] text-[#181818]" />
-                              <span className="text-[13px] text-[#181818] leading-[1.3]">
-                                Messages are end-to-end encrypted
-                              </span>
+                  // Date separator - show encryption banner after first date separator
+                  if (item.type === "date-separator") {
+                    const isFirstDateSeparator =
+                      displayItems.findIndex(
+                        (i) => i.type === "date-separator"
+                      ) === index;
+                    return (
+                      <div key={item.id}>
+                        <div className="flex items-center justify-center py-4">
+                          <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
+                            {item.date}
+                          </span>
+                        </div>
+                        {/* E2EE Banner - shown after first date separator */}
+                        {isFirstDateSeparator && (
+                          <div className="flex items-center justify-center pb-4">
+                            <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
+                              <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                                <Lock className="w-[11px] h-[11px] text-[#181818]" />
+                                <span className="text-[13px] text-[#181818] leading-[1.3]">
+                                  Messages are end-to-end encrypted
+                                </span>
+                              </div>
+                              <p className="text-[13px] text-[#181818] leading-[1.3]">
+                                and only visible within this chat.
+                              </p>
+                              <p className="text-[13px] text-[#181818] leading-[1.2]">
+                                Secured by XMTP.
+                              </p>
                             </div>
-                            <p className="text-[13px] text-[#181818] leading-[1.3]">
-                              and only visible within this chat.
-                            </p>
-                            <p className="text-[13px] text-[#181818] leading-[1.2]">
-                              Secured by XMTP.
-                            </p>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
+                        )}
+                      </div>
+                    );
+                  }
 
-                // Pending message - matches layout of sent messages exactly
-                if (item.type === 'pending') {
-                  const pending = pendingMessages.find((p) => p.id === item.id);
-                  if (!pending) return null;
+                  // Pending message - matches layout of sent messages exactly
+                  if (item.type === "pending") {
+                    const pending = pendingMessages.find(
+                      (p) => p.id === item.id
+                    );
+                    if (!pending) return null;
 
-                  return (
-                    <PendingMessageBubble
-                      key={item.id}
-                      pending={pending}
-                      onRetry={handleRetry}
-                      isVerified={isVerified}
-                    />
-                  );
-                }
+                    return (
+                      <PendingMessageBubble
+                        key={item.id}
+                        pending={pending}
+                        onRetry={handleRetry}
+                        isVerified={isVerified}
+                      />
+                    );
+                  }
 
-                // Regular message
-                const msg = getMessage(item.id);
-                if (!msg) return null;
+                  // Regular message
+                  const msg = getMessage(item.id);
+                  if (!msg) return null;
 
-                const isOwnMessage = msg.senderInboxId === ownInboxId;
-                const text = getMessageText(msg);
-                const { isFirstInGroup, isLastInGroup, showAvatar } = item;
+                  const isOwnMessage = msg.senderInboxId === ownInboxId;
+                  const text = getMessageText(msg);
+                  const { isFirstInGroup, isLastInGroup, showAvatar } = item;
 
-                // Check if this is a transaction reference (payment message)
-                const typeId = (msg.contentType as { typeId?: string })?.typeId;
+                  // Check if this is a transaction reference (payment message)
+                  const typeId = (msg.contentType as { typeId?: string })
+                    ?.typeId;
 
-                // Try to get transaction content - may need to decode from fallback
-                let txContent = msg.content;
+                  // Try to get transaction content - may need to decode from fallback
+                  let txContent = msg.content;
 
-                // If content is undefined but we have a transaction type, try to decode from fallback/encodedContent
-                if (typeId === 'transactionReference' && !txContent) {
-                  // Check for encodedContent (raw bytes that weren't decoded)
-                  const encodedContent = (msg as { encodedContent?: { content?: Uint8Array } }).encodedContent;
-                  if (encodedContent?.content) {
-                    try {
-                      const decoded = new TextDecoder().decode(encodedContent.content);
-                      txContent = JSON.parse(decoded);
-                      console.log('[MessagePanel] Manually decoded transaction:', txContent);
-                    } catch (e) {
-                      console.log('[MessagePanel] Failed to decode transaction:', e);
+                  // If content is undefined but we have a transaction type, try to decode from fallback/encodedContent
+                  if (typeId === "transactionReference" && !txContent) {
+                    // Check for encodedContent (raw bytes that weren't decoded)
+                    const encodedContent = (
+                      msg as { encodedContent?: { content?: Uint8Array } }
+                    ).encodedContent;
+                    if (encodedContent?.content) {
+                      try {
+                        const decoded = new TextDecoder().decode(
+                          encodedContent.content
+                        );
+                        txContent = JSON.parse(decoded);
+                        console.log(
+                          "[MessagePanel] Manually decoded transaction:",
+                          txContent
+                        );
+                      } catch (e) {
+                        console.log(
+                          "[MessagePanel] Failed to decode transaction:",
+                          e
+                        );
+                      }
+                    }
+
+                    // Also check fallback string
+                    const fallback = (msg as { fallback?: string }).fallback;
+                    if (fallback) {
+                      console.log(
+                        "[MessagePanel] Transaction fallback:",
+                        fallback
+                      );
                     }
                   }
 
-                  // Also check fallback string
-                  const fallback = (msg as { fallback?: string }).fallback;
-                  if (fallback) {
-                    console.log('[MessagePanel] Transaction fallback:', fallback);
-                  }
-                }
+                  const isPayment =
+                    typeId === "transactionReference" &&
+                    isTransactionReference(txContent);
 
-                const isPayment = typeId === 'transactionReference' && isTransactionReference(txContent);
-
-                // For payment messages, render PaymentMessage component
-                if (isPayment) {
-                  const txRef = normalizeTransactionReference(txContent as TransactionReference);
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {/* Avatar for incoming payment */}
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                          {isLastInGroup && (
-                            <Avatar
-                              address={conversationType === 'group'
-                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                                : peerAddress}
-                              size="sm"
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-col">
-                        {/* Sender name for incoming */}
-                        {!isOwnMessage && isFirstInGroup && (
-                          <SenderName address={conversationType === 'group'
-                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                            : peerAddress}
-                          />
-                        )}
-                        <PaymentMessage
-                          txRef={txRef}
-                          isOwnMessage={isOwnMessage}
-                        />
-                        {isLastInGroup && (
-                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
-                            {formatTime(msg.sentAtNs)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // For image messages, render ImageMessage or ImageGrid component
-                // Check for various attachment formats
-                let attachmentContent = msg.content;
-
-                // For multi-attachment types, show placeholder (SDK doesn't export codec yet)
-                const isMultiType = typeId === 'multiRemoteStaticAttachment' || typeId === 'multiRemoteAttachment';
-                if (isMultiType) {
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                          {isLastInGroup && (
-                            <Avatar
-                              address={conversationType === 'group'
-                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                                : peerAddress}
-                              size="sm"
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-col">
-                        {!isOwnMessage && isFirstInGroup && (
-                          <SenderName address={conversationType === 'group'
-                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                            : peerAddress}
-                          />
-                        )}
-                        <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
-                        {isLastInGroup && (
-                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
-                            {formatTime(msg.sentAtNs)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-
-                const hasMultiAttachments = isMultiAttachment(attachmentContent);
-                const hasMultiWrapper = isMultiAttachmentWrapper(attachmentContent);
-                const hasSingleAttachment = isSingleAttachment(attachmentContent);
-                const attachments = extractAttachments(attachmentContent);
-
-                // Check for raw/undecoded content (string with CDN URL embedded)
-                const contentStr = typeof msg.content === 'string' ? msg.content : '';
-                const hasRawCdnUrl = contentStr.includes('chat-assets.toolsforhumanity.com');
-
-                const hasAnyAttachment = hasSingleAttachment || hasMultiAttachments || hasMultiWrapper;
-                // Handle single attachment types (multi-attachment types are handled above)
-                const isAttachmentType = typeId === 'remoteAttachment' || typeId === 'remoteStaticAttachment';
-                const isImage = (isAttachmentType || hasAnyAttachment) && attachmentContent;
-                const isRawImageData = isAttachmentType && hasRawCdnUrl && !hasAnyAttachment;
-
-                // For raw undecoded image data, show a placeholder instead of gibberish
-                if (isRawImageData) {
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                          {isLastInGroup && (
-                            <Avatar
-                              address={conversationType === 'group'
-                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                                : peerAddress}
-                              size="sm"
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-col">
-                        {!isOwnMessage && isFirstInGroup && (
-                          <SenderName address={conversationType === 'group'
-                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                            : peerAddress}
-                          />
-                        )}
-                        <div className="bg-[#F3F4F5] border border-[rgba(0,0,0,0.1)] rounded-[16px] px-4 py-3 text-[#717680] text-sm">
-                          <div className="flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4" />
-                            <span>Image unavailable - reload required</span>
-                          </div>
-                        </div>
-                        {isLastInGroup && (
-                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
-                            {formatTime(msg.sentAtNs)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (isImage) {
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {/* Avatar for incoming image */}
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                          {isLastInGroup && (
-                            <Avatar
-                              address={conversationType === 'group'
-                                ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                                : peerAddress}
-                              size="sm"
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex flex-col">
-                        {/* Sender name for incoming */}
-                        {!isOwnMessage && isFirstInGroup && (
-                          <SenderName address={conversationType === 'group'
-                            ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                            : peerAddress}
-                          />
-                        )}
-                        {/* Render ImageGrid for multiple attachments, ImageMessage for single */}
-                        {attachments && attachments.length > 1 ? (
-                          <ImageGrid
-                            attachments={attachments}
-                            isOwnMessage={isOwnMessage}
-                          />
-                        ) : attachments && attachments.length === 1 ? (
-                          <ImageMessage
-                            remoteAttachment={attachments[0]}
-                            isOwnMessage={isOwnMessage}
-                          />
-                        ) : (
-                          <ImageMessage
-                            remoteAttachment={attachmentContent as RemoteAttachmentContent}
-                            isOwnMessage={isOwnMessage}
-                          />
-                        )}
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
-                        {isLastInGroup && (
-                          <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
-                            {formatTime(msg.sentAtNs)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Skip if text is null (non-displayable content types)
-                if (text === null) return null;
-
-                // Check if this is a reply message
-                const isReply = typeId === 'reply';
-                if (isReply) {
-                  // Extract reply content structure
-                  const replyContent = msg.content as {
-                    content?: string;
-                    reference?: string;
-                  } | undefined;
-
-                  const replyText = replyContent?.content ?? '';
-                  const referencedMessageId = replyContent?.reference;
-
-                  // Look up the original message
-                  let quotedContent = '';
-                  let quotedSenderAddress = '';
-                  if (referencedMessageId) {
-                    const originalMsg = getMessage(referencedMessageId);
-                    if (originalMsg) {
-                      quotedContent = getMessageText(originalMsg) ?? '';
-                      // Get sender address
-                      quotedSenderAddress = conversationType === 'group'
-                        ? memberPreviews?.find(m => m.inboxId === originalMsg.senderInboxId)?.address ?? ''
-                        : (originalMsg.senderInboxId === ownInboxId ? '' : peerAddress ?? '');
-                    }
-                  }
-
-                  // Get sender address for current message
-                  const replySenderAddress = conversationType === 'group'
-                    ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                    : peerAddress;
-
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
-                      {/* Avatar for incoming replies */}
-                      {!isOwnMessage && (
-                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                          {isLastInGroup && (
-                            <Avatar address={replySenderAddress} size="sm" />
-                          )}
-                        </div>
-                      )}
-                      <div
-                        className="flex flex-col"
-                        onContextMenu={(e) => handleMessageContextMenu(e, item.id, replyText, replySenderAddress ?? '')}
-                      >
-                        {/* Sender name for incoming */}
-                        {!isOwnMessage && isFirstInGroup && (
-                          <SenderName address={replySenderAddress} />
-                        )}
-                        <ReplyBubble
-                          quotedContent={quotedContent}
-                          quotedSenderAddress={quotedSenderAddress}
-                          replyContent={replyText}
-                          isOwnMessage={isOwnMessage}
-                          isFirstInGroup={isFirstInGroup}
-                          isLastInGroup={isLastInGroup}
-                          timestamp={isLastInGroup ? formatTime(msg.sentAtNs) : undefined}
-                          isVerified={isVerified}
-                        />
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
-                      </div>
-                    </div>
-                  );
-                }
-
-                // Outgoing message (sender)
-                if (isOwnMessage) {
-                  const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
-                  const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
-
-                  // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
-                  const senderRadius = isFirstInGroup && isLastInGroup
-                    ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]'
-                    : isFirstInGroup
-                      ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]'
-                      : isLastInGroup
-                        ? 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]'
-                        : 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]';
-
-                  // URL-only message: link preview IS the bubble
-                  if (isUrlOnly) {
+                  // For payment messages, render PaymentMessage component
+                  if (isPayment) {
+                    const txRef = normalizeTransactionReference(
+                      txContent as TransactionReference
+                    );
                     return (
                       <div
                         key={item.id}
-                        className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
                       >
-                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, '')}>
-                          <MessageLinkPreview text={text} isOwnMessage={true} />
-                          <MessageReactions messageId={item.id} isOwnMessage={true} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
+                        {/* Avatar for incoming payment */}
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          {/* Sender name for incoming */}
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          <PaymentMessage
+                            txRef={txRef}
+                            isOwnMessage={isOwnMessage}
+                            sentAtNs={msg.sentAtNs}
+                          />
+                          {isLastInGroup && (
+                            <span
+                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                                isOwnMessage ? "text-right pr-1" : "ml-1"
+                              }`}
+                            >
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                          )}
                         </div>
+                      </div>
+                    );
+                  }
+
+                  // For image messages, render ImageMessage or ImageGrid component
+                  // Check for various attachment formats
+                  const attachmentContent = msg.content;
+
+                  // For multi-attachment types, show placeholder (SDK doesn't export codec yet)
+                  const isMultiType =
+                    typeId === "multiRemoteStaticAttachment" ||
+                    typeId === "multiRemoteAttachment";
+                  if (isMultiType) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
+                          <MessageReactions
+                            messageId={item.id}
+                            isOwnMessage={isOwnMessage}
+                            memberPreviews={memberPreviews}
+                            peerAddress={peerAddress}
+                            ownInboxId={ownInboxId}
+                          />
+                          {isLastInGroup && (
+                            <span
+                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                                isOwnMessage ? "text-right pr-1" : "ml-1"
+                              }`}
+                            >
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  const hasMultiAttachments =
+                    isMultiAttachment(attachmentContent);
+                  const hasMultiWrapper =
+                    isMultiAttachmentWrapper(attachmentContent);
+                  const hasSingleAttachment =
+                    isSingleAttachment(attachmentContent);
+                  const attachments = extractAttachments(attachmentContent);
+
+                  // Check for raw/undecoded content (string with CDN URL embedded)
+                  const contentStr =
+                    typeof msg.content === "string" ? msg.content : "";
+                  const hasRawCdnUrl = contentStr.includes(
+                    "chat-assets.toolsforhumanity.com"
+                  );
+
+                  const hasAnyAttachment =
+                    hasSingleAttachment ||
+                    hasMultiAttachments ||
+                    hasMultiWrapper;
+                  // Handle single attachment types (multi-attachment types are handled above)
+                  const isAttachmentType =
+                    typeId === "remoteAttachment" ||
+                    typeId === "remoteStaticAttachment";
+                  const isImage =
+                    (isAttachmentType || hasAnyAttachment) && attachmentContent;
+                  const isRawImageData =
+                    isAttachmentType && hasRawCdnUrl && !hasAnyAttachment;
+
+                  // For raw undecoded image data, show a placeholder instead of gibberish
+                  if (isRawImageData) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          <div className="bg-[#F3F4F5] border border-[rgba(0,0,0,0.1)] rounded-[16px] px-4 py-3 text-[#717680] text-sm">
+                            <div className="flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4" />
+                              <span>Image unavailable - reload required</span>
+                            </div>
+                          </div>
+                          {isLastInGroup && (
+                            <span
+                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                                isOwnMessage ? "text-right pr-1" : "ml-1"
+                              }`}
+                            >
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isImage) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {/* Avatar for incoming image */}
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex flex-col">
+                          {/* Sender name for incoming */}
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          {/* Render ImageGrid for multiple attachments, ImageMessage for single */}
+                          {attachments && attachments.length > 1 ? (
+                            <ImageGrid
+                              attachments={attachments}
+                              isOwnMessage={isOwnMessage}
+                            />
+                          ) : attachments && attachments.length === 1 ? (
+                            <ImageMessage
+                              remoteAttachment={attachments[0]}
+                              isOwnMessage={isOwnMessage}
+                            />
+                          ) : (
+                            <ImageMessage
+                              remoteAttachment={
+                                attachmentContent as RemoteAttachmentContent
+                              }
+                              isOwnMessage={isOwnMessage}
+                            />
+                          )}
+                          <MessageReactions
+                            messageId={item.id}
+                            isOwnMessage={isOwnMessage}
+                            memberPreviews={memberPreviews}
+                            peerAddress={peerAddress}
+                            ownInboxId={ownInboxId}
+                          />
+                          {isLastInGroup && (
+                            <span
+                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                                isOwnMessage ? "text-right pr-1" : "ml-1"
+                              }`}
+                            >
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Skip if text is null (non-displayable content types)
+                  if (text === null) return null;
+
+                  // Check if this is a reply message
+                  const isReply = typeId === "reply";
+                  if (isReply) {
+                    // Extract reply content structure
+                    const replyContent = msg.content as
+                      | {
+                          content?: string;
+                          reference?: string;
+                        }
+                      | undefined;
+
+                    const replyText = replyContent?.content ?? "";
+                    const referencedMessageId = replyContent?.reference;
+
+                    // Look up the original message
+                    let quotedContent = "";
+                    let quotedSenderAddress = "";
+                    if (referencedMessageId) {
+                      const originalMsg = getMessage(referencedMessageId);
+                      if (originalMsg) {
+                        quotedContent = getMessageText(originalMsg) ?? "";
+                        // Get sender address
+                        quotedSenderAddress =
+                          conversationType === "group"
+                            ? memberPreviews?.find(
+                                (m) => m.inboxId === originalMsg.senderInboxId
+                              )?.address ?? ""
+                            : originalMsg.senderInboxId === ownInboxId
+                            ? ""
+                            : peerAddress ?? "";
+                      }
+                    }
+
+                    // Get sender address for current message
+                    const replySenderAddress =
+                      conversationType === "group"
+                        ? memberPreviews?.find(
+                            (m) => m.inboxId === msg.senderInboxId
+                          )?.address
+                        : peerAddress;
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {/* Avatar for incoming replies */}
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar address={replySenderAddress} size="sm" />
+                            )}
+                          </div>
+                        )}
+                        <div
+                          className="flex flex-col"
+                          onContextMenu={(e) =>
+                            handleMessageContextMenu(
+                              e,
+                              item.id,
+                              replyText,
+                              replySenderAddress ?? ""
+                            )
+                          }
+                        >
+                          {/* Sender name for incoming */}
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName address={replySenderAddress} />
+                          )}
+                          <ReplyBubble
+                            quotedContent={quotedContent}
+                            quotedSenderAddress={quotedSenderAddress}
+                            replyContent={replyText}
+                            isOwnMessage={isOwnMessage}
+                            isFirstInGroup={isFirstInGroup}
+                            isLastInGroup={isLastInGroup}
+                            timestamp={
+                              isLastInGroup
+                                ? formatTime(msg.sentAtNs)
+                                : undefined
+                            }
+                            isVerified={isVerified}
+                          />
+                          <MessageReactions
+                            messageId={item.id}
+                            isOwnMessage={isOwnMessage}
+                            memberPreviews={memberPreviews}
+                            peerAddress={peerAddress}
+                            ownInboxId={ownInboxId}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Outgoing message (sender)
+                  if (isOwnMessage) {
+                    const isRead = streamManager.isMessageRead(
+                      conversationId,
+                      msg.sentAtNs
+                    );
+                    const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
+
+                    // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
+                    const senderRadius =
+                      isFirstInGroup && isLastInGroup
+                        ? "rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]"
+                        : isFirstInGroup
+                        ? "rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]"
+                        : isLastInGroup
+                        ? "rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]"
+                        : "rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]";
+
+                    // URL-only message: link preview IS the bubble
+                    if (isUrlOnly) {
+                      return (
+                        <div
+                          key={item.id}
+                          className={`flex flex-col items-end ${
+                            isFirstInGroup ? "mt-3" : "mt-0.5"
+                          }`}
+                        >
+                          <div
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(e, item.id, text, "")
+                            }
+                          >
+                            <MessageLinkPreview
+                              text={text}
+                              isOwnMessage={true}
+                            />
+                            <MessageReactions
+                              messageId={item.id}
+                              isOwnMessage={true}
+                              memberPreviews={memberPreviews}
+                              peerAddress={peerAddress}
+                              ownInboxId={ownInboxId}
+                            />
+                          </div>
+                          {isLastInGroup && (
+                            <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+                              <span className="text-[11px] text-[#717680] font-medium">
+                                {formatTime(msg.sentAtNs)}
+                              </span>
+                              {item.id === lastOwnMessageId &&
+                                (isRead ? (
+                                  <span className="text-[11px] text-[#00C230] font-medium">
+                                    Read
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] text-[#717680]">
+                                    Sent
+                                  </span>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex flex-col items-end ${
+                          isFirstInGroup ? "mt-3" : "mt-0.5"
+                        }`}
+                      >
+                        <div className="max-w-[300px]">
+                          <div
+                            className={`${
+                              isVerified ? "bg-[#005CFF]" : "bg-[#717680]"
+                            } px-3 py-2 ${senderRadius}`}
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(e, item.id, text, "")
+                            }
+                          >
+                            <MessageText text={text} isOwnMessage={true} />
+                          </div>
+                          <MessageReactions
+                            messageId={item.id}
+                            isOwnMessage={true}
+                            memberPreviews={memberPreviews}
+                            peerAddress={peerAddress}
+                            ownInboxId={ownInboxId}
+                          />
+                        </div>
+                        {/* Link preview outside the bubble for messages with text + URL */}
+                        {linkPreviewEnabled && extractUrls(text).length > 0 && (
+                          <div className="mt-2">
+                            <MessageLinkPreview
+                              text={text}
+                              isOwnMessage={true}
+                            />
+                          </div>
+                        )}
                         {isLastInGroup && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
                             <span className="text-[11px] text-[#717680] font-medium">
                               {formatTime(msg.sentAtNs)}
                             </span>
-                            {item.id === lastOwnMessageId && (
-                              isRead ? (
-                                <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                            {/* Only show Sent/Read on the very last own message */}
+                            {item.id === lastOwnMessageId &&
+                              (isRead ? (
+                                <span className="text-[11px] text-[#00C230] font-medium">
+                                  Read
+                                </span>
                               ) : (
-                                <span className="text-[11px] text-[#717680]">Sent</span>
-                              )
-                            )}
+                                <span className="text-[11px] text-[#717680]">
+                                  Sent
+                                </span>
+                              ))}
                           </div>
                         )}
+                      </div>
+                    );
+                  }
+
+                  // Incoming message (recipient)
+                  // For group chats, look up address from memberPreviews
+                  // For DMs, use the peerAddress
+                  const senderAddress =
+                    conversationType === "group"
+                      ? memberPreviews?.find(
+                          (m) => m.inboxId === msg.senderInboxId
+                        )?.address
+                      : peerAddress;
+
+                  const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
+
+                  // Recipient bubble: all corners 16px except bottom-left is 4px (pointing to sender)
+                  const recipientRadius =
+                    isFirstInGroup && isLastInGroup
+                      ? "rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]"
+                      : isFirstInGroup
+                      ? "rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]"
+                      : isLastInGroup
+                      ? "rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]"
+                      : "rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]";
+
+                  // URL-only incoming message: link preview IS the bubble
+                  if (isUrlOnly) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex items-start gap-3 ${
+                          isFirstInGroup ? "mt-3" : "mt-0.5"
+                        }`}
+                      >
+                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                          {isLastInGroup && (
+                            <Avatar address={senderAddress} size="sm" />
+                          )}
+                        </div>
+                        <div className="flex flex-col">
+                          {isFirstInGroup && (
+                            <SenderName address={senderAddress} />
+                          )}
+                          <div
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(
+                                e,
+                                item.id,
+                                text,
+                                senderAddress ?? ""
+                              )
+                            }
+                          >
+                            <MessageLinkPreview
+                              text={text}
+                              isOwnMessage={false}
+                            />
+                            <MessageReactions
+                              messageId={item.id}
+                              isOwnMessage={false}
+                              memberPreviews={memberPreviews}
+                              peerAddress={peerAddress}
+                              ownInboxId={ownInboxId}
+                            />
+                          </div>
+                          {isLastInGroup && (
+                            <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     );
                   }
@@ -1255,80 +1724,52 @@ export function MessagePanel({
                   return (
                     <div
                       key={item.id}
-                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                      className={`flex items-start gap-3 ${
+                        isFirstInGroup ? "mt-3" : "mt-0.5"
+                      }`}
                     >
-                      <div className="max-w-[300px]">
-                        <div
-                          className={`${isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]'} px-3 py-2 ${senderRadius}`}
-                          onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, '')}
-                        >
-                          <MessageText text={text} isOwnMessage={true} />
-                        </div>
-                        <MessageReactions messageId={item.id} isOwnMessage={true} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
-                      </div>
-                      {/* Link preview outside the bubble for messages with text + URL */}
-                      {linkPreviewEnabled && extractUrls(text).length > 0 && (
-                        <div className="mt-2">
-                          <MessageLinkPreview text={text} isOwnMessage={true} />
-                        </div>
-                      )}
-                      {isLastInGroup && (
-                        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                          <span className="text-[11px] text-[#717680] font-medium">
-                            {formatTime(msg.sentAtNs)}
-                          </span>
-                          {/* Only show Sent/Read on the very last own message */}
-                          {item.id === lastOwnMessageId && (
-                            isRead ? (
-                              <span className="text-[11px] text-[#00C230] font-medium">Read</span>
-                            ) : (
-                              <span className="text-[11px] text-[#717680]">Sent</span>
-                            )
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                }
-
-                // Incoming message (recipient)
-                // For group chats, look up address from memberPreviews
-                // For DMs, use the peerAddress
-                const senderAddress = conversationType === 'group'
-                  ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
-                  : peerAddress;
-
-                const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
-
-                // Recipient bubble: all corners 16px except bottom-left is 4px (pointing to sender)
-                const recipientRadius = isFirstInGroup && isLastInGroup
-                  ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
-                  : isFirstInGroup
-                    ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
-                    : isLastInGroup
-                      ? 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
-                      : 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]';
-
-                // URL-only incoming message: link preview IS the bubble
-                if (isUrlOnly) {
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex items-start gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
+                      {/* Avatar - only show on last message of group, otherwise spacer */}
                       <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
                         {isLastInGroup && (
                           <Avatar address={senderAddress} size="sm" />
                         )}
                       </div>
                       <div className="flex flex-col">
+                        {/* Sender name - show on first message in group for all incoming messages */}
                         {isFirstInGroup && (
                           <SenderName address={senderAddress} />
                         )}
-                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, senderAddress ?? '')}>
-                          <MessageLinkPreview text={text} isOwnMessage={false} />
-                          <MessageReactions messageId={item.id} isOwnMessage={false} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
+                        <div className="max-w-[300px]">
+                          <div
+                            className={`bg-white px-3 py-2 ${recipientRadius}`}
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(
+                                e,
+                                item.id,
+                                text,
+                                senderAddress ?? ""
+                              )
+                            }
+                          >
+                            <MessageText text={text} isOwnMessage={false} />
+                          </div>
+                          <MessageReactions
+                            messageId={item.id}
+                            isOwnMessage={false}
+                            memberPreviews={memberPreviews}
+                            peerAddress={peerAddress}
+                            ownInboxId={ownInboxId}
+                          />
                         </div>
+                        {/* Link preview outside the bubble for messages with text + URL */}
+                        {linkPreviewEnabled && extractUrls(text).length > 0 && (
+                          <div className="mt-2">
+                            <MessageLinkPreview
+                              text={text}
+                              isOwnMessage={false}
+                            />
+                          </div>
+                        )}
                         {isLastInGroup && (
                           <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
                             {formatTime(msg.sentAtNs)}
@@ -1337,51 +1778,7 @@ export function MessagePanel({
                       </div>
                     </div>
                   );
-                }
-
-                return (
-                  <div
-                    key={item.id}
-                    className={`flex items-start gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                  >
-                    {/* Avatar - only show on last message of group, otherwise spacer */}
-                    <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                      {isLastInGroup && (
-                        <Avatar
-                          address={senderAddress}
-                          size="sm"
-                        />
-                      )}
-                    </div>
-                    <div className="flex flex-col">
-                      {/* Sender name - show on first message in group for all incoming messages */}
-                      {isFirstInGroup && (
-                        <SenderName address={senderAddress} />
-                      )}
-                      <div className="max-w-[300px]">
-                        <div
-                          className={`bg-white px-3 py-2 ${recipientRadius}`}
-                          onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, senderAddress ?? '')}
-                        >
-                          <MessageText text={text} isOwnMessage={false} />
-                        </div>
-                        <MessageReactions messageId={item.id} isOwnMessage={false} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
-                      </div>
-                      {/* Link preview outside the bubble for messages with text + URL */}
-                      {linkPreviewEnabled && extractUrls(text).length > 0 && (
-                        <div className="mt-2">
-                          <MessageLinkPreview text={text} isOwnMessage={false} />
-                        </div>
-                      )}
-                      {isLastInGroup && (
-                        <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
-                          {formatTime(msg.sentAtNs)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              });
+                });
               })()}
             </div>
           </div>
@@ -1399,12 +1796,17 @@ export function MessagePanel({
 
       {/* Input Area or Action Bar for Message Requests */}
       {isMessageRequest ? (
-        <RequestActionBar conversationId={conversationId} peerAddress={peerAddress} />
+        <RequestActionBar
+          conversationId={conversationId}
+          peerAddress={peerAddress}
+        />
       ) : (
         <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert('Coming soon! Ping Takis to work on this 📎')}
+              onClick={() =>
+                alert("Coming soon! Ping Takis to work on this 📎")
+              }
               className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
             >
               <Paperclip className="w-5 h-5 text-[#717680]" />
