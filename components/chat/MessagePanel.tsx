@@ -402,9 +402,22 @@ export function MessagePanel({
       });
     }
 
-    // Add pending messages at the end
+    // Add pending messages at the end, but skip if a matching real message exists
+    // This prevents the "jump" when both pending and real message briefly coexist
     for (const pending of pendingMessages) {
-      items.push({ type: 'pending', id: pending.id });
+      // Check if any recent message matches this pending content
+      const recentMessageIds = messageIds.slice(0, 5); // Check first 5 (newest)
+      const matchingRealMessage = recentMessageIds.some((msgId) => {
+        const msg = getMessage(msgId);
+        if (!msg) return false;
+        // Check if content matches and it's an own message
+        const msgContent = typeof msg.content === 'string' ? msg.content : '';
+        return msgContent === pending.content && msg.senderInboxId === ownInboxId;
+      });
+
+      if (!matchingRealMessage) {
+        items.push({ type: 'pending', id: pending.id });
+      }
     }
 
     return items;
@@ -686,13 +699,13 @@ export function MessagePanel({
                   );
                 }
 
-                // Pending message
+                // Pending message - matches layout of sent messages exactly
                 if (item.type === 'pending') {
                   const pending = pendingMessages.find((p) => p.id === item.id);
                   if (!pending) return null;
 
                   return (
-                    <div key={item.id} className="flex justify-end mt-0.5">
+                    <div key={item.id} className="flex flex-col items-end mt-0.5">
                       <div className="max-w-[300px]">
                         <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
                           pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]/70'
@@ -701,24 +714,25 @@ export function MessagePanel({
                             {pending.content}
                           </p>
                         </div>
-                        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                          {pending.status === 'sending' && (
-                            <span className="text-[11px] text-[#9BA3AE]">Sending...</span>
-                          )}
-                          {pending.status === 'failed' && (
-                            <>
-                              <AlertCircle className="w-3 h-3 text-red-500" />
-                              <span className="text-[11px] text-red-500">Failed</span>
-                              <button
-                                onClick={() => handleRetry(pending.id)}
-                                className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                                Retry
-                              </button>
-                            </>
-                          )}
-                        </div>
+                      </div>
+                      {/* Status line outside max-w container to match sent message layout */}
+                      <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+                        {pending.status === 'sending' && (
+                          <span className="text-[11px] text-[#717680] font-medium">Sending...</span>
+                        )}
+                        {pending.status === 'failed' && (
+                          <>
+                            <AlertCircle className="w-3 h-3 text-red-500" />
+                            <span className="text-[11px] text-red-500">Failed</span>
+                            <button
+                              onClick={() => handleRetry(pending.id)}
+                              className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
+                            >
+                              <RotateCcw className="w-3 h-3" />
+                              Retry
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
