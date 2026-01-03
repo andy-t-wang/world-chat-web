@@ -1,6 +1,7 @@
 'use client';
 
 import { store, selectedConversationIdAtom } from '@/stores';
+import { soundMutedAtom } from '@/stores/settings';
 
 /**
  * Browser notification service for new messages
@@ -261,8 +262,11 @@ export function startTitleFlash(senderName: string, isCurrentChat: boolean = fal
 
   pendingNotification = { senderName, isCurrentChat };
 
-  // Play notification sound
-  playNotificationSound();
+  // Play notification sound (unless muted)
+  const isMuted = store.get(soundMutedAtom);
+  if (!isMuted) {
+    playNotificationSound();
+  }
 
   if (isCurrentChat) {
     // On current chat - just show static "<Chat Name> · messaged you"

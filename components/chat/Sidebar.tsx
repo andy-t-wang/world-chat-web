@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
-import { linkPreviewEnabledAtom } from '@/stores/settings';
+import { linkPreviewEnabledAtom, soundMutedAtom } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
 
@@ -13,6 +13,7 @@ import { useMessageRequests } from '@/hooks/useConversations';
 function GlobalSettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
+  const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,6 +66,33 @@ function GlobalSettingsDropdown() {
               <div
                 className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
                   linkPreviewEnabled ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </button>
+          <button
+            onClick={() => setSoundMuted(!soundMuted)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+          >
+            {soundMuted ? (
+              <VolumeX className="w-5 h-5 text-[#9BA3AE]" />
+            ) : (
+              <Volume2 className="w-5 h-5 text-[#00C230]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[#181818]">Notification Sounds</p>
+              <p className="text-[12px] text-[#717680]">
+                {soundMuted ? 'Sounds are muted' : 'Play sound on new messages'}
+              </p>
+            </div>
+            <div
+              className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
+                !soundMuted ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  !soundMuted ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </div>
