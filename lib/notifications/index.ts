@@ -31,42 +31,82 @@ function getAudioContext(): AudioContext | null {
 
 /**
  * Play notification sound using Web Audio API
- * Creates a pleasant two-tone chime
+ *
+ * Design principles (acoustic engineering + HCI):
+ * - Rising pitch creates anticipation/excitement
+ * - Soft attack feels friendly, not alarming
+ * - Warm fundamentals (300-400Hz) feel welcoming
+ * - Slight detuning creates organic warmth
+ * - Two-note "pop-pop" pattern feels playful
  */
 export function playNotificationSound(): void {
   const ctx = getAudioContext();
   if (!ctx) return;
 
-  // Resume context if suspended (required for autoplay policies)
   if (ctx.state === 'suspended') {
     ctx.resume().catch(() => {});
   }
 
   const now = ctx.currentTime;
+  const masterGain = ctx.createGain();
+  masterGain.gain.setValueAtTime(0.35, now);
+  masterGain.connect(ctx.destination);
 
-  // Create a pleasant two-tone notification sound
-  const frequencies = [830, 1046]; // G5 and C6 - pleasant chime
-  const duration = 0.15;
-  const gap = 0.08;
+  // Two-note ascending pattern - creates anticipation
+  // F4 (349Hz) → A4 (440Hz) = Major 3rd (pleasant, uplifting)
+  const notes = [
+    { freq: 349, time: 0, duration: 0.12 },
+    { freq: 440, time: 0.08, duration: 0.18 },
+  ];
 
-  frequencies.forEach((freq, i) => {
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
+  notes.forEach(({ freq, time, duration }) => {
+    const startTime = now + time;
 
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
+    // Main tone - sine for purity, no harshness
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const filter = ctx.createBiquadFilter();
 
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(freq, now);
+    // Gentle low-pass removes any digital harshness
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(1200, startTime);
+    filter.Q.setValueAtTime(0.5, startTime);
 
-    // Envelope for smooth sound
-    const startTime = now + i * (duration + gap);
-    gainNode.gain.setValueAtTime(0, startTime);
-    gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(masterGain);
 
-    oscillator.start(startTime);
-    oscillator.stop(startTime + duration);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(freq, startTime);
+    // Slight pitch rise within each note (excitement)
+    osc.frequency.linearRampToValueAtTime(freq * 1.02, startTime + duration * 0.3);
+    osc.frequency.linearRampToValueAtTime(freq, startTime + duration);
+
+    // Soft attack, smooth decay (like a soft mallet on wood)
+    gain.gain.setValueAtTime(0, startTime);
+    gain.gain.linearRampToValueAtTime(0.6, startTime + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.3, startTime + duration * 0.4);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.05);
+
+    // Subtle octave undertone for body/warmth
+    const subOsc = ctx.createOscillator();
+    const subGain = ctx.createGain();
+
+    subOsc.connect(subGain);
+    subGain.connect(masterGain);
+
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(freq / 2, startTime);
+
+    subGain.gain.setValueAtTime(0, startTime);
+    subGain.gain.linearRampToValueAtTime(0.15, startTime + 0.02);
+    subGain.gain.exponentialRampToValueAtTime(0.001, startTime + duration * 0.8);
+
+    subOsc.start(startTime);
+    subOsc.stop(startTime + duration);
   });
 }
 
