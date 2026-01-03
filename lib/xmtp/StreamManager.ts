@@ -78,6 +78,127 @@ const CONTENT_TYPE_MULTI_REMOTE_STATIC_ATTACHMENT = 'multiRemoteStaticAttachment
 const TRUSTED_CDN_PATTERN = 'chat-assets.toolsforhumanity.com';
 
 /**
+ * Manually parse protobuf-encoded reaction from World App
+ * World App uses a different protobuf field mapping than @xmtp/content-type-reaction:
+ * - Field 1: reference (message ID)
+ * - Field 3: action (1=added, 2=removed)
+ * - Field 4: content (emoji)
+ * - Field 5: schema (1=unicode)
+ */
+function parseProtobufReaction(bytes: Uint8Array): ReactionContent | null {
+  try {
+    let pos = 0;
+    let reference: string | undefined;
+    let action: 'added' | 'removed' = 'added';
+    let content: string | undefined;
+
+    while (pos < bytes.length) {
+      const tag = bytes[pos++];
+      const fieldNumber = tag >> 3;
+      const wireType = tag & 0x07;
+
+      if (wireType === 2) {
+        // Length-delimited (string)
+        const length = bytes[pos++];
+        const value = new TextDecoder().decode(bytes.slice(pos, pos + length));
+        pos += length;
+
+        if (fieldNumber === 1) {
+          reference = value;
+        } else if (fieldNumber === 4) {
+          content = value;
+        }
+      } else if (wireType === 0) {
+        // Varint
+        let value = 0;
+        let shift = 0;
+        while (pos < bytes.length) {
+          const byte = bytes[pos++];
+          value |= (byte & 0x7f) << shift;
+          if ((byte & 0x80) === 0) break;
+          shift += 7;
+        }
+
+        if (fieldNumber === 3) {
+          action = value === 2 ? 'removed' : 'added';
+        }
+        // Field 5 is schema, but we just use 'custom' as default
+      } else {
+        // Unknown wire type, skip
+        break;
+      }
+    }
+
+    if (reference && content) {
+      return { reference, action, content, schema: 'custom' };
+    }
+    return null;
+  } catch (e) {
+    console.log('[StreamManager] Protobuf parse error:', e);
+    return null;
+  }
+}
+
+/**
+ * Try to decode a raw reaction from encodedContent
+ * This handles messages where the codec didn't properly decode
+ */
+async function tryDecodeReaction(msg: {
+  content: unknown;
+  contentType?: { typeId?: string };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  encodedContent?: any;
+}): Promise<ReactionContent | null> {
+  // Check if content is already decoded and valid
+  const content = msg.content as ReactionContent | undefined;
+  if (content && typeof content === 'object' && 'reference' in content && 'content' in content) {
+    return content;
+  }
+
+  // Try to decode from encodedContent
+  if (!msg.encodedContent?.content) {
+    return null;
+  }
+
+  const rawBytes = msg.encodedContent.content as Uint8Array;
+
+  // Try manual protobuf parsing first (for World App messages)
+  const protoResult = parseProtobufReaction(rawBytes);
+  if (protoResult) {
+    console.log('[StreamManager] Decoded reaction from protobuf:', protoResult);
+    return protoResult;
+  }
+
+  // Try JSON fallback for older format
+  try {
+    const text = new TextDecoder().decode(rawBytes);
+    const reaction = JSON.parse(text) as ReactionContent;
+    if (reaction && reaction.reference && reaction.content) {
+      console.log('[StreamManager] Decoded reaction from JSON:', reaction);
+      return reaction;
+    }
+  } catch {
+    // JSON parse failed, which is expected for protobuf data
+  }
+
+  // Try using the ReactionCodec as last resort
+  try {
+    const { ReactionCodec } = await import('@xmtp/content-type-reaction');
+    const codec = new ReactionCodec();
+    const decoded = codec.decode(msg.encodedContent) as ReactionContent;
+    if (decoded && decoded.reference && decoded.content) {
+      console.log('[StreamManager] Decoded reaction with codec:', decoded);
+      return decoded;
+    }
+  } catch {
+    // Codec failed
+  }
+
+  console.log('[StreamManager] All reaction decode methods failed');
+  return null;
+}
+
+/**
  * Try to decode a raw remote attachment from encodedContent
  * This handles messages that were synced before the codec was registered
  */
@@ -611,7 +732,7 @@ class XMTPStreamManager {
 
           // Process reactions
           if (typeId === CONTENT_TYPE_REACTION) {
-            this.processReaction(msg as unknown as DecodedMessage);
+            await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
@@ -1049,7 +1170,7 @@ class XMTPStreamManager {
 
           // Process reactions (but don't display as messages)
           if (typeId === CONTENT_TYPE_REACTION) {
-            this.processReaction(msg as unknown as DecodedMessage);
+            await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
@@ -1121,7 +1242,7 @@ class XMTPStreamManager {
 
         // Process reactions
         if (typeId === CONTENT_TYPE_REACTION) {
-          this.processReaction(msg as unknown as DecodedMessage);
+          await this.processReaction(msg as unknown as DecodedMessage);
           continue;
         }
 
@@ -1198,7 +1319,7 @@ class XMTPStreamManager {
 
           // Process reactions (but don't display as messages)
           if (typeId === CONTENT_TYPE_REACTION) {
-            this.processReaction(msg as unknown as DecodedMessage);
+            await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
@@ -1279,7 +1400,7 @@ class XMTPStreamManager {
 
           // Handle reaction messages
           if (typeId === CONTENT_TYPE_REACTION) {
-            this.processReaction(msg as unknown as DecodedMessage);
+            await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
@@ -1621,9 +1742,20 @@ class XMTPStreamManager {
   /**
    * Process an incoming reaction message
    */
-  private processReaction(msg: DecodedMessage): void {
-    const content = msg.content as ReactionContent | undefined;
-    if (!content || !content.reference || !content.content) {
+  private async processReaction(msg: DecodedMessage): Promise<void> {
+    // Try to decode the reaction content (handles both pre-decoded and raw messages)
+    const content = await tryDecodeReaction(msg as unknown as {
+      content: unknown;
+      contentType?: { typeId?: string };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      encodedContent?: any;
+    });
+
+    if (!content) {
+      // Log message structure for debugging when decode fails
+      const msgAny = msg as unknown as Record<string, unknown>;
+      console.log('[StreamManager] Failed to decode reaction. Message keys:', Object.keys(msgAny));
+      console.log('[StreamManager] encodedContent:', msgAny.encodedContent);
       return;
     }
 
@@ -1631,6 +1763,7 @@ class XMTPStreamManager {
     const emoji = content.content;
     const action = content.action || 'added';
     const senderInboxId = msg.senderInboxId;
+    console.log('[StreamManager] Processing reaction:', { emoji, action, targetMessageId: targetMessageId.slice(0, 16) + '...' });
 
     const currentReactions = store.get(reactionsAtom);
     const messageReactions = currentReactions.get(targetMessageId) ?? [];
