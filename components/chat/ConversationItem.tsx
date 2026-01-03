@@ -129,7 +129,7 @@ export function ConversationItem(props: ConversationItemProps) {
         w-full flex items-center gap-3 px-4 py-3
         transition-colors duration-150 text-left
         ${isSelected
-          ? 'bg-[#3B82F6] hover:bg-[#2563EB]'
+          ? 'bg-[#2563EB]'
           : 'hover:bg-gray-50 active:bg-gray-100'
         }
       `}

@@ -9,6 +9,8 @@ import { selectedConversationIdAtom } from "@/stores/ui";
 import { clientStateAtom } from "@/stores/client";
 import { useConversationMetadata, useIsMessageRequest } from "@/hooks/useConversations";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
+import { useUsername } from "@/hooks/useUsername";
+import { useGroupMemberVerification } from "@/hooks/useGroupMemberVerification";
 import { hasQRSession } from "@/lib/auth/session";
 import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
 
@@ -32,6 +34,20 @@ export default function ChatPage() {
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
   const isMessageRequest = useIsMessageRequest(selectedId);
+
+  // Check if peer is verified (has profile picture = World ID verified) for DMs
+  // - Profile picture present → verified human
+  // - Username but no profile picture → unverified
+  // - Resolution failed (no record) → not verified
+  const peerAddress = conversationMetadata?.conversationType === 'dm' ? conversationMetadata.peerAddress : null;
+  const { record: peerRecord } = useUsername(peerAddress);
+  const isPeerVerified = Boolean(peerRecord?.profile_picture_url || peerRecord?.minimized_profile_picture_url);
+
+  // Get group member verification stats
+  const groupMemberPreviews = conversationMetadata?.conversationType === 'group' ? conversationMetadata.memberPreviews : undefined;
+  const { verifiedCount, unverifiedCount } = useGroupMemberVerification(groupMemberPreviews);
+  // Group is considered verified only if all members are verified
+  const isGroupVerified = verifiedCount > 0 && unverifiedCount === 0;
 
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
@@ -206,6 +222,9 @@ export default function ChatPage() {
               memberPreviews={conversationMetadata.memberPreviews}
               avatarUrl={conversationMetadata.groupImageUrl}
               isMessageRequest={isMessageRequest}
+              isVerified={isGroupVerified}
+              verifiedCount={verifiedCount}
+              unverifiedCount={unverifiedCount}
             />
           ) : (
             <MemoizedMessagePanel
@@ -213,7 +232,7 @@ export default function ChatPage() {
               conversationId={selectedId}
               conversationType="dm"
               peerAddress={conversationMetadata.peerAddress}
-              isVerified={true}
+              isVerified={isPeerVerified}
               isMessageRequest={isMessageRequest}
             />
           )

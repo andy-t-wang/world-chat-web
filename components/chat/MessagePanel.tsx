@@ -145,18 +145,19 @@ function AnimatedMessageWrapper({ children, className = '' }: { children: React.
 interface PendingMessageBubbleProps {
   pending: PendingMessage;
   onRetry: (id: string) => void;
+  isVerified?: boolean;
 }
 
-function PendingMessageBubble({ pending, onRetry }: PendingMessageBubbleProps) {
+function PendingMessageBubble({ pending, onRetry, isVerified = false }: PendingMessageBubbleProps) {
   // Format current time for the timestamp
   const timeString = new Date().toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  // Use gray for unverified conversations
+  const bubbleBg = pending.status === 'failed' ? 'bg-red-100' : (isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]');
 
   return (
     <AnimatedMessageWrapper className="flex flex-col items-end mt-3">
       <div className="max-w-[300px]">
-        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
-          pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]'
-        }`}>
+        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${bubbleBg}`}>
           <p className={`text-[15px] leading-[1.35] ${pending.status === 'failed' ? 'text-red-800' : 'text-white'}`}>
             {pending.content}
           </p>
@@ -203,6 +204,8 @@ interface MessagePanelProps {
   subtitle?: string;
   groupName?: string;
   memberCount?: number;
+  verifiedCount?: number;
+  unverifiedCount?: number;
   memberPreviews?: MemberPreview[];
   isMessageRequest?: boolean;
 }
@@ -217,6 +220,8 @@ export function MessagePanel({
   subtitle,
   groupName,
   memberCount,
+  verifiedCount,
+  unverifiedCount,
   memberPreviews,
   isMessageRequest = false,
 }: MessagePanelProps) {
@@ -240,8 +245,14 @@ export function MessagePanel({
   const name = conversationType === 'group'
     ? (groupName || 'Group Chat')
     : (nameOverride ?? displayName);
-  const groupSubtitle = conversationType === 'group' && memberCount
-    ? `${memberCount} members`
+
+  // Build group subtitle with verified/unverified counts
+  const groupSubtitle: { verified: number; unverified: number } | { total: number } | undefined = conversationType === 'group'
+    ? (verifiedCount !== undefined && unverifiedCount !== undefined)
+      ? { verified: verifiedCount, unverified: unverifiedCount }
+      : memberCount
+        ? { total: memberCount }
+        : undefined
     : undefined;
 
   const client = useAtomValue(xmtpClientAtom);
@@ -653,8 +664,23 @@ export function MessagePanel({
               <span className="font-semibold text-[#181818]">{name}</span>
               {isVerified && conversationType === 'dm' && <VerificationBadge size="sm" />}
             </div>
-            {(subtitle || groupSubtitle) && (
-              <span className="text-sm text-[#717680]">{subtitle || groupSubtitle}</span>
+            {subtitle && (
+              <span className="text-sm text-[#717680]">{subtitle}</span>
+            )}
+            {!subtitle && groupSubtitle && (
+              <div className="flex items-center gap-1 text-sm text-[#717680]">
+                {'verified' in groupSubtitle ? (
+                  <>
+                    <VerificationBadge size="xs" />
+                    <span>
+                      {groupSubtitle.verified} {groupSubtitle.verified === 1 ? 'human' : 'humans'}
+                      {groupSubtitle.unverified > 0 && `, ${groupSubtitle.unverified} not verified`}
+                    </span>
+                  </>
+                ) : (
+                  <span>{groupSubtitle.total} members</span>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -790,6 +816,7 @@ export function MessagePanel({
                       key={item.id}
                       pending={pending}
                       onRetry={handleRetry}
+                      isVerified={isVerified}
                     />
                   );
                 }
@@ -1082,7 +1109,7 @@ export function MessagePanel({
                     >
                       <div className="max-w-[300px]">
                         <div
-                          className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}
+                          className={`${isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]'} px-3 py-2 ${senderRadius}`}
                           onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
                         >
                           <MessageText text={text} isOwnMessage={true} />

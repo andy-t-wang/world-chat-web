@@ -3,11 +3,12 @@
 import Image from 'next/image';
 
 interface VerificationBadgeProps {
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
   className?: string;
 }
 
 const SIZE_MAP = {
+  xs: 14,
   sm: 16,
   md: 20,
 } as const;

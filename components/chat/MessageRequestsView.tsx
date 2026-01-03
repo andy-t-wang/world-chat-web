@@ -1,14 +1,20 @@
-'use client';
+"use client";
 
-import { useRef, useMemo, useState, useEffect } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useAtomValue, useSetAtom } from 'jotai';
-import { ArrowLeft, Search, SearchX, Loader2 } from 'lucide-react';
-import { ConversationItem, type ConversationItemProps } from './ConversationItem';
-import { selectedConversationIdAtom, showMessageRequestsAtom } from '@/stores/ui';
-import { VIRTUALIZATION } from '@/config/constants';
-import { useMessageRequests } from '@/hooks/useConversations';
-import { getCachedUsername } from '@/lib/username/service';
+import { useRef, useMemo, useState, useEffect } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useAtomValue, useSetAtom } from "jotai";
+import { ArrowLeft, Search, SearchX, Loader2 } from "lucide-react";
+import {
+  ConversationItem,
+  type ConversationItemProps,
+} from "./ConversationItem";
+import {
+  selectedConversationIdAtom,
+  showMessageRequestsAtom,
+} from "@/stores/ui";
+import { VIRTUALIZATION } from "@/config/constants";
+import { useMessageRequests } from "@/hooks/useConversations";
+import { getCachedUsername } from "@/lib/username/service";
 
 interface MessageRequestsViewProps {
   onBack: () => void;
@@ -16,7 +22,7 @@ interface MessageRequestsViewProps {
 
 export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   const parentRef = useRef<HTMLDivElement>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
 
@@ -30,7 +36,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   useEffect(() => {
     if (!searchQuery) return;
     const interval = setInterval(() => {
-      setUsernameCacheVersion(v => v + 1);
+      setUsernameCacheVersion((v) => v + 1);
     }, 500);
     return () => clearInterval(interval);
   }, [searchQuery]);
@@ -48,8 +54,8 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       if (!data) return false;
 
       // For groups, search by group name
-      if (data.conversationType === 'group') {
-        const groupName = data.groupName?.toLowerCase() ?? '';
+      if (data.conversationType === "group") {
+        const groupName = data.groupName?.toLowerCase() ?? "";
         return groupName.includes(query);
       }
 
@@ -68,22 +74,28 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
   // Format timestamp for display
   const formatTimestamp = (ns: bigint): string => {
-    if (ns === BigInt(0)) return '';
+    if (ns === BigInt(0)) return "";
     const date = new Date(Number(ns / BigInt(1_000_000)));
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
 
     if (isToday) {
-      return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      return date.toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
     }
 
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
+      return "Yesterday";
     }
 
-    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    });
   };
 
   // Build conversation props from data
@@ -99,7 +111,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       unreadCount: data.unreadCount ?? 0,
     };
 
-    if (data.conversationType === 'group') {
+    if (data.conversationType === "group") {
       return {
         ...baseProps,
         groupName: data.groupName,
@@ -126,7 +138,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
       <div className="shrink-0 px-4 py-3 border-b border-gray-100">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={onBack}
             className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -134,9 +146,11 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
           >
             <ArrowLeft className="w-5 h-5 text-[#181818]" />
           </button>
-          <h1 className="text-lg font-semibold text-[#181818]">Message Requests</h1>
+          <h1 className="text-lg font-semibold text-[#181818]">
+            Message Requests
+          </h1>
           {requestCount > 0 && (
-            <span className="text-sm text-[#717680]">({requestCount})</span>
+            <p className="text text-[#717680]">({requestCount})</p>
           )}
         </div>
       </div>
@@ -170,7 +184,9 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
         <div className="flex flex-col flex-1 justify-center px-6">
           <SearchX className="w-10 h-10 text-[#9BA3AE] mb-3" />
           <p className="text-[#717680]">No results found</p>
-          <p className="text-sm text-[#9BA3AE] mt-1">Try a different search term</p>
+          <p className="text-sm text-[#9BA3AE] mt-1">
+            Try a different search term
+          </p>
         </div>
       )}
 
@@ -180,7 +196,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
           <div
             style={{
               height: virtualizer.getTotalSize(),
-              position: 'relative',
+              position: "relative",
             }}
           >
             {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -192,10 +208,10 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                   <div
                     key={id}
                     style={{
-                      position: 'absolute',
+                      position: "absolute",
                       top: 0,
                       left: 0,
-                      width: '100%',
+                      width: "100%",
                       height: virtualRow.size,
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
@@ -214,10 +230,10 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                 <div
                   key={id}
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     top: 0,
                     left: 0,
-                    width: '100%',
+                    width: "100%",
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
