@@ -116,3 +116,84 @@ export function updateTitleWithUnreadCount(unreadCount: number): void {
     document.title = originalTitle;
   }
 }
+
+/**
+ * Title flashing state for attention-grabbing notifications
+ */
+let flashInterval: ReturnType<typeof setInterval> | null = null;
+let isFlashState = false;
+let currentUnreadCount = 0;
+
+/**
+ * Start flashing the tab title to get attention
+ * Alternates between an attention-grabbing message and the unread count
+ */
+export function startTitleFlash(unreadCount: number): void {
+  if (typeof document === 'undefined') return;
+
+  // Don't flash if tab is visible
+  if (isTabVisible()) {
+    stopTitleFlash();
+    return;
+  }
+
+  currentUnreadCount = unreadCount;
+
+  // Already flashing - just update the count
+  if (flashInterval) {
+    return;
+  }
+
+  // Store original title if not already stored
+  if (originalTitle === null) {
+    originalTitle = document.title;
+  }
+
+  const displayCount = unreadCount > 99 ? '99+' : unreadCount;
+
+  // Start flashing immediately with attention state
+  isFlashState = true;
+  document.title = '💬 New Message!';
+
+  flashInterval = setInterval(() => {
+    isFlashState = !isFlashState;
+    if (isFlashState) {
+      document.title = '💬 New Message!';
+    } else {
+      document.title = `(${displayCount}) World Chat`;
+    }
+  }, 1000);
+}
+
+/**
+ * Stop flashing and restore normal title
+ */
+export function stopTitleFlash(): void {
+  if (flashInterval) {
+    clearInterval(flashInterval);
+    flashInterval = null;
+  }
+  isFlashState = false;
+  currentUnreadCount = 0;
+
+  // Restore original title
+  if (typeof document !== 'undefined' && originalTitle !== null) {
+    document.title = originalTitle;
+  }
+}
+
+/**
+ * Check if title is currently flashing
+ */
+export function isTitleFlashing(): boolean {
+  return flashInterval !== null;
+}
+
+// Set up visibility change listener to stop flashing when tab becomes visible
+if (typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      stopTitleFlash();
+    }
+  });
+}

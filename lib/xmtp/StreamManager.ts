@@ -31,7 +31,7 @@ import {
 import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
-import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible } from '@/lib/notifications';
+import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash } from '@/lib/notifications';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -479,6 +479,9 @@ class XMTPStreamManager {
       this.incrementMetadataVersion();
       store.set(isLoadingConversationsAtom, false);
 
+      // Save any newly initialized lastReadTimestamps
+      this.saveLastReadTimestamps();
+
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
@@ -541,6 +544,9 @@ class XMTPStreamManager {
 
       store.set(conversationIdsAtom, filteredIds);
       this.incrementMetadataVersion();
+
+      // Save any newly initialized lastReadTimestamps
+      this.saveLastReadTimestamps();
 
       // IMPORTANT: Refresh messages for any conversations that were already loaded
       // Sync may have brought in messages that weren't in local cache
@@ -763,7 +769,14 @@ class XMTPStreamManager {
       });
 
       // Get last read timestamp for this conversation
-      const lastReadTs = this.lastReadTimestamps.get(conv.id) ?? BigInt(0);
+      // If no timestamp exists, assume fully read (use current time) to avoid counting old messages as unread
+      const nowNs = BigInt(Date.now()) * 1_000_000n;
+      let lastReadTs = this.lastReadTimestamps.get(conv.id);
+      if (!lastReadTs) {
+        // First time seeing this conversation - mark as read up to now
+        lastReadTs = nowNs;
+        this.lastReadTimestamps.set(conv.id, nowNs);
+      }
       const ownInboxId = this.client?.inboxId;
 
       // Find first displayable message for preview + count unread
@@ -1336,6 +1349,10 @@ class XMTPStreamManager {
                   avatarUrl: metadata.groupImageUrl,
                 });
                 this.updateTabTitle();
+
+                // Start flashing the tab title to get user's attention
+                const totalUnread = this.getTotalUnreadCount();
+                startTitleFlash(Math.max(totalUnread, this.hiddenTabMessageCount));
               } else if (!isSelected) {
                 // Tab visible but different conversation - still update title
                 this.updateTabTitle();
