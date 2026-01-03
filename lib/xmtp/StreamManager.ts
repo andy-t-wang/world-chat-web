@@ -32,7 +32,7 @@ import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
 import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash, setCurrentChatName } from '@/lib/notifications';
-import { getCachedUsername, getAvatarUrl } from '@/lib/username/service';
+import { getCachedUsername, getAvatarUrl, resolveAddress } from '@/lib/username/service';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -932,7 +932,7 @@ class XMTPStreamManager {
       for (const msg of messages) {
         const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
-        // Skip read receipts
+        // Skip read receipts entirely
         if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
 
         // Count unread: messages from others that are newer than lastReadTs
@@ -942,13 +942,41 @@ class XMTPStreamManager {
 
         // Find first displayable message for preview
         if (!lastMessagePreview) {
-          const content = extractMessageContent(msg);
-          if (content) {
-            lastMessagePreview = content;
-            lastActivityNs = msg.sentAtNs;
-          } else if (lastActivityNs === BigInt(0)) {
-            // Still track activity time even for non-displayable messages
-            lastActivityNs = msg.sentAtNs;
+          // Handle reactions specially - show "[Name] reacted [emoji]"
+          if (typeId === CONTENT_TYPE_REACTION) {
+            const reactionContent = await tryDecodeReaction(msg as unknown as {
+              content: unknown;
+              contentType?: { typeId?: string };
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              encodedContent?: any;
+            });
+            if (reactionContent) {
+              // Get reactor name (fetch if not cached)
+              let reactorName = 'Someone';
+              if (msg.senderInboxId === ownInboxId) {
+                reactorName = 'You';
+              } else if (conversationType === 'dm' && peerAddress) {
+                const record = await resolveAddress(peerAddress);
+                reactorName = record?.username || `${peerAddress.slice(0, 6)}...`;
+              } else if (memberPreviews) {
+                const member = memberPreviews.find(m => m.inboxId === msg.senderInboxId);
+                if (member?.address) {
+                  const record = await resolveAddress(member.address);
+                  reactorName = record?.username || `${member.address.slice(0, 6)}...`;
+                }
+              }
+              lastMessagePreview = `${reactorName} reacted ${reactionContent.content}`;
+              lastActivityNs = msg.sentAtNs;
+            }
+          } else {
+            const content = extractMessageContent(msg);
+            if (content) {
+              lastMessagePreview = content;
+              lastActivityNs = msg.sentAtNs;
+            } else if (lastActivityNs === BigInt(0)) {
+              // Still track activity time even for non-displayable messages
+              lastActivityNs = msg.sentAtNs;
+            }
           }
         }
       }
@@ -1414,7 +1442,7 @@ class XMTPStreamManager {
 
           // Handle reaction messages
           if (typeId === CONTENT_TYPE_REACTION) {
-            await this.processReaction(msg as unknown as DecodedMessage);
+            await this.processReaction(msg as unknown as DecodedMessage, true);
             continue;
           }
 
@@ -1906,8 +1934,10 @@ class XMTPStreamManager {
 
   /**
    * Process an incoming reaction message
+   * @param msg - The reaction message
+   * @param fromStream - Whether this is from the live stream (triggers notifications)
    */
-  private async processReaction(msg: DecodedMessage): Promise<void> {
+  private async processReaction(msg: DecodedMessage, fromStream: boolean = false): Promise<void> {
     // Try to decode the reaction content (handles both pre-decoded and raw messages)
     const content = await tryDecodeReaction(msg as unknown as {
       content: unknown;
@@ -1928,6 +1958,8 @@ class XMTPStreamManager {
     const emoji = content.content;
     const action = content.action || 'added';
     const senderInboxId = msg.senderInboxId;
+    const conversationId = (msg as unknown as { conversationId: string }).conversationId;
+
     console.log('[StreamManager] Processing reaction:', { emoji, action, targetMessageId: targetMessageId.slice(0, 16) + '...' });
 
     const currentReactions = store.get(reactionsAtom);
@@ -1962,9 +1994,89 @@ class XMTPStreamManager {
       store.set(reactionsAtom, newMap);
     }
 
-    // Trigger re-render
+    // Trigger re-render for reactions
     const version = store.get(reactionsVersionAtom);
     store.set(reactionsVersionAtom, version + 1);
+
+    // Handle notifications and preview updates for streamed reactions (not historical)
+    if (fromStream && action === 'added' && conversationId) {
+      const isOwnReaction = senderInboxId === this.client?.inboxId;
+
+      // Update conversation metadata
+      const metadata = this.conversationMetadata.get(conversationId);
+      if (metadata) {
+        // Get reactor name for preview (fetch if not cached)
+        let reactorName = 'Someone';
+        if (isOwnReaction) {
+          reactorName = 'You';
+        } else if (metadata.conversationType === 'dm' && metadata.peerAddress) {
+          const record = await resolveAddress(metadata.peerAddress);
+          reactorName = record?.username || `${metadata.peerAddress.slice(0, 6)}...`;
+        } else if (metadata.memberPreviews) {
+          const member = metadata.memberPreviews.find(m => m.inboxId === senderInboxId);
+          if (member?.address) {
+            const record = await resolveAddress(member.address);
+            reactorName = record?.username || `${member.address.slice(0, 6)}...`;
+          }
+        }
+
+        // Update preview to show who reacted
+        metadata.lastMessagePreview = `${reactorName} reacted ${emoji}`;
+        metadata.lastActivityNs = msg.sentAtNs;
+
+        // Handle unread count and notifications for peer reactions
+        if (!isOwnReaction) {
+          const selectedId = store.get(selectedConversationIdAtom);
+          const isSelected = selectedId === conversationId;
+          const tabVisible = isTabVisible();
+
+          // Increment unread only if not viewing this conversation
+          if (!isSelected) {
+            metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
+            const unreadVersion = store.get(unreadVersionAtom);
+            store.set(unreadVersionAtom, unreadVersion + 1);
+          }
+
+          // Show notification if tab not visible
+          if (!tabVisible) {
+            this.hiddenTabMessageCount++;
+
+            let senderName: string;
+            let avatarUrl: string | undefined = metadata.groupImageUrl;
+
+            if (metadata.conversationType === 'group') {
+              senderName = metadata.groupName || 'Group';
+            } else if (metadata.peerAddress) {
+              const usernameRecord = getCachedUsername(metadata.peerAddress);
+              if (usernameRecord?.username) {
+                senderName = usernameRecord.username;
+                avatarUrl = getAvatarUrl(usernameRecord.username);
+              } else {
+                senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+              }
+            } else {
+              senderName = 'Someone';
+            }
+
+            showMessageNotification({
+              conversationId,
+              senderName,
+              messagePreview: `Reacted ${emoji}`,
+              avatarUrl,
+            });
+            this.updateTabTitle();
+            startTitleFlash(senderName, false);
+          } else if (!isSelected) {
+            this.updateTabTitle();
+          }
+        }
+
+        this.incrementMetadataVersion();
+      }
+
+      // Re-sort conversations
+      this.resortConversations();
+    }
   }
 
   /**
