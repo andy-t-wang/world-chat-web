@@ -1292,11 +1292,21 @@ class XMTPStreamManager {
           let metadata = this.conversationMetadata.get(conversationId);
 
           // If we don't have metadata for this conversation, try to fetch and create it
-          // This can happen when a message arrives before initial sync completes
+          // This can happen when a message arrives before initial sync completes,
+          // or for conversations that were filtered out due to consent state
           if (!metadata && this.client) {
             try {
-              const conv = this.conversations.get(conversationId)
-                || await this.client.conversations.getConversationById(conversationId);
+              let conv = this.conversations.get(conversationId);
+
+              if (!conv) {
+                // Try to sync this specific conversation first
+                try {
+                  await this.client.conversations.sync();
+                } catch {
+                  // Sync failed, continue anyway
+                }
+                conv = await this.client.conversations.getConversationById(conversationId);
+              }
 
               if (conv) {
                 // Store the conversation for future use
@@ -1305,30 +1315,64 @@ class XMTPStreamManager {
                 // Build metadata for this conversation
                 metadata = await this.buildConversationMetadata(conv, false);
                 this.conversationMetadata.set(conversationId, metadata);
+              } else {
+                // Couldn't get conversation, create minimal metadata from message
+                console.log('[StreamManager] Creating minimal metadata for unknown conversation:', conversationId);
+                metadata = {
+                  id: conversationId,
+                  conversationType: 'dm',
+                  peerAddress: '',
+                  peerInboxId: msg.senderInboxId,
+                  lastMessagePreview: '',
+                  lastActivityNs: msg.sentAtNs,
+                  unreadCount: 0,
+                };
+                this.conversationMetadata.set(conversationId, metadata);
               }
-            } catch {
-              // Failed to get conversation - continue without metadata
+            } catch (e) {
+              console.warn('[StreamManager] Failed to get conversation for message:', conversationId, e);
+              // Still create minimal metadata so the conversation shows up
+              metadata = {
+                id: conversationId,
+                conversationType: 'dm',
+                peerAddress: '',
+                peerInboxId: msg.senderInboxId,
+                lastMessagePreview: '',
+                lastActivityNs: msg.sentAtNs,
+                unreadCount: 0,
+              };
+              this.conversationMetadata.set(conversationId, metadata);
             }
           }
 
+          // Extract message content for preview
+          const content = extractMessageContent(msg);
+
           if (metadata) {
-            const content = extractMessageContent(msg);
             if (content) {
               metadata.lastMessagePreview = content;
             }
             metadata.lastActivityNs = msg.sentAtNs;
+          }
 
-            // Add to conversation list if not already there (first displayable message)
-            const currentConvIds = store.get(conversationIdsAtom);
-            if (!currentConvIds.includes(conversationId) && metadata.lastMessagePreview) {
-              store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
-            }
+          // Add to conversation list if not already there
+          // Do this even if metadata fetch failed - the conversation clearly exists if we got a message
+          const currentConvIds = store.get(conversationIdsAtom);
+          const hasDisplayableContent = content || (metadata && metadata.lastMessagePreview);
 
-            // Re-sort conversations to move this one to top (if in list)
-            if (currentConvIds.includes(conversationId) || metadata.lastMessagePreview) {
-              this.resortConversations();
-            }
+          if (!currentConvIds.includes(conversationId) && hasDisplayableContent) {
+            console.log('[StreamManager] Adding previously-filtered conversation to list:', conversationId);
+            store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
+            // Trigger UI update even if we don't have full metadata
+            this.incrementMetadataVersion();
+          }
 
+          // Re-sort conversations to move this one to top (if in list or just added)
+          if (currentConvIds.includes(conversationId) || hasDisplayableContent) {
+            this.resortConversations();
+          }
+
+          if (metadata) {
             // Handle unread count and notifications for peer messages
             const isOwnMessage = msg.senderInboxId === this.client?.inboxId;
             const selectedId = store.get(selectedConversationIdAtom);
