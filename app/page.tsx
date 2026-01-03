@@ -76,6 +76,8 @@ export default function Home() {
 
       try {
         await initializeWithRemoteSigner(signer.getSigner());
+        // Notify mobile that login is complete
+        await signer.complete();
         setState("success");
         setTimeout(() => {
           router.push("/chat");
