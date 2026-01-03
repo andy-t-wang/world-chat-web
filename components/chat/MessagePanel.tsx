@@ -6,6 +6,7 @@ import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
 import { MessageText, MessageLinkPreview } from './MessageContent';
+import { isJustUrl, extractUrls } from './LinkPreview';
 import { PaymentMessage } from './PaymentMessage';
 import { ImageMessage } from './ImageMessage';
 import { ImageGrid } from './ImageGrid';
@@ -1031,6 +1032,7 @@ export function MessagePanel({
                 // Outgoing message (sender)
                 if (isOwnMessage) {
                   const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
+                  const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
 
                   // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
                   const senderRadius = isFirstInGroup && isLastInGroup
@@ -1040,6 +1042,35 @@ export function MessagePanel({
                       : isLastInGroup
                         ? 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]'
                         : 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]';
+
+                  // URL-only message: link preview IS the bubble
+                  if (isUrlOnly) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                      >
+                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id)}>
+                          <MessageLinkPreview text={text} isOwnMessage={true} />
+                          <MessageReactions messageId={item.id} isOwnMessage={true} />
+                        </div>
+                        {isLastInGroup && (
+                          <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+                            <span className="text-[11px] text-[#717680] font-medium">
+                              {formatTime(msg.sentAtNs)}
+                            </span>
+                            {item.id === lastOwnMessageId && (
+                              isRead ? (
+                                <span className="text-[11px] text-[#00C230] font-medium">Read</span>
+                              ) : (
+                                <span className="text-[11px] text-[#717680]">Sent</span>
+                              )
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
@@ -1055,8 +1086,12 @@ export function MessagePanel({
                         </div>
                         <MessageReactions messageId={item.id} isOwnMessage={true} />
                       </div>
-                      {/* Link preview outside the bubble */}
-                      {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={true} />}
+                      {/* Link preview outside the bubble for messages with text + URL */}
+                      {linkPreviewEnabled && extractUrls(text).length > 0 && (
+                        <div className="mt-2">
+                          <MessageLinkPreview text={text} isOwnMessage={true} />
+                        </div>
+                      )}
                       {isLastInGroup && (
                         <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
                           <span className="text-[11px] text-[#717680] font-medium">
@@ -1083,6 +1118,8 @@ export function MessagePanel({
                   ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
                   : peerAddress;
 
+                const isUrlOnly = linkPreviewEnabled && isJustUrl(text);
+
                 // Recipient bubble: all corners 16px except bottom-left is 4px (pointing to sender)
                 const recipientRadius = isFirstInGroup && isLastInGroup
                   ? 'rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
@@ -1091,6 +1128,36 @@ export function MessagePanel({
                     : isLastInGroup
                       ? 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]'
                       : 'rounded-tl-[4px] rounded-tr-[16px] rounded-bl-[4px] rounded-br-[16px]';
+
+                // URL-only incoming message: link preview IS the bubble
+                if (isUrlOnly) {
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex items-start gap-3 ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                        {isLastInGroup && (
+                          <Avatar address={senderAddress} size="sm" />
+                        )}
+                      </div>
+                      <div className="flex flex-col">
+                        {isFirstInGroup && (
+                          <SenderName address={senderAddress} />
+                        )}
+                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id)}>
+                          <MessageLinkPreview text={text} isOwnMessage={false} />
+                          <MessageReactions messageId={item.id} isOwnMessage={false} />
+                        </div>
+                        {isLastInGroup && (
+                          <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
+                            {formatTime(msg.sentAtNs)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                }
 
                 return (
                   <div
@@ -1120,8 +1187,12 @@ export function MessagePanel({
                         </div>
                         <MessageReactions messageId={item.id} isOwnMessage={false} />
                       </div>
-                      {/* Link preview outside the bubble */}
-                      {linkPreviewEnabled && <MessageLinkPreview text={text} isOwnMessage={false} />}
+                      {/* Link preview outside the bubble for messages with text + URL */}
+                      {linkPreviewEnabled && extractUrls(text).length > 0 && (
+                        <div className="mt-2">
+                          <MessageLinkPreview text={text} isOwnMessage={false} />
+                        </div>
+                      )}
                       {isLastInGroup && (
                         <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
                           {formatTime(msg.sentAtNs)}

@@ -6,6 +6,10 @@ interface LinkMetadata {
   description?: string;
   image?: string;
   domain: string;
+  // Twitter-specific fields
+  type?: 'twitter' | 'generic';
+  author?: string;
+  authorUsername?: string;
 }
 
 // Extract Open Graph and meta tags from HTML
@@ -84,6 +88,66 @@ function decodeHTMLEntities(text: string): string {
     .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
+// Check if URL is a Twitter/X post
+function isTwitterUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    return (urlObj.hostname === 'twitter.com' || urlObj.hostname === 'x.com' ||
+            urlObj.hostname === 'www.twitter.com' || urlObj.hostname === 'www.x.com') &&
+           urlObj.pathname.includes('/status/');
+  } catch {
+    return false;
+  }
+}
+
+// Fetch Twitter metadata using oEmbed API
+async function fetchTwitterMetadata(url: string): Promise<LinkMetadata> {
+  const domain = new URL(url).hostname.replace(/^www\./, '');
+
+  try {
+    const oembedUrl = `https://publish.twitter.com/oembed?url=${encodeURIComponent(url)}&omit_script=true`;
+    const response = await fetch(oembedUrl, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Twitter oEmbed failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Extract tweet text from HTML (oEmbed returns HTML)
+    // Format: <blockquote>...<p>TWEET TEXT</p>...— AUTHOR (@username)</blockquote>
+    let tweetText = '';
+    const pMatch = data.html?.match(/<p[^>]*>([^<]*(?:<a[^>]*>[^<]*<\/a>[^<]*)*)<\/p>/);
+    if (pMatch) {
+      // Remove anchor tags but keep their text
+      tweetText = pMatch[1]
+        .replace(/<a[^>]*>([^<]*)<\/a>/g, '$1')
+        .replace(/<[^>]+>/g, '')
+        .trim();
+    }
+
+    return {
+      url,
+      domain,
+      type: 'twitter',
+      title: tweetText || data.author_name,
+      author: data.author_name,
+      authorUsername: data.author_url?.split('/').pop(),
+    };
+  } catch (error) {
+    console.error('Twitter oEmbed error:', error);
+    return {
+      url,
+      domain,
+      type: 'twitter',
+    };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const url = searchParams.get('url');
@@ -106,6 +170,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Handle Twitter/X URLs specially using oEmbed
+    if (isTwitterUrl(url)) {
+      const metadata = await fetchTwitterMetadata(url);
+      return NextResponse.json(metadata, {
+        headers: {
+          'Cache-Control': 'public, max-age=604800, s-maxage=604800',
+        },
+      });
+    }
+
     // Fetch the URL with a timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 5000);
