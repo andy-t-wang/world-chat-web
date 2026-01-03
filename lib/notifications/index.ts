@@ -8,6 +8,67 @@ import { store, selectedConversationIdAtom } from '@/stores';
  */
 
 let permissionRequested = false;
+let audioContext: AudioContext | null = null;
+
+// Title state
+let baseTitle = 'World Chat';
+let currentChatName: string | null = null;
+let flashInterval: ReturnType<typeof setInterval> | null = null;
+let isFlashState = false;
+let pendingNotification: { senderName: string; isCurrentChat: boolean } | null = null;
+
+/**
+ * Get or create AudioContext for notification sounds
+ */
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+
+  if (!audioContext) {
+    audioContext = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+  }
+  return audioContext;
+}
+
+/**
+ * Play notification sound using Web Audio API
+ * Creates a pleasant two-tone chime
+ */
+export function playNotificationSound(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  // Resume context if suspended (required for autoplay policies)
+  if (ctx.state === 'suspended') {
+    ctx.resume().catch(() => {});
+  }
+
+  const now = ctx.currentTime;
+
+  // Create a pleasant two-tone notification sound
+  const frequencies = [830, 1046]; // G5 and C6 - pleasant chime
+  const duration = 0.15;
+  const gap = 0.08;
+
+  frequencies.forEach((freq, i) => {
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(freq, now);
+
+    // Envelope for smooth sound
+    const startTime = now + i * (duration + gap);
+    gainNode.gain.setValueAtTime(0, startTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, startTime + duration);
+
+    oscillator.start(startTime);
+    oscillator.stop(startTime + duration);
+  });
+}
 
 /**
  * Check if the browser tab is currently visible
@@ -36,7 +97,6 @@ export async function requestNotificationPermission(): Promise<boolean> {
 
   // Only request once per session
   if (permissionRequested) {
-    // At this point, permission is 'default' (not yet decided)
     return false;
   }
 
@@ -78,8 +138,8 @@ export function showMessageNotification(options: {
   const notification = new Notification(senderName, {
     body: truncatedPreview,
     icon: avatarUrl || '/icon-192.png',
-    tag: `message-${conversationId}`, // Replace previous notification from same conversation
-    silent: false,
+    tag: `message-${conversationId}`,
+    silent: true, // We play our own sound
   });
 
   // Handle click - focus tab and select conversation
@@ -96,73 +156,92 @@ export function showMessageNotification(options: {
 }
 
 /**
- * Update the page title with unread count
+ * Set the current chat name for tab title
+ * Call this when selecting a conversation
  */
-let originalTitle: string | null = null;
+export function setCurrentChatName(chatName: string | null): void {
+  currentChatName = chatName;
+  updateTabTitleDisplay();
+}
 
-export function updateTitleWithUnreadCount(unreadCount: number): void {
+/**
+ * Update the tab title display based on current state
+ */
+function updateTabTitleDisplay(): void {
   if (typeof document === 'undefined') return;
 
-  // Store original title on first call
-  if (originalTitle === null) {
-    originalTitle = document.title;
-  }
-
-  if (unreadCount > 0) {
-    const displayCount = unreadCount > 99 ? '99+' : unreadCount;
-    const messageText = unreadCount === 1 ? 'New Message' : 'New Messages';
-    document.title = `(${displayCount}) ${messageText}`;
+  if (pendingNotification) {
+    // We have a pending notification - show notification state
+    if (pendingNotification.isCurrentChat && currentChatName) {
+      // On current chat: "<Chat Name> · messaged you"
+      document.title = `${currentChatName} · messaged you`;
+    } else if (isFlashState) {
+      // Flashing state: show sender notification
+      document.title = `${pendingNotification.senderName} messaged you`;
+    } else if (currentChatName) {
+      // Non-flash state: show chat name
+      document.title = currentChatName;
+    } else {
+      document.title = baseTitle;
+    }
+  } else if (currentChatName) {
+    // Normal state with chat selected: "<Chat Name> | World Chat"
+    document.title = `${currentChatName} | World Chat`;
   } else {
-    document.title = originalTitle;
+    // No chat selected
+    document.title = baseTitle;
   }
 }
 
 /**
- * Title flashing state for attention-grabbing notifications
+ * Update the page title with unread count (legacy, now just updates display)
  */
-let flashInterval: ReturnType<typeof setInterval> | null = null;
-let isFlashState = false;
-let currentUnreadCount = 0;
+export function updateTitleWithUnreadCount(unreadCount: number): void {
+  if (unreadCount === 0) {
+    // Clear notification state
+    pendingNotification = null;
+    stopTitleFlash();
+  }
+  updateTabTitleDisplay();
+}
 
 /**
- * Start flashing the tab title to get attention
- * Alternates between an attention-grabbing message and the unread count
+ * Start tab title notification for new message
+ * @param senderName - Name of the person who sent the message
+ * @param isCurrentChat - Whether the message is in the currently selected chat
  */
-export function startTitleFlash(unreadCount: number): void {
+export function startTitleFlash(senderName: string, isCurrentChat: boolean = false): void {
   if (typeof document === 'undefined') return;
 
-  // Don't flash if tab is visible
+  // Don't change if tab is visible
   if (isTabVisible()) {
     stopTitleFlash();
     return;
   }
 
-  currentUnreadCount = unreadCount;
+  pendingNotification = { senderName, isCurrentChat };
 
-  // Already flashing - just update the count
-  if (flashInterval) {
-    return;
-  }
+  // Play notification sound
+  playNotificationSound();
 
-  // Store original title if not already stored
-  if (originalTitle === null) {
-    originalTitle = document.title;
-  }
-
-  const displayCount = unreadCount > 99 ? '99+' : unreadCount;
-
-  // Start flashing immediately with attention state
-  isFlashState = true;
-  document.title = '💬 New Message!';
-
-  flashInterval = setInterval(() => {
-    isFlashState = !isFlashState;
-    if (isFlashState) {
-      document.title = '💬 New Message!';
-    } else {
-      document.title = `(${displayCount}) World Chat`;
+  if (isCurrentChat) {
+    // On current chat - just show static "<Chat Name> · messaged you"
+    updateTabTitleDisplay();
+  } else {
+    // Different chat - flash between chat name and "{sender} messaged you"
+    if (flashInterval) {
+      // Already flashing, just update the sender
+      return;
     }
-  }, 1000);
+
+    isFlashState = false;
+    updateTabTitleDisplay();
+
+    flashInterval = setInterval(() => {
+      isFlashState = !isFlashState;
+      updateTabTitleDisplay();
+    }, 1500);
+  }
 }
 
 /**
@@ -174,22 +253,18 @@ export function stopTitleFlash(): void {
     flashInterval = null;
   }
   isFlashState = false;
-  currentUnreadCount = 0;
-
-  // Restore original title
-  if (typeof document !== 'undefined' && originalTitle !== null) {
-    document.title = originalTitle;
-  }
+  pendingNotification = null;
+  updateTabTitleDisplay();
 }
 
 /**
- * Check if title is currently flashing
+ * Check if title is currently showing notification
  */
 export function isTitleFlashing(): boolean {
-  return flashInterval !== null;
+  return pendingNotification !== null;
 }
 
-// Set up visibility change listener to stop flashing when tab becomes visible
+// Set up visibility change listener to restore title when tab becomes visible
 if (typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {

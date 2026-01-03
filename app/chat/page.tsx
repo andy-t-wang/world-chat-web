@@ -12,6 +12,7 @@ import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { useUsername } from "@/hooks/useUsername";
 import { useGroupMemberVerification } from "@/hooks/useGroupMemberVerification";
 import { hasQRSession } from "@/lib/auth/session";
+import { setCurrentChatName } from "@/lib/notifications";
 import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
@@ -40,8 +41,24 @@ export default function ChatPage() {
   // - Username but no profile picture → unverified
   // - Resolution failed (no record) → not verified
   const peerAddress = conversationMetadata?.conversationType === 'dm' ? conversationMetadata.peerAddress : null;
-  const { record: peerRecord } = useUsername(peerAddress);
+  const { record: peerRecord, displayName: peerDisplayName } = useUsername(peerAddress);
   const isPeerVerified = Boolean(peerRecord?.profile_picture_url || peerRecord?.minimized_profile_picture_url);
+
+  // Update browser tab title with current chat name
+  useEffect(() => {
+    if (!selectedId || !conversationMetadata) {
+      setCurrentChatName(null);
+      return;
+    }
+
+    if (conversationMetadata.conversationType === 'group') {
+      setCurrentChatName(conversationMetadata.groupName || 'Group Chat');
+    } else {
+      // For DMs, use the peer's display name
+      const chatName = peerDisplayName || (peerAddress ? `${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)}` : 'Chat');
+      setCurrentChatName(chatName);
+    }
+  }, [selectedId, conversationMetadata, peerDisplayName, peerAddress]);
 
   // Get group member verification stats
   const groupMemberPreviews = conversationMetadata?.conversationType === 'group' ? conversationMetadata.memberPreviews : undefined;

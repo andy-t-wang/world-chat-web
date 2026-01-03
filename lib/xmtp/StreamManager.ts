@@ -31,7 +31,7 @@ import {
 import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
-import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash } from '@/lib/notifications';
+import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash, setCurrentChatName } from '@/lib/notifications';
 import { getCachedUsername, getAvatarUrl } from '@/lib/username/service';
 
 // Conversation type
@@ -1589,8 +1589,7 @@ class XMTPStreamManager {
                 this.updateTabTitle();
 
                 // Start flashing the tab title to get user's attention
-                const totalUnread = this.getTotalUnreadCount();
-                startTitleFlash(Math.max(totalUnread, this.hiddenTabMessageCount));
+                startTitleFlash(senderName, false);
               } else if (!isSelected) {
                 // Tab visible but different conversation - still update title
                 this.updateTabTitle();

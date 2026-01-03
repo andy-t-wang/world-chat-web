@@ -15,6 +15,7 @@ import { RequestActionBar } from './RequestActionBar';
 import { MessageContextMenu } from './MessageContextMenu';
 import { ReplyPreview } from './ReplyPreview';
 import { ReplyBubble } from './ReplyBubble';
+import { ReactionDetailsMenu } from './ReactionDetailsMenu';
 import { chatBackgroundStyle } from './ChatBackground';
 import { replyingToAtom } from '@/stores/ui';
 import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
@@ -75,32 +76,76 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
 interface MessageReactionsProps {
   messageId: string;
   isOwnMessage: boolean;
+  memberPreviews?: MemberPreview[];
+  peerAddress?: string;
+  ownInboxId?: string;
 }
 
-function MessageReactions({ messageId, isOwnMessage }: MessageReactionsProps) {
+function MessageReactions({ messageId, isOwnMessage, memberPreviews, peerAddress, ownInboxId }: MessageReactionsProps) {
   const _reactionsVersion = useAtomValue(reactionsVersionAtom);
   const reactions = streamManager.getReactions(messageId);
+  const [reactionMenu, setReactionMenu] = useState<{
+    emoji: string;
+    reactors: Array<{ inboxId: string; address?: string; isYou?: boolean }>;
+    position: { x: number; y: number };
+  } | null>(null);
 
   if (reactions.length === 0) return null;
 
-  // Group reactions by emoji
+  // Group reactions by emoji with sender info
   const grouped = reactions.reduce((acc, r) => {
-    acc[r.emoji] = (acc[r.emoji] || 0) + 1;
+    if (!acc[r.emoji]) {
+      acc[r.emoji] = [];
+    }
+    // Look up address from inboxId
+    const isYou = r.senderInboxId === ownInboxId;
+    let address: string | undefined;
+    if (isYou) {
+      address = undefined; // Will show "You"
+    } else if (memberPreviews) {
+      address = memberPreviews.find(m => m.inboxId === r.senderInboxId)?.address;
+    } else {
+      address = peerAddress;
+    }
+    acc[r.emoji].push({ inboxId: r.senderInboxId, address, isYou });
     return acc;
-  }, {} as Record<string, number>);
+  }, {} as Record<string, Array<{ inboxId: string; address?: string; isYou?: boolean }>>);
+
+  const handleContextMenu = (e: React.MouseEvent, emoji: string, reactors: Array<{ inboxId: string; address?: string; isYou?: boolean }>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setReactionMenu({
+      emoji,
+      reactors,
+      position: { x: e.clientX, y: e.clientY },
+    });
+  };
 
   return (
-    <div className={`flex gap-1 -mt-2 relative z-10 ${isOwnMessage ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
-      {Object.entries(grouped).map(([emoji, count]) => (
-        <div
-          key={emoji}
-          className="inline-flex items-center h-[24px] px-[9px] bg-[#F3F4F5] border-2 border-white rounded-[13px] text-[16px]"
-        >
-          <span className="tracking-[4.8px]">{emoji}</span>
-          {count > 1 && <span className="text-xs text-[#717680] ml-0.5">{count}</span>}
-        </div>
-      ))}
-    </div>
+    <>
+      <div className={`flex gap-1 -mt-2 relative z-10 ${isOwnMessage ? 'justify-end pr-1' : 'justify-start pl-1'}`}>
+        {Object.entries(grouped).map(([emoji, reactors]) => (
+          <div
+            key={emoji}
+            className="inline-flex items-center h-[24px] px-[9px] bg-[#F3F4F5] border-2 border-white rounded-[13px] text-[16px] cursor-pointer hover:bg-[#EBECEF] transition-colors"
+            onContextMenu={(e) => handleContextMenu(e, emoji, reactors)}
+            onClick={(e) => handleContextMenu(e, emoji, reactors)}
+            title={`${reactors.length} ${reactors.length === 1 ? 'reaction' : 'reactions'}`}
+          >
+            <span>{emoji}</span>
+            {reactors.length > 1 && <span className="text-xs text-[#717680] ml-1">{reactors.length}</span>}
+          </div>
+        ))}
+      </div>
+      {reactionMenu && (
+        <ReactionDetailsMenu
+          emoji={reactionMenu.emoji}
+          reactors={reactionMenu.reactors}
+          position={reactionMenu.position}
+          onClose={() => setReactionMenu(null)}
+        />
+      )}
+    </>
   );
 }
 
@@ -970,7 +1015,7 @@ export function MessagePanel({
                           />
                         )}
                         <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
+                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                         {isLastInGroup && (
                           <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
                             {formatTime(msg.sentAtNs)}
@@ -1082,7 +1127,7 @@ export function MessagePanel({
                             isOwnMessage={isOwnMessage}
                           />
                         )}
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
+                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                         {isLastInGroup && (
                           <span className={`text-[11px] text-[#717680] font-medium mt-1 ${isOwnMessage ? 'text-right pr-1' : 'ml-1'}`}>
                             {formatTime(msg.sentAtNs)}
@@ -1158,7 +1203,7 @@ export function MessagePanel({
                           timestamp={isLastInGroup ? formatTime(msg.sentAtNs) : undefined}
                           isVerified={isVerified}
                         />
-                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
+                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                       </div>
                     </div>
                   );
@@ -1187,7 +1232,7 @@ export function MessagePanel({
                       >
                         <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, '')}>
                           <MessageLinkPreview text={text} isOwnMessage={true} />
-                          <MessageReactions messageId={item.id} isOwnMessage={true} />
+                          <MessageReactions messageId={item.id} isOwnMessage={true} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                         </div>
                         {isLastInGroup && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
@@ -1219,7 +1264,7 @@ export function MessagePanel({
                         >
                           <MessageText text={text} isOwnMessage={true} />
                         </div>
-                        <MessageReactions messageId={item.id} isOwnMessage={true} />
+                        <MessageReactions messageId={item.id} isOwnMessage={true} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                       </div>
                       {/* Link preview outside the bubble for messages with text + URL */}
                       {linkPreviewEnabled && extractUrls(text).length > 0 && (
@@ -1282,7 +1327,7 @@ export function MessagePanel({
                         )}
                         <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, senderAddress ?? '')}>
                           <MessageLinkPreview text={text} isOwnMessage={false} />
-                          <MessageReactions messageId={item.id} isOwnMessage={false} />
+                          <MessageReactions messageId={item.id} isOwnMessage={false} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                         </div>
                         {isLastInGroup && (
                           <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
@@ -1320,7 +1365,7 @@ export function MessagePanel({
                         >
                           <MessageText text={text} isOwnMessage={false} />
                         </div>
-                        <MessageReactions messageId={item.id} isOwnMessage={false} />
+                        <MessageReactions messageId={item.id} isOwnMessage={false} memberPreviews={memberPreviews} peerAddress={peerAddress} ownInboxId={ownInboxId} />
                       </div>
                       {/* Link preview outside the bubble for messages with text + URL */}
                       {linkPreviewEnabled && extractUrls(text).length > 0 && (
