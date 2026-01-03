@@ -125,9 +125,9 @@ export function useMessages(conversationId: string | null) {
     await streamManager.loadMoreMessages(conversationId);
   }, [conversationId, pagination.isLoading, pagination.hasMore]);
 
-  // Send a message
+  // Send a message (optionally as a reply)
   const sendMessage = useCallback(
-    async (content: string): Promise<boolean> => {
+    async (content: string, replyToMessageId?: string): Promise<boolean> => {
       if (!conversationId || !content.trim()) return false;
 
       // Create pending message for optimistic UI
@@ -144,7 +144,12 @@ export function useMessages(conversationId: string | null) {
       setPendingMessages((prev) => [pending, ...prev]);
 
       try {
-        await streamManager.sendMessage(conversationId, content);
+        // Send as reply or regular message
+        if (replyToMessageId) {
+          await streamManager.sendReply(conversationId, replyToMessageId, content);
+        } else {
+          await streamManager.sendMessage(conversationId, content);
+        }
         // Remove pending on success (stream will add the real message)
         setPendingMessages((prev) => prev.filter((p) => p.id !== pendingId));
         return true;

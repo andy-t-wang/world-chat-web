@@ -1644,6 +1644,43 @@ class XMTPStreamManager {
   }
 
   /**
+   * Send a reply to a message
+   */
+  async sendReply(
+    conversationId: string,
+    replyToMessageId: string,
+    content: string
+  ): Promise<string | null> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv || !content.trim()) return null;
+
+    try {
+      // Import the reply content type
+      const { ContentTypeReply } = await import('@xmtp/content-type-reply');
+      const { ContentTypeText } = await import('@xmtp/content-type-text');
+
+      const replyContent = {
+        content: content.trim(),
+        reference: replyToMessageId,
+        contentType: ContentTypeText,
+      };
+
+      const messageId = await conv.send(replyContent, ContentTypeReply);
+
+      // Add to message list immediately
+      const currentIds = this.getMessageIds(conversationId);
+      if (!currentIds.includes(messageId)) {
+        this.setMessageIds(conversationId, [messageId, ...currentIds]);
+      }
+
+      return messageId;
+    } catch (error) {
+      console.error('[StreamManager] Failed to send reply:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send a read receipt for a conversation
    * Call this when the user views/opens a conversation
    * Note: Skips groups with more than 5 members to reduce noise

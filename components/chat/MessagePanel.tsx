@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback, useMemo, useLayoutEffect } from 'react';
-import { useAtomValue } from 'jotai';
+import { useAtomValue, useAtom } from 'jotai';
 import { MoreHorizontal, Paperclip, Smile, Send, Loader2, AlertCircle, RotateCcw, Lock, LogOut, Clock } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
@@ -12,7 +12,11 @@ import { ImageMessage } from './ImageMessage';
 import { ImageGrid } from './ImageGrid';
 import { MultiAttachmentMessage } from './MultiAttachmentMessage';
 import { RequestActionBar } from './RequestActionBar';
+import { MessageContextMenu } from './MessageContextMenu';
+import { ReplyPreview } from './ReplyPreview';
+import { ReplyBubble } from './ReplyBubble';
 import { chatBackgroundStyle } from './ChatBackground';
+import { replyingToAtom } from '@/stores/ui';
 import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
 import type { RemoteAttachmentContent } from '@/types/attachments';
 import { isMultiAttachment, isSingleAttachment, isMultiAttachmentWrapper, extractAttachments } from '@/types/attachments';
@@ -235,6 +239,17 @@ export function MessagePanel({
     messageId: string;
     position: { x: number; y: number };
   } | null>(null);
+
+  // Context menu state (for Reply/Copy)
+  const [contextMenu, setContextMenu] = useState<{
+    messageId: string;
+    content: string;
+    senderAddress: string;
+    position: { x: number; y: number };
+  } | null>(null);
+
+  // Reply state
+  const [replyingTo, setReplyingTo] = useAtom(replyingToAtom);
 
   // Menu dropdown state
   const [showMenu, setShowMenu] = useState(false);
@@ -563,10 +578,12 @@ export function MessagePanel({
   const handleSend = async () => {
     if (!message.trim() || isSending) return;
     const content = message.trim();
+    const replyToId = replyingTo?.messageId;
     setMessage('');
+    setReplyingTo(null); // Clear reply state
     setIsSending(true);
     try {
-      await sendMessage(content);
+      await sendMessage(content, replyToId);
     } catch (error) {
       console.error('Failed to send message:', error);
     } finally {
@@ -594,14 +611,34 @@ export function MessagePanel({
     return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
   };
 
-  // Handle right-click to show reaction picker
-  const handleMessageContextMenu = useCallback((e: React.MouseEvent, messageId: string) => {
+  // Handle right-click to show context menu
+  const handleMessageContextMenu = useCallback((e: React.MouseEvent, messageId: string, content: string, senderAddress: string) => {
     e.preventDefault();
-    setReactionPicker({
+    setContextMenu({
       messageId,
-      position: { x: e.clientX, y: e.clientY - 50 },
+      content,
+      senderAddress,
+      position: { x: e.clientX, y: e.clientY },
     });
   }, []);
+
+  // Handle reply from context menu
+  const handleReply = useCallback(() => {
+    if (!contextMenu) return;
+    setReplyingTo({
+      messageId: contextMenu.messageId,
+      content: contextMenu.content,
+      senderAddress: contextMenu.senderAddress,
+    });
+    setContextMenu(null);
+  }, [contextMenu, setReplyingTo]);
+
+  // Handle copy from context menu
+  const handleCopy = useCallback(() => {
+    if (!contextMenu) return;
+    navigator.clipboard.writeText(contextMenu.content);
+    setContextMenu(null);
+  }, [contextMenu]);
 
   // Handle reaction selection
   const handleReactionSelect = useCallback(async (emoji: string) => {
@@ -1059,6 +1096,74 @@ export function MessagePanel({
                 // Skip if text is null (non-displayable content types)
                 if (text === null) return null;
 
+                // Check if this is a reply message
+                const isReply = typeId === 'reply';
+                if (isReply) {
+                  // Extract reply content structure
+                  const replyContent = msg.content as {
+                    content?: string;
+                    reference?: string;
+                  } | undefined;
+
+                  const replyText = replyContent?.content ?? '';
+                  const referencedMessageId = replyContent?.reference;
+
+                  // Look up the original message
+                  let quotedContent = '';
+                  let quotedSenderAddress = '';
+                  if (referencedMessageId) {
+                    const originalMsg = getMessage(referencedMessageId);
+                    if (originalMsg) {
+                      quotedContent = getMessageText(originalMsg) ?? '';
+                      // Get sender address
+                      quotedSenderAddress = conversationType === 'group'
+                        ? memberPreviews?.find(m => m.inboxId === originalMsg.senderInboxId)?.address ?? ''
+                        : (originalMsg.senderInboxId === ownInboxId ? '' : peerAddress ?? '');
+                    }
+                  }
+
+                  // Get sender address for current message
+                  const replySenderAddress = conversationType === 'group'
+                    ? memberPreviews?.find(m => m.inboxId === msg.senderInboxId)?.address
+                    : peerAddress;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex ${isOwnMessage ? 'justify-end' : 'items-start gap-3'} ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      {/* Avatar for incoming replies */}
+                      {!isOwnMessage && (
+                        <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                          {isLastInGroup && (
+                            <Avatar address={replySenderAddress} size="sm" />
+                          )}
+                        </div>
+                      )}
+                      <div
+                        className="flex flex-col"
+                        onContextMenu={(e) => handleMessageContextMenu(e, item.id, replyText, replySenderAddress ?? '')}
+                      >
+                        {/* Sender name for incoming */}
+                        {!isOwnMessage && isFirstInGroup && (
+                          <SenderName address={replySenderAddress} />
+                        )}
+                        <ReplyBubble
+                          quotedContent={quotedContent}
+                          quotedSenderAddress={quotedSenderAddress}
+                          replyContent={replyText}
+                          isOwnMessage={isOwnMessage}
+                          isFirstInGroup={isFirstInGroup}
+                          isLastInGroup={isLastInGroup}
+                          timestamp={isLastInGroup ? formatTime(msg.sentAtNs) : undefined}
+                          isVerified={isVerified}
+                        />
+                        <MessageReactions messageId={item.id} isOwnMessage={isOwnMessage} />
+                      </div>
+                    </div>
+                  );
+                }
+
                 // Outgoing message (sender)
                 if (isOwnMessage) {
                   const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
@@ -1080,7 +1185,7 @@ export function MessagePanel({
                         key={item.id}
                         className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
                       >
-                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id)}>
+                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, '')}>
                           <MessageLinkPreview text={text} isOwnMessage={true} />
                           <MessageReactions messageId={item.id} isOwnMessage={true} />
                         </div>
@@ -1110,7 +1215,7 @@ export function MessagePanel({
                       <div className="max-w-[300px]">
                         <div
                           className={`${isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]'} px-3 py-2 ${senderRadius}`}
-                          onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
+                          onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, '')}
                         >
                           <MessageText text={text} isOwnMessage={true} />
                         </div>
@@ -1175,7 +1280,7 @@ export function MessagePanel({
                         {isFirstInGroup && (
                           <SenderName address={senderAddress} />
                         )}
-                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id)}>
+                        <div onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, senderAddress ?? '')}>
                           <MessageLinkPreview text={text} isOwnMessage={false} />
                           <MessageReactions messageId={item.id} isOwnMessage={false} />
                         </div>
@@ -1211,7 +1316,7 @@ export function MessagePanel({
                       <div className="max-w-[300px]">
                         <div
                           className={`bg-white px-3 py-2 ${recipientRadius}`}
-                          onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
+                          onContextMenu={(e) => handleMessageContextMenu(e, item.id, text, senderAddress ?? '')}
                         >
                           <MessageText text={text} isOwnMessage={false} />
                         </div>
@@ -1237,6 +1342,15 @@ export function MessagePanel({
           </div>
         )}
       </div>
+
+      {/* Reply Preview */}
+      {replyingTo && !isMessageRequest && (
+        <ReplyPreview
+          senderAddress={replyingTo.senderAddress}
+          content={replyingTo.content}
+          onDismiss={() => setReplyingTo(null)}
+        />
+      )}
 
       {/* Input Area or Action Bar for Message Requests */}
       {isMessageRequest ? (
@@ -1278,7 +1392,17 @@ export function MessagePanel({
         </div>
       )}
 
-      {/* Reaction Picker */}
+      {/* Context Menu */}
+      {contextMenu && (
+        <MessageContextMenu
+          position={contextMenu.position}
+          onReply={handleReply}
+          onCopy={handleCopy}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+
+      {/* Reaction Picker (still available for emoji reactions) */}
       {reactionPicker && (
         <ReactionPicker
           position={reactionPicker.position}

@@ -171,3 +171,14 @@ export const isOnlineAtom = atom<boolean>(true);
  * Whether we're reconnecting after a disconnect
  */
 export const isReconnectingAtom = atom<boolean>(false);
+
+/**
+ * Reply state - tracks the message being replied to
+ */
+export interface ReplyingTo {
+  messageId: string;
+  content: string;
+  senderAddress: string;
+}
+
+export const replyingToAtom = atom<ReplyingTo | null>(null);
