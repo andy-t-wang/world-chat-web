@@ -21,6 +21,7 @@ import { readReceiptVersionAtom, reactionsVersionAtom } from '@/stores/messages'
 import { linkPreviewEnabledAtom } from '@/stores/settings';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
+import type { PendingMessage } from '@/types/messages';
 
 // Common reaction emojis
 const REACTION_EMOJIS = ['❤️', '👍', '👎', '😂', '😮', '😢'];
@@ -114,6 +115,65 @@ function SenderName({ address }: { address: string | undefined }) {
   );
 }
 
+// Animated wrapper for messages - fades up on mount
+function AnimatedMessageWrapper({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setIsVisible(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  return (
+    <div
+      className={`transition-all duration-200 ease-out ${className}`}
+      style={{
+        opacity: isVisible ? 1 : 0,
+        transform: isVisible ? 'translateY(0)' : 'translateY(10px)',
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Pending message bubble with send animation
+interface PendingMessageBubbleProps {
+  pending: PendingMessage;
+  onRetry: (id: string) => void;
+}
+
+function PendingMessageBubble({ pending, onRetry }: PendingMessageBubbleProps) {
+  return (
+    <AnimatedMessageWrapper className="flex flex-col items-end mt-0.5">
+      <div className="max-w-[300px]">
+        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
+          pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]'
+        }`}>
+          <p className={`text-[15px] leading-[1.35] ${pending.status === 'failed' ? 'text-red-800' : 'text-white'}`}>
+            {pending.content}
+          </p>
+        </div>
+      </div>
+      {pending.status === 'failed' && (
+        <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
+          <AlertCircle className="w-3 h-3 text-red-500" />
+          <span className="text-[11px] text-red-500">Failed</span>
+          <button
+            onClick={() => onRetry(pending.id)}
+            className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
+          >
+            <RotateCcw className="w-3 h-3" />
+            Retry
+          </button>
+        </div>
+      )}
+    </AnimatedMessageWrapper>
+  );
+}
+
 // Display item types for rendering
 type DisplayItem =
   | { type: 'date-separator'; date: string; id: string }
@@ -149,6 +209,10 @@ export function MessagePanel({
   const [message, setMessage] = useState('');
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  // Track which message IDs we've seen (for animation)
+  const seenMessageIdsRef = useRef<Set<string>>(new Set());
+  const [newMessageIds, setNewMessageIds] = useState<Set<string>>(new Set());
 
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
@@ -186,6 +250,39 @@ export function MessagePanel({
   } = useMessages(conversationId);
 
   const ownInboxId = client?.inboxId ?? '';
+
+  // Detect new own messages and mark them for animation
+  useEffect(() => {
+    if (!ownInboxId || isInitialLoading) return;
+
+    const newIds: string[] = [];
+    for (const msgId of messageIds) {
+      if (seenMessageIdsRef.current.has(msgId)) continue;
+
+      const msg = getMessage(msgId);
+      if (msg && msg.senderInboxId === ownInboxId) {
+        newIds.push(msgId);
+      }
+      seenMessageIdsRef.current.add(msgId);
+    }
+
+    if (newIds.length > 0) {
+      setNewMessageIds(prev => {
+        const next = new Set(prev);
+        newIds.forEach(id => next.add(id));
+        return next;
+      });
+
+      // Clear animation state after animation completes
+      setTimeout(() => {
+        setNewMessageIds(prev => {
+          const next = new Set(prev);
+          newIds.forEach(id => next.delete(id));
+          return next;
+        });
+      }, 250);
+    }
+  }, [messageIds, ownInboxId, isInitialLoading, getMessage]);
 
   // Check if message should be displayed
   const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
@@ -711,36 +808,11 @@ export function MessagePanel({
                   if (!pending) return null;
 
                   return (
-                    <div key={item.id} className="flex flex-col items-end mt-0.5">
-                      <div className="max-w-[300px]">
-                        <div className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${
-                          pending.status === 'failed' ? 'bg-red-100' : 'bg-[#005CFF]/70'
-                        }`}>
-                          <p className={`text-[15px] leading-[1.35] ${pending.status === 'failed' ? 'text-red-800' : 'text-white'}`}>
-                            {pending.content}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Status line outside max-w container to match sent message layout */}
-                      <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                        {pending.status === 'sending' && (
-                          <span className="text-[11px] text-[#717680] font-medium">Sending...</span>
-                        )}
-                        {pending.status === 'failed' && (
-                          <>
-                            <AlertCircle className="w-3 h-3 text-red-500" />
-                            <span className="text-[11px] text-red-500">Failed</span>
-                            <button
-                              onClick={() => handleRetry(pending.id)}
-                              className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1 ml-1"
-                            >
-                              <RotateCcw className="w-3 h-3" />
-                              Retry
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
+                    <PendingMessageBubble
+                      key={item.id}
+                      pending={pending}
+                      onRetry={handleRetry}
+                    />
                   );
                 }
 
@@ -985,6 +1057,7 @@ export function MessagePanel({
                 // Outgoing message (sender)
                 if (isOwnMessage) {
                   const isRead = streamManager.isMessageRead(conversationId, msg.sentAtNs);
+                  const isNewMessage = newMessageIds.has(item.id);
 
                   // Sender bubble: all corners 16px except bottom-right is 8px (pointing to sender)
                   const senderRadius = isFirstInGroup && isLastInGroup
@@ -995,11 +1068,8 @@ export function MessagePanel({
                         ? 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]'
                         : 'rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]';
 
-                  return (
-                    <div
-                      key={item.id}
-                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
-                    >
+                  const messageContent = (
+                    <>
                       <div className="max-w-[300px]">
                         <div
                           className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}
@@ -1026,6 +1096,27 @@ export function MessagePanel({
                           )}
                         </div>
                       )}
+                    </>
+                  );
+
+                  // Wrap in animation for new messages
+                  if (isNewMessage) {
+                    return (
+                      <AnimatedMessageWrapper
+                        key={item.id}
+                        className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                      >
+                        {messageContent}
+                      </AnimatedMessageWrapper>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={item.id}
+                      className={`flex flex-col items-end ${isFirstInGroup ? 'mt-3' : 'mt-0.5'}`}
+                    >
+                      {messageContent}
                     </div>
                   );
                 }
@@ -1113,7 +1204,7 @@ export function MessagePanel({
           <button
             onClick={handleSend}
             disabled={!message.trim() || isSending}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0"
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
           >
             {isSending ? (
               <Loader2 className="w-5 h-5 text-white animate-spin" />
