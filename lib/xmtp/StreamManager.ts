@@ -454,8 +454,10 @@ class XMTPStreamManager {
 
     try {
       // Load from local cache only (no network, instant)
+      // Include both Allowed and Unknown so we don't miss conversations
+      // that were Allowed on another device but haven't synced consent yet
       const localConversations = await this.client.conversations.list({
-        consentStates: [ConsentState.Allowed],
+        consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
 
       const ids: string[] = [];
@@ -511,12 +513,13 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
-      // Sync all allowed conversations from network
-      await this.client.conversations.syncAll([ConsentState.Allowed]);
+      // Sync all conversations from network (including Unknown so we don't miss any)
+      // Unknown conversations are ones where someone else messaged us but we haven't responded yet
+      await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
 
-      // Re-list to get any new conversations
+      // Re-list to get any new conversations (include Unknown in case consent hasn't synced yet)
       const conversations = await this.client.conversations.list({
-        consentStates: [ConsentState.Allowed],
+        consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
 
       const currentIds = store.get(conversationIdsAtom);
@@ -866,11 +869,12 @@ class XMTPStreamManager {
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
-          // Only add to visible list if:
-          // 1. Consent is Allowed (or we responded on another device making it Allowed)
+          // Add to visible list if:
+          // 1. Consent is Allowed or Unknown (show new conversations so user can respond)
           // 2. It has displayable messages or is selected
           const selectedId = store.get(selectedConversationIdAtom);
-          const shouldShow = consentState === ConsentState.Allowed &&
+          const hasValidConsent = consentState === ConsentState.Allowed || consentState === ConsentState.Unknown;
+          const shouldShow = hasValidConsent &&
             (metadata.lastMessagePreview || conv.id === selectedId);
 
           if (shouldShow) {
@@ -1370,25 +1374,26 @@ class XMTPStreamManager {
 
           // Re-check consent state from the conversation (it may have changed on another device)
           const conv = this.conversations.get(conversationId);
-          let consentAllowed = false;
+          let hasValidConsent = false;
           if (conv) {
             try {
               const consentState = await conv.consentState();
-              consentAllowed = consentState === ConsentState.Allowed;
+              // Show Allowed and Unknown (so users can see and respond to new conversations)
+              hasValidConsent = consentState === ConsentState.Allowed || consentState === ConsentState.Unknown;
             } catch {
               // If we can't check, assume allowed if it's our own message
-              consentAllowed = isOwnMsg;
+              hasValidConsent = isOwnMsg;
             }
           } else {
             // If we don't have the conversation, allow our own messages
-            consentAllowed = isOwnMsg;
+            hasValidConsent = isOwnMsg;
           }
 
-          // Add to list if: has content AND (consent allowed OR own message)
-          const shouldAdd = hasDisplayableContent && (consentAllowed || isOwnMsg);
+          // Add to list if: has content AND (valid consent OR own message)
+          const shouldAdd = hasDisplayableContent && (hasValidConsent || isOwnMsg);
 
           if (!currentConvIds.includes(conversationId) && shouldAdd) {
-            console.log('[StreamManager] Adding conversation to list:', conversationId, { consentAllowed, isOwnMsg });
+            console.log('[StreamManager] Adding conversation to list:', conversationId, { hasValidConsent, isOwnMsg });
             store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
             // Trigger UI update even if we don't have full metadata
             this.incrementMetadataVersion();
