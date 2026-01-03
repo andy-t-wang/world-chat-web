@@ -35,6 +35,9 @@ importers:
       '@xmtp/content-type-reply':
         specifier: ^2.0.3
         version: 2.0.3
+      '@xmtp/content-type-text':
+        specifier: ^2.0.2
+        version: 2.0.2
       jotai:
         specifier: ^2.16.1
         version: 2.16.1(@babel/core@7.28.5)(@babel/template@7.27.2)(@types/react@19.2.7)(react@19.2.3)

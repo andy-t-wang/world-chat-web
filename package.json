@@ -19,6 +19,7 @@
     "@xmtp/content-type-read-receipt": "^2.0.2",
     "@xmtp/content-type-remote-attachment": "^2.0.4",
     "@xmtp/content-type-reply": "^2.0.3",
+    "@xmtp/content-type-text": "^2.0.2",
     "jotai": "^2.16.1",
     "lucide-react": "^0.562.0",
     "next": "16.1.1",
