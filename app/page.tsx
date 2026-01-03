@@ -11,6 +11,7 @@ const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
 
 type LoginState =
+  | "checking_session"
   | "generating"
   | "waiting_for_scan"
   | "mobile_connected"
@@ -22,12 +23,12 @@ type LoginState =
 
 export default function Home() {
   const router = useRouter();
-  const [state, setState] = useState<LoginState>("generating");
+  const [state, setState] = useState<LoginState>("checking_session");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const signerRef = useRef<RemoteSigner | null>(null);
-  const { initializeWithRemoteSigner } = useQRXmtpClient();
+  const { initializeWithRemoteSigner, restoreSession } = useQRXmtpClient();
 
   const qrUrl = sessionId
     ? `https://worldcoin.org/mini-app?app_id=${MINI_APP_ID}&path=${encodeURIComponent(
@@ -100,12 +101,23 @@ export default function Home() {
   };
 
   useEffect(() => {
-    startSession();
+    // Try to restore existing session first
+    restoreSession().then((restored) => {
+      if (restored) {
+        // Session restored, redirect to chat
+        router.push("/chat");
+      } else {
+        // No session, start QR flow
+        startSession();
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getStatusText = () => {
     switch (state) {
+      case "checking_session":
+        return "Checking session...";
       case "generating":
         return "Generating QR code...";
       case "waiting_for_scan":
@@ -128,6 +140,7 @@ export default function Home() {
   };
 
   const isLoading = [
+    "checking_session",
     "generating",
     "mobile_connected",
     "authenticating",
@@ -206,7 +219,7 @@ export default function Home() {
         )}
 
         {/* Loading indicator for states that need it */}
-        {isLoading && state !== "generating" && (
+        {isLoading && state !== "generating" && state !== "checking_session" && (
           <div className="flex items-center gap-2 text-xs text-[#9BA3AE]">
             <Loader2 className="w-3 h-3 animate-spin" />
             Keep World App open
