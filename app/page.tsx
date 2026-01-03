@@ -116,7 +116,8 @@ export default function Home() {
       })
       .catch((error) => {
         // Check if another tab has the session
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         if (errorMessage === "TAB_LOCKED") {
           // Redirect to chat page which will show the "open in another tab" message
           router.push("/chat");
@@ -167,7 +168,7 @@ export default function Home() {
       <div className="w-full max-w-sm flex flex-col items-center">
         {/* Title */}
         <h1 className="text-2xl font-semibold text-[#181818] mb-8">
-          World Chat Lite
+          World Chat
         </h1>
 
         {/* QR Code Box */}
@@ -233,12 +234,30 @@ export default function Home() {
         )}
 
         {/* Loading indicator for states that need it */}
-        {isLoading && state !== "generating" && state !== "checking_session" && (
-          <div className="flex items-center gap-2 text-xs text-[#9BA3AE]">
-            <Loader2 className="w-3 h-3 animate-spin" />
-            Keep World App open
-          </div>
-        )}
+        {isLoading &&
+          state !== "generating" &&
+          state !== "checking_session" && (
+            <div className="flex items-center gap-2 text-xs text-[#9BA3AE]">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Keep World App open
+            </div>
+          )}
+
+        {/* Disclaimer */}
+        <div className="mt-10 text-center">
+          <p className="text-[11px] text-[#9BA3AE] leading-[1.6] max-w-[280px]">
+            Messages stored locally only · Clearing browser data deletes history
+            <span className="mx-1.5 opacity-50">•</span>
+            <a
+              href="https://world.org/download"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#717680] hover:text-[#005CFF] transition-colors"
+            >
+              Get the full app
+            </a>
+          </p>
+        </div>
       </div>
     </div>
   );
