@@ -11,6 +11,7 @@ import { PaymentMessage } from './PaymentMessage';
 import { ImageMessage } from './ImageMessage';
 import { ImageGrid } from './ImageGrid';
 import { MultiAttachmentMessage } from './MultiAttachmentMessage';
+import { RequestActionBar } from './RequestActionBar';
 import { chatBackgroundStyle } from './ChatBackground';
 import { isTransactionReference, normalizeTransactionReference, type TransactionReference } from '@/lib/xmtp/TransactionReferenceCodec';
 import type { RemoteAttachmentContent } from '@/types/attachments';
@@ -203,6 +204,7 @@ interface MessagePanelProps {
   groupName?: string;
   memberCount?: number;
   memberPreviews?: MemberPreview[];
+  isMessageRequest?: boolean;
 }
 
 export function MessagePanel({
@@ -216,6 +218,7 @@ export function MessagePanel({
   groupName,
   memberCount,
   memberPreviews,
+  isMessageRequest = false,
 }: MessagePanelProps) {
 
   const [message, setMessage] = useState('');
@@ -1208,41 +1211,45 @@ export function MessagePanel({
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => alert('Coming soon! Ping Takis to work on this 📎')}
-            className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
-          >
-            <Paperclip className="w-5 h-5 text-[#717680]" />
-          </button>
-          <div className="flex-1 relative flex items-center">
-            <textarea
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Write a message..."
-              rows={1}
-              className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
-            />
-            <button className="absolute right-3 top-1/2 -translate-y-1/2">
-              <Smile className="w-5 h-5 text-[#9BA3AE] hover:text-[#717680] transition-colors" />
+      {/* Input Area or Action Bar for Message Requests */}
+      {isMessageRequest ? (
+        <RequestActionBar conversationId={conversationId} />
+      ) : (
+        <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => alert('Coming soon! Ping Takis to work on this 📎')}
+              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
+            >
+              <Paperclip className="w-5 h-5 text-[#717680]" />
+            </button>
+            <div className="flex-1 relative flex items-center">
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Write a message..."
+                rows={1}
+                className="w-full px-4 py-2.5 pr-12 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
+              />
+              <button className="absolute right-3 top-1/2 -translate-y-1/2">
+                <Smile className="w-5 h-5 text-[#9BA3AE] hover:text-[#717680] transition-colors" />
+              </button>
+            </div>
+            <button
+              onClick={handleSend}
+              disabled={!message.trim() || isSending}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
+            >
+              {isSending ? (
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              ) : (
+                <Send className="w-5 h-5 text-white" />
+              )}
             </button>
           </div>
-          <button
-            onClick={handleSend}
-            disabled={!message.trim() || isSending}
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
-          >
-            {isSending ? (
-              <Loader2 className="w-5 h-5 text-white animate-spin" />
-            ) : (
-              <Send className="w-5 h-5 text-white" />
-            )}
-          </button>
         </div>
-      </div>
+      )}
 
       {/* Reaction Picker */}
       {reactionPicker && (

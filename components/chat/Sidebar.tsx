@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useAtom } from 'jotai';
+import { useAtom, useSetAtom } from 'jotai';
 import { Search, SquarePen, X, Settings, Link2, Link2Off } from 'lucide-react';
 import { ConversationList } from './ConversationList';
+import { MessageRequestsView } from './MessageRequestsView';
 import { linkPreviewEnabledAtom } from '@/stores/settings';
+import { showMessageRequestsAtom } from '@/stores/ui';
+import { useMessageRequests } from '@/hooks/useConversations';
 
 // Global settings dropdown component
 function GlobalSettingsDropdown() {
@@ -80,6 +83,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [showRequests, setShowRequests] = useAtom(showMessageRequestsAtom);
+  const { requestCount } = useMessageRequests();
 
   // Debounce search query - 250ms after user stops typing
   useEffect(() => {
@@ -102,6 +107,15 @@ export function Sidebar({ onNewChat }: SidebarProps) {
     setSearchQuery('');
     setDebouncedQuery('');
   };
+
+  // Show MessageRequestsView when toggled
+  if (showRequests) {
+    return (
+      <aside className="w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
+        <MessageRequestsView onBack={() => setShowRequests(false)} />
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -147,7 +161,12 @@ export function Sidebar({ onNewChat }: SidebarProps) {
 
       {/* Conversation List - with bottom padding for pinned settings */}
       <div className="flex-1 overflow-hidden relative">
-        <ConversationList searchQuery={debouncedQuery} bottomPadding={64} />
+        <ConversationList
+          searchQuery={debouncedQuery}
+          bottomPadding={64}
+          requestCount={requestCount}
+          onRequestsClick={() => setShowRequests(true)}
+        />
 
         {/* Pinned Settings Footer */}
         <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-white via-white to-transparent pointer-events-none" />

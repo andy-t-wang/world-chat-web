@@ -58,6 +58,8 @@ interface ConversationMetadata {
   lastMessagePreview: string;
   lastActivityNs: bigint;
   unreadCount: number;
+  // Consent state for message requests
+  consentState: 'allowed' | 'denied' | 'unknown';
 }
 
 // Check if a conversation is a DM
@@ -864,8 +866,19 @@ class XMTPStreamManager {
     let lastMessagePreview = '';
     let lastActivityNs = BigInt(0);
     let unreadCount = 0;
+    let consentState: 'allowed' | 'denied' | 'unknown' = 'unknown';
 
     try {
+      // Get consent state
+      const rawConsentState = await conv.consentState();
+      if (rawConsentState === ConsentState.Allowed) {
+        consentState = 'allowed';
+      } else if (rawConsentState === ConsentState.Denied) {
+        consentState = 'denied';
+      } else {
+        consentState = 'unknown';
+      }
+
       if (isDm(conv)) {
         // DM: Get peer info
         conversationType = 'dm';
@@ -955,6 +968,7 @@ class XMTPStreamManager {
       lastMessagePreview,
       lastActivityNs,
       unreadCount,
+      consentState,
     };
   }
 
@@ -1458,6 +1472,7 @@ class XMTPStreamManager {
                   lastMessagePreview: '',
                   lastActivityNs: msg.sentAtNs,
                   unreadCount: 0,
+                  consentState: 'unknown',
                 };
                 this.conversationMetadata.set(conversationId, metadata);
               }
@@ -1472,6 +1487,7 @@ class XMTPStreamManager {
                 lastMessagePreview: '',
                 lastActivityNs: msg.sentAtNs,
                 unreadCount: 0,
+                consentState: 'unknown',
               };
               this.conversationMetadata.set(conversationId, metadata);
             }
@@ -1708,6 +1724,119 @@ class XMTPStreamManager {
    */
   getAllConversationMetadata(): Map<string, ConversationMetadata> {
     return new Map(this.conversationMetadata);
+  }
+
+  /**
+   * Get conversation IDs with Unknown consent state (message requests)
+   */
+  getRequestConversationIds(): string[] {
+    const requestIds: string[] = [];
+    for (const [id, metadata] of this.conversationMetadata) {
+      if (metadata.consentState === 'unknown') {
+        requestIds.push(id);
+      }
+    }
+    // Sort by last activity (most recent first)
+    requestIds.sort((a, b) => {
+      const metaA = this.conversationMetadata.get(a);
+      const metaB = this.conversationMetadata.get(b);
+      if (!metaA || !metaB) return 0;
+      return Number(metaB.lastActivityNs - metaA.lastActivityNs);
+    });
+    return requestIds;
+  }
+
+  /**
+   * Get count of message requests (Unknown consent conversations)
+   */
+  getRequestCount(): number {
+    let count = 0;
+    for (const metadata of this.conversationMetadata.values()) {
+      if (metadata.consentState === 'unknown') {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /**
+   * Accept a conversation (set consent to Allowed)
+   * Moves conversation from requests to main chat list
+   */
+  async acceptConversation(conversationId: string): Promise<boolean> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv) {
+      console.error('[StreamManager] Conversation not found:', conversationId);
+      return false;
+    }
+
+    try {
+      // Update consent state via XMTP
+      await conv.updateConsentState(ConsentState.Allowed);
+
+      // Update local metadata
+      const metadata = this.conversationMetadata.get(conversationId);
+      if (metadata) {
+        metadata.consentState = 'allowed';
+      }
+
+      // Trigger UI update
+      this.incrementMetadataVersion();
+
+      console.log('[StreamManager] Accepted conversation:', conversationId);
+      return true;
+    } catch (error) {
+      console.error('[StreamManager] Failed to accept conversation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Reject a conversation (set consent to Denied)
+   * Removes conversation from both requests and main list
+   */
+  async rejectConversation(conversationId: string): Promise<boolean> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv) {
+      console.error('[StreamManager] Conversation not found:', conversationId);
+      return false;
+    }
+
+    try {
+      // Update consent state via XMTP
+      await conv.updateConsentState(ConsentState.Denied);
+
+      // Remove from metadata (no longer visible anywhere)
+      this.conversationMetadata.delete(conversationId);
+
+      // Remove from conversation IDs list
+      const currentIds = store.get(conversationIdsAtom);
+      const newIds = currentIds.filter(id => id !== conversationId);
+      store.set(conversationIdsAtom, newIds);
+
+      // Clear selection if this was selected
+      const selectedId = store.get(selectedConversationIdAtom);
+      if (selectedId === conversationId) {
+        store.set(selectedConversationIdAtom, null);
+      }
+
+      // Trigger UI update
+      this.incrementMetadataVersion();
+
+      console.log('[StreamManager] Rejected conversation:', conversationId);
+      return true;
+    } catch (error) {
+      console.error('[StreamManager] Failed to reject conversation:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a conversation is a message request (Unknown consent)
+   */
+  isMessageRequest(conversationId: string): boolean {
+    const metadata = this.conversationMetadata.get(conversationId);
+    return metadata?.consentState === 'unknown';
   }
 
   /**

@@ -44,15 +44,24 @@ export function ConversationList({
     return () => clearInterval(interval);
   }, [searchQuery]);
 
-  // Filter conversations based on search query
+  // Filter conversations based on search query and consent state
+  // Main list only shows Allowed conversations (Unknown go to requests)
   const filteredIds = useMemo(() => {
-    if (!searchQuery.trim()) return conversationIds;
-
-    const query = searchQuery.toLowerCase().trim();
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _version = usernameCacheVersion; // Dependency to trigger re-filter
 
-    return conversationIds.filter((id) => {
+    // First filter out Unknown consent (message requests)
+    const allowedIds = conversationIds.filter((id) => {
+      const data = metadata.get(id);
+      // Only show allowed conversations in main list
+      return data && data.consentState !== 'unknown';
+    });
+
+    if (!searchQuery.trim()) return allowedIds;
+
+    const query = searchQuery.toLowerCase().trim();
+
+    return allowedIds.filter((id) => {
       const data = metadata.get(id);
       if (!data) return false;
 

@@ -12,6 +12,11 @@ import { atomFamily } from 'jotai/utils';
 export const selectedConversationIdAtom = atom<string | null>(null);
 
 /**
+ * Whether the message requests view is open
+ */
+export const showMessageRequestsAtom = atom<boolean>(false);
+
+/**
  * Whether the sidebar is open (for mobile responsive design)
  */
 export const isSidebarOpenAtom = atom<boolean>(true);

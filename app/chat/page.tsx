@@ -7,7 +7,7 @@ import { Sidebar, MessagePanel, EmptyState } from "@/components/chat";
 import { NewConversationModal } from "@/components/chat/NewConversationModal";
 import { selectedConversationIdAtom } from "@/stores/ui";
 import { clientStateAtom } from "@/stores/client";
-import { useConversationMetadata } from "@/hooks/useConversations";
+import { useConversationMetadata, useIsMessageRequest } from "@/hooks/useConversations";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { hasQRSession } from "@/lib/auth/session";
 import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
@@ -31,6 +31,7 @@ export default function ChatPage() {
 
   // Get conversation metadata from StreamManager (no loading needed)
   const conversationMetadata = useConversationMetadata(selectedId);
+  const isMessageRequest = useIsMessageRequest(selectedId);
 
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
@@ -204,6 +205,7 @@ export default function ChatPage() {
               memberCount={conversationMetadata.memberCount}
               memberPreviews={conversationMetadata.memberPreviews}
               avatarUrl={conversationMetadata.groupImageUrl}
+              isMessageRequest={isMessageRequest}
             />
           ) : (
             <MemoizedMessagePanel
@@ -212,6 +214,7 @@ export default function ChatPage() {
               conversationType="dm"
               peerAddress={conversationMetadata.peerAddress}
               isVerified={true}
+              isMessageRequest={isMessageRequest}
             />
           )
         ) : (

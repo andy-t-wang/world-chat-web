@@ -37,6 +37,8 @@ export interface ConversationMetadata {
   lastMessagePreview: string;
   lastActivityNs: bigint;
   unreadCount: number;
+  // Consent state for message requests
+  consentState: 'allowed' | 'denied' | 'unknown';
 }
 
 /**
@@ -92,4 +94,44 @@ export function useConversationMetadata(conversationId: string | null): Conversa
   }, [conversationId, conversationIds, metadataVersion]);
 
   return metadata;
+}
+
+/**
+ * Hook to access message requests (Unknown consent conversations)
+ *
+ * Returns conversation IDs and metadata for conversations where
+ * the user hasn't accepted or rejected the contact yet.
+ */
+export function useMessageRequests() {
+  // Subscribe to metadata version to re-render when metadata changes
+  const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
+  // Subscribe to unread version for consistency
+  const unreadVersion = useAtomValue(unreadVersionAtom);
+
+  // Get request conversation IDs and metadata
+  const { requestIds, metadata, requestCount } = useMemo(() => {
+    const ids = streamManager.getRequestConversationIds();
+    const meta = streamManager.getAllConversationMetadata();
+    const count = ids.length;
+    return { requestIds: ids, metadata: meta, requestCount: count };
+  }, [metadataVersion, unreadVersion]);
+
+  return {
+    requestIds,
+    metadata,
+    requestCount,
+  };
+}
+
+/**
+ * Hook to check if a conversation is a message request
+ */
+export function useIsMessageRequest(conversationId: string | null): boolean {
+  // Subscribe to metadata version to re-render when consent state changes
+  const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
+
+  return useMemo(() => {
+    if (!conversationId) return false;
+    return streamManager.isMessageRequest(conversationId);
+  }, [conversationId, metadataVersion]);
 }
