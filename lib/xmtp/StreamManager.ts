@@ -69,6 +69,9 @@ const CONTENT_TYPE_READ_RECEIPT = 'readReceipt';
 const CONTENT_TYPE_REACTION = 'reaction';
 const CONTENT_TYPE_REPLY = 'reply';
 const CONTENT_TYPE_REMOTE_ATTACHMENT = 'remoteAttachment';
+const CONTENT_TYPE_REMOTE_STATIC_ATTACHMENT = 'remoteStaticAttachment'; // World App naming
+const CONTENT_TYPE_MULTI_REMOTE_ATTACHMENT = 'multiRemoteAttachment';
+const CONTENT_TYPE_MULTI_REMOTE_STATIC_ATTACHMENT = 'multiRemoteStaticAttachment'; // World App naming
 
 // CDN URL for trusted image attachments
 const TRUSTED_CDN_PATTERN = 'chat-assets.toolsforhumanity.com';
@@ -147,12 +150,20 @@ function extractMessageContent(message: { content: unknown; contentType?: { type
   const typeId = message.contentType?.typeId;
   let content = message.content;
 
+  // Handle multi-attachment types first (World App multi-image messages)
+  const isMultiAttachment = typeId === CONTENT_TYPE_MULTI_REMOTE_ATTACHMENT ||
+    typeId === CONTENT_TYPE_MULTI_REMOTE_STATIC_ATTACHMENT;
+  if (isMultiAttachment) {
+    return 'Multiple images';
+  }
+
   // Handle remote attachments (images) - show preview text
   // Check both typeId AND content shape since typeId may not always be detected
   const contentAsObj = content as Record<string, unknown> | null;
   const hasImageShape = contentAsObj !== null && typeof contentAsObj === 'object' &&
     'contentDigest' in contentAsObj && 'url' in contentAsObj;
-  const isRemoteAttachment = typeId === CONTENT_TYPE_REMOTE_ATTACHMENT || hasImageShape;
+  const isRemoteAttachment = typeId === CONTENT_TYPE_REMOTE_ATTACHMENT ||
+    typeId === CONTENT_TYPE_REMOTE_STATIC_ATTACHMENT || hasImageShape;
 
   if (isRemoteAttachment) {
     const attachmentContent = content as { filename?: string } | undefined;
