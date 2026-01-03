@@ -939,7 +939,7 @@ export function MessagePanel({
                     >
                       <div className="max-w-[300px]">
                         <div
-                          className={`bg-[#005CFF] px-3 py-2 ${senderRadius} cursor-pointer`}
+                          className={`bg-[#005CFF] px-3 py-2 ${senderRadius}`}
                           onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
                         >
                           <MessageText text={text} isOwnMessage={true} />
@@ -1004,7 +1004,7 @@ export function MessagePanel({
                       )}
                       <div className="max-w-[300px]">
                         <div
-                          className={`bg-white px-3 py-2 ${recipientRadius} cursor-pointer`}
+                          className={`bg-white px-3 py-2 ${recipientRadius}`}
                           onContextMenu={(e) => handleMessageContextMenu(e, item.id)}
                         >
                           <MessageText text={text} isOwnMessage={false} />
