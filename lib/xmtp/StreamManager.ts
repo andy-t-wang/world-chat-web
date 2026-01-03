@@ -32,6 +32,7 @@ import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
 import type { PaginationState } from '@/types/messages';
 import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash } from '@/lib/notifications';
+import { getCachedUsername, getAvatarUrl } from '@/lib/username/service';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -1418,16 +1419,30 @@ class XMTPStreamManager {
                 // Track messages received while tab is hidden
                 this.hiddenTabMessageCount++;
 
-                const senderName = metadata.conversationType === 'group'
-                  ? metadata.groupName || 'Group'
-                  : metadata.peerAddress
-                    ? `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`
-                    : 'Someone';
+                let senderName: string;
+                let avatarUrl: string | undefined = metadata.groupImageUrl;
+
+                if (metadata.conversationType === 'group') {
+                  senderName = metadata.groupName || 'Group';
+                } else if (metadata.peerAddress) {
+                  // Try to get username from cache (synchronous, no network delay)
+                  const usernameRecord = getCachedUsername(metadata.peerAddress);
+                  if (usernameRecord?.username) {
+                    senderName = usernameRecord.username;
+                    avatarUrl = getAvatarUrl(usernameRecord.username);
+                  } else {
+                    // Fallback to truncated address
+                    senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                  }
+                } else {
+                  senderName = 'Someone';
+                }
+
                 showMessageNotification({
                   conversationId,
                   senderName,
                   messagePreview: content || 'New message',
-                  avatarUrl: metadata.groupImageUrl,
+                  avatarUrl,
                 });
                 this.updateTabTitle();
 
