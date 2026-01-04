@@ -154,7 +154,7 @@ export default function Home() {
       case "generating":
         return "Preparing...";
       case "waiting_for_scan":
-        return "Scan with World App";
+        return "Scan with Camera";
       case "mobile_connected":
         return "Connected";
       case "authenticating":
@@ -227,7 +227,7 @@ export default function Home() {
       <div className="min-h-screen bg-gradient-to-b from-white via-white to-[#F5F5F7] flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm flex flex-col items-center">
           {/* Title */}
-          <h1 className="text-[28px] font-medium text-[#1D1D1F] tracking-[-0.02em] mb-10">
+          <h1 className="text-[18px] font-bold text-[#1D1D1F] tracking-[-0.02em] mb-10">
             World Chat
           </h1>
 
