@@ -1834,36 +1834,34 @@ export function MessagePanel({
           peerAddress={peerAddress}
         />
       ) : (
-        <div className="shrink-0 px-4 py-3 border-t border-[#E5E5EA] bg-white">
-          <div className="flex items-end gap-2">
+        <div className="shrink-0 px-4 py-2 border-t border-[#E5E5EA] bg-white">
+          <div className="flex items-center gap-2">
             <button
               onClick={() =>
                 alert("Coming soon! Ping Takis to work on this 📎")
               }
-              className="w-9 h-9 mb-0.5 flex items-center justify-center rounded-xl hover:bg-[#F2F2F7] transition-colors shrink-0"
+              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[#F2F2F7] transition-colors shrink-0 self-stretch"
             >
               <Paperclip className="w-5 h-5 text-[#86868B]" />
             </button>
-            <div className="flex-1 min-w-0">
-              <textarea
-                value={message}
-                onChange={(e) => {
-                  setMessage(e.target.value);
-                  // Auto-resize textarea
-                  e.target.style.height = 'auto';
-                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-                }}
-                onKeyDown={handleKeyDown}
-                placeholder="Write a message..."
-                rows={1}
-                className="w-full px-4 py-2 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all"
-                style={{ minHeight: '40px', maxHeight: '128px' }}
-              />
-            </div>
+            <textarea
+              value={message}
+              onChange={(e) => {
+                setMessage(e.target.value);
+                // Auto-resize textarea
+                e.target.style.height = 'auto';
+                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder="Write a message..."
+              rows={1}
+              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all"
+              style={{ minHeight: '44px', maxHeight: '128px' }}
+            />
             <button
               onClick={handleSend}
               disabled={!message.trim() || isSending}
-              className="w-9 h-9 mb-0.5 flex items-center justify-center rounded-xl bg-[#007AFF] hover:bg-[#0066CC] disabled:bg-[#E5E5EA] disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-[#007AFF] hover:bg-[#0066CC] disabled:bg-[#E5E5EA] disabled:cursor-not-allowed transition-colors shrink-0 self-stretch active:scale-95"
             >
               {isSending ? (
                 <Loader2 className="w-5 h-5 text-white animate-spin" />
