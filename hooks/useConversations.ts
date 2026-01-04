@@ -87,9 +87,13 @@ export function useConversationMetadata(conversationId: string | null): Conversa
   // Memoize the result to prevent unnecessary re-renders
   const metadata = useMemo(() => {
     if (!conversationId) return null;
-    // Only try to get metadata if the conversation exists in our list
-    if (!conversationIds.includes(conversationId)) {
-      return null;
+    // Check if the conversation exists in allowed list OR is a message request
+    const isInAllowed = conversationIds.includes(conversationId);
+    const isRequest = streamManager.isMessageRequest(conversationId);
+    if (!isInAllowed && !isRequest) {
+      // Also check if metadata exists directly (for edge cases)
+      const directMetadata = streamManager.getConversationMetadata(conversationId);
+      if (!directMetadata) return null;
     }
     return streamManager.getConversationMetadata(conversationId) ?? null;
   }, [conversationId, conversationIds, metadataVersion]);

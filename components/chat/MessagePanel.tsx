@@ -28,7 +28,7 @@ import { PaymentMessage } from "./PaymentMessage";
 import { ImageMessage } from "./ImageMessage";
 import { ImageGrid } from "./ImageGrid";
 import { MultiAttachmentMessage } from "./MultiAttachmentMessage";
-import { RequestActionBar } from "./RequestActionBar";
+import { MessageRequestBanner } from "./RequestActionBar";
 import { MessageContextMenu } from "./MessageContextMenu";
 import { ReplyPreview } from "./ReplyPreview";
 import { ReplyBubble } from "./ReplyBubble";
@@ -1003,6 +1003,11 @@ export function MessagePanel({
         )}
       </header>
 
+      {/* Message Request Banner - below header */}
+      {isMessageRequest && (
+        <MessageRequestBanner conversationId={conversationId} />
+      )}
+
       {/* Messages Area */}
       <div
         ref={parentRef}
@@ -1827,12 +1832,14 @@ export function MessagePanel({
         />
       )}
 
-      {/* Input Area or Action Bar for Message Requests */}
+      {/* Input Area */}
       {isMessageRequest ? (
-        <RequestActionBar
-          conversationId={conversationId}
-          peerAddress={peerAddress}
-        />
+        <div className="shrink-0 px-4 py-3 border-t border-[#E5E5EA] bg-[#FAFAFA]">
+          <div className="flex items-center justify-center gap-2 py-1">
+            <Lock className="w-4 h-4 text-[#86868B]" />
+            <span className="text-[14px] text-[#86868B]">Accept the request above to send a message</span>
+          </div>
+        </div>
       ) : (
         <div className="shrink-0 px-4 py-2 border-t border-[#E5E5EA] bg-white">
           <div className="flex items-center gap-2">
