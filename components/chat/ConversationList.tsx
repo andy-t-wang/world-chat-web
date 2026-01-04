@@ -192,7 +192,7 @@ export function ConversationList({
       {/* Virtualized Conversation List */}
       <div
         ref={parentRef}
-        className="flex-1 overflow-auto"
+        className="flex-1 overflow-auto scrollbar-auto-hide"
       >
         <div
           style={{

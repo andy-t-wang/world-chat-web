@@ -3,16 +3,18 @@
 import { useEffect, useState, memo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAtomValue } from "jotai";
-import { Sidebar, MessagePanel, EmptyState } from "@/components/chat";
+import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel } from "@/components/chat";
 import { NewConversationModal } from "@/components/chat/NewConversationModal";
 import { selectedConversationIdAtom } from "@/stores/ui";
 import { clientStateAtom } from "@/stores/client";
+import { xmtpClientAtom } from "@/stores/client";
 import { useConversationMetadata, useIsMessageRequest } from "@/hooks/useConversations";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { useUsername } from "@/hooks/useUsername";
 import { useGroupMemberVerification } from "@/hooks/useGroupMemberVerification";
 import { hasQRSession } from "@/lib/auth/session";
 import { setCurrentChatName } from "@/lib/notifications";
+import { streamManager } from "@/lib/xmtp/StreamManager";
 import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
 
 // Memoized MessagePanel wrapper to prevent unnecessary re-renders
@@ -21,6 +23,7 @@ const MemoizedMessagePanel = memo(MessagePanel);
 export default function ChatPage() {
   const router = useRouter();
   const clientState = useAtomValue(clientStateAtom);
+  const client = useAtomValue(xmtpClientAtom);
   const { restoreSession } = useQRXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
@@ -28,6 +31,8 @@ export default function ChatPage() {
   const [restorationAttempted, setRestorationAttempted] = useState(false);
   const [restorationFailed, setRestorationFailed] = useState(false);
   const [isLockedByOtherTab, setIsLockedByOtherTab] = useState(false);
+  const [showGroupDetails, setShowGroupDetails] = useState(false);
+  const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const restorationRef = useRef(false);
 
   const hasXmtpClient = clientState.client !== null;
@@ -65,6 +70,33 @@ export default function ChatPage() {
   const { verifiedCount, unverifiedCount } = useGroupMemberVerification(groupMemberPreviews);
   // Group is considered verified only if all members are verified
   const isGroupVerified = verifiedCount > 0 && unverifiedCount === 0;
+
+  // Close group details panel when conversation changes
+  useEffect(() => {
+    setShowGroupDetails(false);
+  }, [selectedId]);
+
+  // Handle leave group
+  const handleLeaveGroup = useCallback(async () => {
+    if (!client || !client.inboxId || !selectedId || isLeavingGroup) return;
+    if (conversationMetadata?.conversationType !== 'group') return;
+
+    setIsLeavingGroup(true);
+    setShowGroupDetails(false);
+
+    try {
+      const conversation = await client.conversations.getConversationById(selectedId);
+      if (conversation && 'removeMembers' in conversation) {
+        const group = conversation as { removeMembers: (ids: string[]) => Promise<void> };
+        await group.removeMembers([client.inboxId]);
+        streamManager.removeConversation(selectedId);
+      }
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+    } finally {
+      setIsLeavingGroup(false);
+    }
+  }, [client, selectedId, conversationMetadata?.conversationType, isLeavingGroup]);
 
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
@@ -223,7 +255,7 @@ export default function ChatPage() {
         {/* Left Sidebar */}
         <Sidebar onNewChat={() => setIsNewChatOpen(true)} />
 
-        {/* Right Panel */}
+        {/* Message Panel */}
         {selectedId && conversationMetadata ? (
           conversationMetadata.conversationType === "group" ? (
             <MemoizedMessagePanel
@@ -238,6 +270,7 @@ export default function ChatPage() {
               isVerified={isGroupVerified}
               verifiedCount={verifiedCount}
               unverifiedCount={unverifiedCount}
+              onOpenGroupDetails={() => setShowGroupDetails(true)}
             />
           ) : (
             <MemoizedMessagePanel
@@ -251,6 +284,22 @@ export default function ChatPage() {
           )
         ) : (
           <EmptyState />
+        )}
+
+        {/* Group Details Panel - inline beside MessagePanel */}
+        {showGroupDetails && selectedId && conversationMetadata?.conversationType === "group" && (
+          <GroupDetailsPanel
+            onClose={() => setShowGroupDetails(false)}
+            groupName={conversationMetadata.groupName || "Group Chat"}
+            memberPreviews={conversationMetadata.memberPreviews}
+            verifiedCount={verifiedCount}
+            unverifiedCount={unverifiedCount}
+            avatarUrl={conversationMetadata.groupImageUrl}
+            conversationId={selectedId}
+            onLeaveGroup={handleLeaveGroup}
+            isLeavingGroup={isLeavingGroup}
+            ownInboxId={client?.inboxId}
+          />
         )}
       </div>
 

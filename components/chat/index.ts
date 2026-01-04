@@ -9,3 +9,4 @@ export { EmptyState } from './EmptyState';
 export { NewConversationModal } from './NewConversationModal';
 export { MessageRequestsView } from './MessageRequestsView';
 export { RequestActionBar } from './RequestActionBar';
+export { GroupDetailsPanel } from './GroupDetailsPanel';

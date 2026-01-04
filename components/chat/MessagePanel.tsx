@@ -371,6 +371,7 @@ interface MessagePanelProps {
   unverifiedCount?: number;
   memberPreviews?: MemberPreview[];
   isMessageRequest?: boolean;
+  onOpenGroupDetails?: () => void;
 }
 
 export function MessagePanel({
@@ -387,6 +388,7 @@ export function MessagePanel({
   unverifiedCount,
   memberPreviews,
   isMessageRequest = false,
+  onOpenGroupDetails,
 }: MessagePanelProps) {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -926,7 +928,14 @@ export function MessagePanel({
     <div className="flex-1 flex flex-col bg-white">
       {/* Header */}
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
-        <div className="flex items-center gap-3">
+        <div
+          className={`flex items-center gap-3 ${
+            conversationType === "group" && onOpenGroupDetails
+              ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
+              : ""
+          }`}
+          onClick={() => conversationType === "group" && onOpenGroupDetails?.()}
+        >
           {conversationType === "group" ? (
             <Avatar
               isGroup
@@ -1012,7 +1021,7 @@ export function MessagePanel({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto flex flex-col"
+        className="flex-1 overflow-auto flex flex-col scrollbar-auto-hide"
         style={chatBackgroundStyle}
       >
         {isInitialLoading ? (

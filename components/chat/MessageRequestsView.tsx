@@ -193,7 +193,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
       {/* Virtualized Request List */}
       {filteredIds.length > 0 && (
-        <div ref={parentRef} className="flex-1 overflow-auto">
+        <div ref={parentRef} className="flex-1 overflow-auto scrollbar-auto-hide">
           <div
             style={{
               height: virtualizer.getTotalSize(),
