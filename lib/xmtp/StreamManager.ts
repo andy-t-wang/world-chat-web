@@ -819,6 +819,32 @@ class XMTPStreamManager {
   }
 
   /**
+   * Refresh metadata for a conversation (e.g., after adding/removing members)
+   * Rebuilds the metadata from the conversation object
+   */
+  async refreshConversationMetadata(conversationId: string): Promise<void> {
+    const conversation = this.conversations.get(conversationId);
+    if (!conversation) {
+      console.warn(`[StreamManager] Cannot refresh metadata - conversation ${conversationId} not found`);
+      return;
+    }
+
+    try {
+      // Sync the conversation to get latest member list
+      if ('sync' in conversation) {
+        await (conversation as unknown as { sync: () => Promise<unknown> }).sync();
+      }
+
+      // Rebuild metadata
+      const metadata = await this.buildConversationMetadata(conversation, false);
+      this.conversationMetadata.set(conversationId, metadata);
+      this.incrementMetadataVersion();
+    } catch (error) {
+      console.error(`[StreamManager] Failed to refresh conversation metadata:`, error);
+    }
+  }
+
+  /**
    * Re-sort conversation IDs based on lastActivityNs
    * Called when metadata changes to keep list properly ordered
    */

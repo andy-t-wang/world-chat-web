@@ -98,6 +98,25 @@ export default function ChatPage() {
     }
   }, [client, selectedId, conversationMetadata?.conversationType, isLeavingGroup]);
 
+  // Handle member added to group - send system message
+  const handleMemberAdded = useCallback(async (address: string, displayName: string | null) => {
+    if (!selectedId) return;
+
+    try {
+      // Format the name for the message
+      const memberName = displayName || `${address.slice(0, 6)}...${address.slice(-4)}`;
+
+      // Send a message announcing the new member using StreamManager
+      // This ensures the message appears immediately in the UI
+      await streamManager.sendMessage(selectedId, `${memberName} was added to the group`);
+
+      // Refresh conversation metadata to get updated member list
+      await streamManager.refreshConversationMetadata(selectedId);
+    } catch (error) {
+      console.error('Failed to send member added message:', error);
+    }
+  }, [selectedId]);
+
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
     if (hasXmtpClient) {
@@ -299,6 +318,7 @@ export default function ChatPage() {
             onLeaveGroup={handleLeaveGroup}
             isLeavingGroup={isLeavingGroup}
             ownInboxId={client?.inboxId}
+            onMemberAdded={handleMemberAdded}
           />
         )}
       </div>

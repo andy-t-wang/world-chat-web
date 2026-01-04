@@ -62,6 +62,37 @@ import type { PendingMessage } from "@/types/messages";
 // Common reaction emojis
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢"];
 
+// Status message patterns - these are system messages shown as centered pills
+const STATUS_MESSAGE_PATTERNS = [
+  /^.+ was added to the group$/,
+  /^.+ was removed from the group$/,
+  /^You added .+$/,
+  /^You removed .+$/,
+  /^.+ left the group$/,
+  /^.+ joined the group$/,
+  /^Group name changed to .+$/,
+  /^.+ changed the group name to .+$/,
+];
+
+// Check if a message is a status/system message
+function isStatusMessage(text: string): boolean {
+  if (!text) return false;
+  return STATUS_MESSAGE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+// Status message component - centered pill style
+function StatusMessage({ text }: { text: string }) {
+  return (
+    <div className="flex items-center justify-center py-2">
+      <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+        <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+          {text}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // Reaction picker component
 interface ReactionPickerProps {
   position: { x: number; y: number };
@@ -1153,6 +1184,11 @@ export function MessagePanel({
                   const isOwnMessage = msg.senderInboxId === ownInboxId;
                   const text = getMessageText(msg);
                   const { isFirstInGroup, isLastInGroup, showAvatar } = item;
+
+                  // Check if this is a status/system message (e.g., "X was added to the group")
+                  if (text && isStatusMessage(text)) {
+                    return <StatusMessage key={item.id} text={text} />;
+                  }
 
                   // Check if this is a transaction reference (payment message)
                   const typeId = (msg.contentType as { typeId?: string })

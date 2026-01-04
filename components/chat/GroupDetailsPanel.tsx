@@ -5,6 +5,7 @@ import { X, Users, Image, Pencil, Bell, Pin, LogOut, ChevronRight, Loader2, Arro
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
 import { useUsername } from "@/hooks/useUsername";
+import { AddMemberModal } from "./AddMemberModal";
 
 interface MemberPreview {
   inboxId: string;
@@ -22,6 +23,7 @@ interface GroupDetailsPanelProps {
   onLeaveGroup: () => Promise<void>;
   isLeavingGroup: boolean;
   ownInboxId?: string;
+  onMemberAdded?: (address: string, displayName: string | null) => void;
 }
 
 interface MenuItemProps {
@@ -64,11 +66,13 @@ function MenuItem({ icon, label, value, onClick, variant = "default", isLoading 
 function MemberRow({
   address,
   isYou,
-  isAdmin
+  isAdmin,
+  isPending
 }: {
   address: string;
   isYou: boolean;
   isAdmin?: boolean;
+  isPending?: boolean;
 }) {
   const { displayName, profilePicture } = useUsername(address);
   const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -77,12 +81,13 @@ function MemberRow({
   const isVerified = Boolean(profilePicture);
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors">
+    <div className={`flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors ${isPending ? 'opacity-60' : ''}`}>
       <Avatar address={address} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-[15px] text-[#1D1D1F] truncate">{name}</span>
           {isVerified && <VerificationBadge size="xs" />}
+          {isPending && <Loader2 className="w-3 h-3 animate-spin text-[#86868B]" />}
         </div>
         {!isYou && (
           <span className="text-[13px] text-[#86868B] truncate block">{username}</span>
@@ -98,23 +103,37 @@ function MemberRow({
 // Group members view
 function GroupMembersView({
   memberPreviews,
+  optimisticMembers,
   ownInboxId,
   onBack,
+  onAddNew,
 }: {
   memberPreviews: MemberPreview[];
+  optimisticMembers: MemberPreview[];
   ownInboxId?: string;
   onBack: () => void;
+  onAddNew: () => void;
 }) {
+  // Get set of real member addresses for deduplication
+  const realMemberAddresses = new Set(memberPreviews.map(m => m.address.toLowerCase()));
+
+  // Filter optimistic members to exclude those already in real list
+  const pendingOptimistic = optimisticMembers.filter(
+    m => !realMemberAddresses.has(m.address.toLowerCase())
+  );
+
+  // Combine confirmed and pending optimistic members
+  const allMembers = [...memberPreviews, ...pendingOptimistic];
+
   // Sort: You first, then others
-  const sortedMembers = [...memberPreviews].sort((a, b) => {
+  const sortedMembers = [...allMembers].sort((a, b) => {
     if (a.inboxId === ownInboxId) return -1;
     if (b.inboxId === ownInboxId) return 1;
     return 0;
   });
 
-  const handleAddNew = useCallback(() => {
-    alert("Coming soon!");
-  }, []);
+  // Track which members are still pending (optimistic and not yet in real list)
+  const optimisticAddresses = new Set(pendingOptimistic.map(m => m.address.toLowerCase()));
 
   return (
     <div className="flex flex-col h-full">
@@ -133,10 +152,11 @@ function GroupMembersView({
       <div className="flex-1 overflow-y-auto scrollbar-auto-hide">
         {sortedMembers.map((member) => (
           <MemberRow
-            key={member.inboxId}
+            key={member.inboxId || member.address}
             address={member.address}
             isYou={member.inboxId === ownInboxId}
-            isAdmin={member.inboxId === ownInboxId} // For now, assume first member (you) is admin
+            isAdmin={member.inboxId === ownInboxId}
+            isPending={optimisticAddresses.has(member.address.toLowerCase())}
           />
         ))}
       </div>
@@ -144,7 +164,7 @@ function GroupMembersView({
       {/* Add new button at bottom */}
       <div className="shrink-0 p-4 border-t border-[#E5E5EA]">
         <button
-          onClick={handleAddNew}
+          onClick={onAddNew}
           className="w-full h-12 flex items-center justify-center gap-2 rounded-full border border-[#E5E5EA] text-[15px] font-medium text-[#1D1D1F] hover:bg-[#F2F2F7] transition-colors"
         >
           <UserPlus className="w-5 h-5" />
@@ -166,14 +186,19 @@ export function GroupDetailsPanel({
   onLeaveGroup,
   isLeavingGroup,
   ownInboxId,
+  onMemberAdded,
 }: GroupDetailsPanelProps) {
   const [view, setView] = useState<"details" | "members">("details");
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [optimisticMembers, setOptimisticMembers] = useState<MemberPreview[]>([]);
 
   // Handle escape key
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (view === "members") {
+        if (showAddModal) {
+          setShowAddModal(false);
+        } else if (view === "members") {
           setView("details");
         } else {
           onClose();
@@ -183,13 +208,32 @@ export function GroupDetailsPanel({
 
     document.addEventListener("keydown", handleEscape);
     return () => document.removeEventListener("keydown", handleEscape);
-  }, [onClose, view]);
+  }, [onClose, view, showAddModal]);
 
   const handleComingSoon = useCallback(() => {
     alert("Coming soon!");
   }, []);
 
+  // Handle member added - optimistic update
+  const handleMemberAdded = useCallback((address: string, displayName: string | null) => {
+    // Add to optimistic list immediately
+    const optimisticMember: MemberPreview = {
+      inboxId: `optimistic-${address}`,
+      address: address,
+    };
+    setOptimisticMembers(prev => [...prev, optimisticMember]);
+
+    // Notify parent (which will send system message and refresh metadata)
+    onMemberAdded?.(address, displayName);
+
+    // Remove from optimistic list after a delay (real data should have arrived)
+    setTimeout(() => {
+      setOptimisticMembers(prev => prev.filter(m => m.address.toLowerCase() !== address.toLowerCase()));
+    }, 3000);
+  }, [onMemberAdded]);
+
   // Build member count string
+  const totalMembers = memberPreviews.length + optimisticMembers.length;
   const memberCountText = (() => {
     if (verifiedCount > 0 && unverifiedCount > 0) {
       return `${verifiedCount} ${verifiedCount === 1 ? "human" : "humans"}, ${unverifiedCount} not verified`;
@@ -200,9 +244,11 @@ export function GroupDetailsPanel({
     if (unverifiedCount > 0) {
       return `${unverifiedCount} not verified`;
     }
-    const total = memberPreviews.length;
-    return `${total} ${total === 1 ? "member" : "members"}`;
+    return `${totalMembers} ${totalMembers === 1 ? "member" : "members"}`;
   })();
+
+  // Get existing member addresses for the modal
+  const existingMemberAddresses = memberPreviews.map(m => m.address);
 
   // Members view
   if (view === "members") {
@@ -210,8 +256,19 @@ export function GroupDetailsPanel({
       <div className="w-[320px] shrink-0 h-full bg-white border-l border-[#E5E5EA] flex flex-col">
         <GroupMembersView
           memberPreviews={memberPreviews}
+          optimisticMembers={optimisticMembers}
           ownInboxId={ownInboxId}
           onBack={() => setView("details")}
+          onAddNew={() => setShowAddModal(true)}
+        />
+
+        {/* Add Member Modal */}
+        <AddMemberModal
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          conversationId={conversationId}
+          existingMemberAddresses={existingMemberAddresses}
+          onMemberAdded={handleMemberAdded}
         />
       </div>
     );
