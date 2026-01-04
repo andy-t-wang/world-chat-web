@@ -132,8 +132,8 @@ export function ConversationItem(props: ConversationItemProps) {
         w-full flex items-center gap-3 px-4 py-3
         transition-colors duration-150 text-left
         ${isSelected
-          ? 'bg-[#2563EB]'
-          : 'hover:bg-gray-50 active:bg-gray-100'
+          ? 'bg-[#007AFF]'
+          : 'hover:bg-[#F2F2F7] active:bg-[#E5E5EA]'
         }
       `}
     >
@@ -161,8 +161,8 @@ export function ConversationItem(props: ConversationItemProps) {
               isSelected
                 ? 'text-white font-medium'
                 : unreadCount > 0
-                  ? 'text-[#181818] font-semibold'
-                  : 'text-[#181818] font-medium'
+                  ? 'text-[#1D1D1F] font-semibold'
+                  : 'text-[#1D1D1F] font-medium'
             }`}>
               {name}
             </span>
@@ -175,8 +175,8 @@ export function ConversationItem(props: ConversationItemProps) {
             isSelected
               ? 'text-white/90'
               : unreadCount > 0
-                ? 'text-[#181818] font-semibold'
-                : 'text-[#717680]'
+                ? 'text-[#1D1D1F] font-semibold'
+                : 'text-[#86868B]'
           }`}>
             {props.lastMessage ? formatPreview(props) : (subtitle || formatPreview(props))}
           </div>
@@ -206,7 +206,7 @@ export function ConversationItem(props: ConversationItemProps) {
             )}
             {unreadCount > 0 && !isNewRequest && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
-                isSelected ? 'bg-white text-[#181818]' : 'bg-[#181818] text-white'
+                isSelected ? 'bg-white text-[#1D1D1F]' : 'bg-[#1D1D1F] text-white'
               }`}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>

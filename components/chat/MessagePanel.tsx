@@ -213,33 +213,59 @@ function SenderName({ address }: { address: string | undefined }) {
     (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Unknown");
 
   return (
-    <span className="text-[13px] text-[#717680] mb-1 ml-1 block">{name}</span>
+    <span className="text-[13px] text-[#86868B] mb-1 ml-1 block">{name}</span>
   );
 }
 
-// Animated wrapper for messages - fades up on mount
+// Telegram-style message sending animation - satisfying pop and slide
 function AnimatedMessageWrapper({
   children,
   className = "",
+  isSending = false,
 }: {
   children: React.ReactNode;
   className?: string;
+  isSending?: boolean;
 }) {
-  const [isVisible, setIsVisible] = useState(false);
+  const [animationPhase, setAnimationPhase] = useState<'initial' | 'pop' | 'settle'>('initial');
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      setIsVisible(true);
+    // Phase 1: Quick pop up with slight overshoot
+    const popFrame = requestAnimationFrame(() => {
+      setAnimationPhase('pop');
     });
-    return () => cancelAnimationFrame(frame);
+
+    // Phase 2: Settle into final position
+    const settleTimer = setTimeout(() => {
+      setAnimationPhase('settle');
+    }, 150);
+
+    return () => {
+      cancelAnimationFrame(popFrame);
+      clearTimeout(settleTimer);
+    };
   }, []);
+
+  const getTransform = () => {
+    switch (animationPhase) {
+      case 'initial':
+        return 'translateY(16px) scale(0.98)';
+      case 'pop':
+        return 'translateY(-2px) scale(1)';
+      case 'settle':
+        return 'translateY(0) scale(1)';
+    }
+  };
 
   return (
     <div
-      className={`transition-all duration-200 ease-out ${className}`}
+      className={`${className}`}
       style={{
-        opacity: isVisible ? 1 : 0,
-        transform: isVisible ? "translateY(0)" : "translateY(10px)",
+        opacity: animationPhase === 'initial' ? 0 : 1,
+        transform: getTransform(),
+        transition: animationPhase === 'pop'
+          ? 'all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          : 'all 0.1s ease-out',
       }}
     >
       {children}
@@ -252,31 +278,38 @@ interface PendingMessageBubbleProps {
   pending: PendingMessage;
   onRetry: (id: string) => void;
   isVerified?: boolean;
+  isFirstInGroup?: boolean;
 }
 
 function PendingMessageBubble({
   pending,
   onRetry,
   isVerified = false,
+  isFirstInGroup = true,
 }: PendingMessageBubbleProps) {
   // Format current time for the timestamp
   const timeString = new Date().toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
   });
-  // Use gray for unverified conversations
+  // Darker blue for pending verified, gray for unverified
   const bubbleBg =
     pending.status === "failed"
       ? "bg-red-100"
       : isVerified
-      ? "bg-[#005CFF]"
+      ? "bg-[#004ACC]"
       : "bg-[#717680]";
 
+  // Match the radius logic from sent messages
+  const senderRadius = isFirstInGroup
+    ? "rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px]"
+    : "rounded-tl-[16px] rounded-tr-[4px] rounded-bl-[16px] rounded-br-[4px]";
+
   return (
-    <AnimatedMessageWrapper className="flex flex-col items-end mt-3">
+    <AnimatedMessageWrapper className={`flex flex-col items-end ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}>
       <div className="max-w-[300px]">
         <div
-          className={`px-3 py-2 rounded-tl-[16px] rounded-tr-[16px] rounded-bl-[16px] rounded-br-[4px] ${bubbleBg}`}
+          className={`px-3 py-2 ${senderRadius} ${bubbleBg}`}
         >
           <p
             className={`text-[15px] leading-[1.35] ${
@@ -289,11 +322,11 @@ function PendingMessageBubble({
       </div>
       {/* Always show timestamp row - matches sent message layout exactly */}
       <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-        <span className="text-[11px] text-[#717680] font-medium">
+        <span className="text-[11px] text-[#86868B] font-medium">
           {timeString}
         </span>
         {pending.status === "sending" && (
-          <Clock className="w-3 h-3 text-[#717680]" />
+          <Clock className="w-3 h-3 text-[#86868B]" />
         )}
         {pending.status === "failed" && (
           <>
@@ -912,16 +945,16 @@ export function MessagePanel({
           )}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-[#181818]">{name}</span>
+              <span className="font-semibold text-[#1D1D1F]">{name}</span>
               {isVerified && conversationType === "dm" && (
                 <VerificationBadge size="sm" />
               )}
             </div>
             {subtitle && (
-              <span className="text-sm text-[#717680]">{subtitle}</span>
+              <span className="text-sm text-[#86868B]">{subtitle}</span>
             )}
             {!subtitle && groupSubtitle && (
-              <div className="flex items-center gap-1 text-sm text-[#717680]">
+              <div className="flex items-center gap-1 text-sm text-[#86868B]">
                 {"verified" in groupSubtitle ? (
                   <>
                     <VerificationBadge size="xs" />
@@ -1074,12 +1107,27 @@ export function MessagePanel({
                     );
                     if (!pending) return null;
 
+                    // Check if previous item was an own message to determine grouping
+                    const prevItem = index > 0 ? displayItems[index - 1] : null;
+                    let isPendingFirstInGroup = true;
+                    if (prevItem && prevItem.type === "message") {
+                      const prevMsg = getMessage(prevItem.id);
+                      if (prevMsg && prevMsg.senderInboxId === ownInboxId) {
+                        // Previous message was from us, so this continues the group
+                        isPendingFirstInGroup = false;
+                      }
+                    } else if (prevItem && prevItem.type === "pending") {
+                      // Previous item is also a pending message from us
+                      isPendingFirstInGroup = false;
+                    }
+
                     return (
                       <PendingMessageBubble
                         key={item.id}
                         pending={pending}
                         onRetry={handleRetry}
                         isVerified={isVerified}
+                        isFirstInGroup={isPendingFirstInGroup}
                       />
                     );
                   }
@@ -1556,9 +1604,10 @@ export function MessagePanel({
                               ownInboxId={ownInboxId}
                             />
                           </div>
-                          {isLastInGroup && (
+                          {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
+                          {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                             <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                              <span className="text-[11px] text-[#717680] font-medium">
+                              <span className="text-[11px] text-[#86868B] font-medium">
                                 {formatTime(msg.sentAtNs)}
                               </span>
                               {item.id === lastOwnMessageId &&
@@ -1567,7 +1616,7 @@ export function MessagePanel({
                                     Read
                                   </span>
                                 ) : (
-                                  <span className="text-[11px] text-[#717680]">
+                                  <span className="text-[11px] text-[#86868B]">
                                     Sent
                                   </span>
                                 ))}
@@ -1586,9 +1635,7 @@ export function MessagePanel({
                       >
                         <div className="max-w-[300px]">
                           <div
-                            className={`${
-                              isVerified ? "bg-[#005CFF]" : "bg-[#717680]"
-                            } px-3 py-2 ${senderRadius}`}
+                            className={`${isVerified ? "bg-[#007AFF] shadow-sm shadow-[#007AFF]/20" : "bg-[#717680]"} px-3 py-2 ${senderRadius}`}
                             onContextMenu={(e) =>
                               handleMessageContextMenu(e, item.id, text, "")
                             }
@@ -1612,9 +1659,10 @@ export function MessagePanel({
                             />
                           </div>
                         )}
-                        {isLastInGroup && (
+                        {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
+                        {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                            <span className="text-[11px] text-[#717680] font-medium">
+                            <span className="text-[11px] text-[#86868B] font-medium">
                               {formatTime(msg.sentAtNs)}
                             </span>
                             {/* Only show Sent/Read on the very last own message */}
@@ -1624,7 +1672,7 @@ export function MessagePanel({
                                   Read
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-[#717680]">
+                                <span className="text-[11px] text-[#86868B]">
                                   Sent
                                 </span>
                               ))}
@@ -1726,7 +1774,7 @@ export function MessagePanel({
                         )}
                         <div className="max-w-[300px]">
                           <div
-                            className={`bg-white px-3 py-2 ${recipientRadius}`}
+                            className={`bg-[#F2F2F7] px-3 py-2 ${recipientRadius}`}
                             onContextMenu={(e) =>
                               handleMessageContextMenu(
                                 e,
@@ -1786,30 +1834,36 @@ export function MessagePanel({
           peerAddress={peerAddress}
         />
       ) : (
-        <div className="shrink-0 px-4 py-3 border-t border-gray-100 bg-white">
-          <div className="flex items-center gap-2">
+        <div className="shrink-0 px-4 py-3 border-t border-[#E5E5EA] bg-white">
+          <div className="flex items-end gap-2">
             <button
               onClick={() =>
                 alert("Coming soon! Ping Takis to work on this 📎")
               }
-              className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors shrink-0"
+              className="w-9 h-9 mb-0.5 flex items-center justify-center rounded-xl hover:bg-[#F2F2F7] transition-colors shrink-0"
             >
-              <Paperclip className="w-5 h-5 text-[#717680]" />
+              <Paperclip className="w-5 h-5 text-[#86868B]" />
             </button>
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <textarea
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
+                onChange={(e) => {
+                  setMessage(e.target.value);
+                  // Auto-resize textarea
+                  e.target.style.height = 'auto';
+                  e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
+                }}
                 onKeyDown={handleKeyDown}
                 placeholder="Write a message..."
                 rows={1}
-                className="w-full px-4 py-2.5 bg-[#F5F5F5] rounded-full text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20 resize-none max-h-32 transition-shadow"
+                className="w-full px-4 py-2 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all"
+                style={{ minHeight: '40px', maxHeight: '128px' }}
               />
             </div>
             <button
               onClick={handleSend}
               disabled={!message.trim() || isSending}
-              className="w-10 h-10 flex items-center justify-center rounded-full bg-[#005CFF] hover:bg-[#0052E0] disabled:bg-gray-200 disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
+              className="w-9 h-9 mb-0.5 flex items-center justify-center rounded-xl bg-[#007AFF] hover:bg-[#0066CC] disabled:bg-[#E5E5EA] disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
             >
               {isSending ? (
                 <Loader2 className="w-5 h-5 text-white animate-spin" />

@@ -25,15 +25,13 @@ interface AvatarProps {
   memberPreviews?: MemberPreview[];
 }
 
-// Color palette for letter avatars - mapped from Figma UI Kit 4.0
+// Refined color palette - sophisticated, muted tones for secure messaging
 const AVATAR_COLORS = [
-  { bg: '#FDD3CF', text: '#F2280D' }, // Red (Error)
-  { bg: '#FFDECC', text: '#FF5A00' }, // Orange (Carrot)
-  { bg: '#CCF3D9', text: '#00C230' }, // Green (Success)
-  { bg: '#CCE0FF', text: '#005CFF' }, // Blue (Info)
-  { bg: '#E7CCFF', text: '#8600FF' }, // Violet (Purple)
-  { bg: '#FFEDCC', text: '#FFAE00' }, // Yellow (Warning)
-  { bg: '#EBECEF', text: '#717680' }, // Gray
+  { bg: '#E8F0FE', text: '#1A73E8' }, // Calm blue
+  { bg: '#E6F4EA', text: '#1E8E3E' }, // Sage green
+  { bg: '#FEF7E0', text: '#F9AB00' }, // Warm amber
+  { bg: '#FCE8E6', text: '#D93025' }, // Soft coral
+  { bg: '#F3E8FD', text: '#8E24AA' }, // Muted purple
 ] as const;
 
 /**
