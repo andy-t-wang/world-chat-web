@@ -27,16 +27,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
 
   // Use message requests hook
-  const { requestIds, metadata, requestCount, isNewRequest, markAllAsSeen } = useMessageRequests();
-
-  // Mark all requests as seen when this view is opened
-  useEffect(() => {
-    // Small delay to let the UI render first, then mark as seen
-    const timer = setTimeout(() => {
-      markAllAsSeen();
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [markAllAsSeen]);
+  const { requestIds, metadata, requestCount, isNewRequest } = useMessageRequests();
 
   // Track username cache for search
   const [usernameCacheVersion, setUsernameCacheVersion] = useState(0);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useAtomValue, useSetAtom } from 'jotai';
-import { useMemo, useRef, useCallback } from 'react';
+import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import {
   conversationIdsAtom,
   isLoadingConversationsAtom,
@@ -9,7 +9,7 @@ import {
   conversationMetadataVersionAtom,
 } from '@/stores/conversations';
 import { unreadVersionAtom } from '@/stores/messages';
-import { seenRequestIdsAtom } from '@/stores/settings';
+import { requestFirstSeenAtom } from '@/stores/settings';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 
 /**
@@ -97,61 +97,130 @@ export function useConversationMetadata(conversationId: string | null): Conversa
   return metadata;
 }
 
+// Duration to show the "new" dot (5 seconds)
+const NEW_DOT_DURATION_MS = 5000;
+
 /**
  * Hook to access message requests (Unknown consent conversations)
  *
  * Returns conversation IDs and metadata for conversations where
  * the user hasn't accepted or rejected the contact yet.
- * Also tracks which requests are "new" (haven't been seen yet).
+ * Shows a dot for 5 seconds after a request first appears via streaming.
  */
 export function useMessageRequests() {
   // Subscribe to metadata version to re-render when metadata changes
   const metadataVersion = useAtomValue(conversationMetadataVersionAtom);
   // Subscribe to unread version for consistency
   const unreadVersion = useAtomValue(unreadVersionAtom);
-  // Get seen request IDs from storage
-  const seenRequestIds = useAtomValue(seenRequestIdsAtom);
-  const setSeenRequestIds = useSetAtom(seenRequestIdsAtom);
+  // Get first-seen timestamps from storage
+  const firstSeenMap = useAtomValue(requestFirstSeenAtom);
+  const setFirstSeenMap = useSetAtom(requestFirstSeenAtom);
+
+  // Track if initial load is done - only show dot for requests added after initial load
+  const initialLoadDoneRef = useRef(false);
+  const initialRequestIdsRef = useRef<Set<string>>(new Set());
+
+  // Force re-render to update dot visibility as time passes
+  const [, forceUpdate] = useState(0);
 
   // Get request conversation IDs and metadata
-  const { requestIds, metadata, requestCount, newRequestIds, newRequestCount } = useMemo(() => {
+  const { requestIds, metadata, requestCount } = useMemo(() => {
     const ids = streamManager.getRequestConversationIds();
     const meta = streamManager.getAllConversationMetadata();
     const count = ids.length;
-    // New requests are those not in the seen list
-    const seenSet = new Set(seenRequestIds);
-    const newIds = ids.filter(id => !seenSet.has(id));
     return {
       requestIds: ids,
       metadata: meta,
       requestCount: count,
-      newRequestIds: newIds,
-      newRequestCount: newIds.length,
     };
-  }, [metadataVersion, unreadVersion, seenRequestIds]);
+  }, [metadataVersion, unreadVersion]);
 
-  // Mark all current requests as seen
-  const markAllAsSeen = useCallback(() => {
-    if (requestIds.length === 0) return;
-    setSeenRequestIds(prev => {
-      const seenSet = new Set(prev);
-      requestIds.forEach(id => seenSet.add(id));
-      return Array.from(seenSet);
-    });
-  }, [requestIds, setSeenRequestIds]);
+  // On first render, mark all existing requests as "old" (timestamp = 0)
+  // Only requests that appear after this will get a real timestamp
+  useEffect(() => {
+    if (!initialLoadDoneRef.current && requestIds.length > 0) {
+      initialLoadDoneRef.current = true;
+      initialRequestIdsRef.current = new Set(requestIds);
 
-  // Check if a specific request is new
+      // Mark all initial requests with timestamp 0 (won't show dot)
+      const initialMarks: Record<string, number> = {};
+      for (const id of requestIds) {
+        if (!firstSeenMap[id]) {
+          initialMarks[id] = 0; // 0 = old request, won't show dot
+        }
+      }
+      if (Object.keys(initialMarks).length > 0) {
+        setFirstSeenMap(prev => ({ ...prev, ...initialMarks }));
+      }
+    }
+  }, [requestIds, firstSeenMap, setFirstSeenMap]);
+
+  // Track NEW requests (ones that appear after initial load) with current timestamp
+  useEffect(() => {
+    if (!initialLoadDoneRef.current) return; // Wait for initial load
+
+    const now = Date.now();
+    const updates: Record<string, number> = {};
+    let hasUpdates = false;
+
+    for (const id of requestIds) {
+      // Only set timestamp for truly new requests (not in initial set, not yet tracked)
+      if (!initialRequestIdsRef.current.has(id) && !firstSeenMap[id]) {
+        updates[id] = now;
+        hasUpdates = true;
+      }
+    }
+
+    if (hasUpdates) {
+      setFirstSeenMap(prev => ({ ...prev, ...updates }));
+    }
+  }, [requestIds, firstSeenMap, setFirstSeenMap]);
+
+  // Set up timer to hide dots after 5 seconds
+  useEffect(() => {
+    const now = Date.now();
+    let earliestExpiry = Infinity;
+
+    for (const id of requestIds) {
+      const firstSeen = firstSeenMap[id];
+      if (firstSeen && firstSeen > 0) { // Only consider real timestamps (not 0)
+        const expiresAt = firstSeen + NEW_DOT_DURATION_MS;
+        if (expiresAt > now && expiresAt < earliestExpiry) {
+          earliestExpiry = expiresAt;
+        }
+      }
+    }
+
+    if (earliestExpiry !== Infinity) {
+      const timeUntilExpiry = earliestExpiry - now;
+      const timer = setTimeout(() => {
+        forceUpdate(n => n + 1);
+      }, timeUntilExpiry + 50); // Small buffer
+      return () => clearTimeout(timer);
+    }
+  }, [requestIds, firstSeenMap]);
+
+  // Check if a specific request should show the dot (seen less than 5 seconds ago)
   const isNewRequest = useCallback((id: string) => {
-    return !seenRequestIds.includes(id);
-  }, [seenRequestIds]);
+    const firstSeen = firstSeenMap[id];
+    if (!firstSeen || firstSeen === 0) return false; // 0 = old request
+    return Date.now() - firstSeen < NEW_DOT_DURATION_MS;
+  }, [firstSeenMap]);
+
+  // Count how many requests are currently showing the dot
+  const newRequestCount = useMemo(() => {
+    const now = Date.now();
+    return requestIds.filter(id => {
+      const firstSeen = firstSeenMap[id];
+      return firstSeen && firstSeen > 0 && now - firstSeen < NEW_DOT_DURATION_MS;
+    }).length;
+  }, [requestIds, firstSeenMap]);
 
   return {
     requestIds,
     metadata,
     requestCount,
-    newRequestIds,
     newRequestCount,
-    markAllAsSeen,
     isNewRequest,
   };
 }

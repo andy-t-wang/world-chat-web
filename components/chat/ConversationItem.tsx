@@ -200,11 +200,9 @@ export function ConversationItem(props: ConversationItemProps) {
               <Pin className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
             )}
             {isNewRequest && (
-              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
-                isSelected ? 'bg-white text-[#005CFF]' : 'bg-[#005CFF] text-white'
-              }`}>
-                New
-              </span>
+              <span className={`w-2.5 h-2.5 rounded-full ${
+                isSelected ? 'bg-white' : 'bg-[#005CFF]'
+              }`} />
             )}
             {unreadCount > 0 && !isNewRequest && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${

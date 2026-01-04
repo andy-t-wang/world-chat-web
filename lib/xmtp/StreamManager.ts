@@ -1654,13 +1654,34 @@ class XMTPStreamManager {
     if (!conv || !content.trim()) return null;
 
     try {
+      const sentAtNs = BigInt(Date.now()) * 1_000_000n;
       const messageId = await conv.send(content.trim());
 
-      // The stream will pick up the message, but we can also add it immediately
-      // to avoid waiting for the round-trip
+      // Add message to cache immediately for optimistic display
+      // This prevents the 30+ second delay waiting for stream round-trip
+      const optimisticMessage = {
+        id: messageId,
+        conversationId,
+        content: content.trim(),
+        senderInboxId: this.client?.inboxId ?? '',
+        sentAtNs,
+        contentType: { typeId: 'text', authorityId: 'xmtp.org' },
+      };
+      messageCache.set(messageId, optimisticMessage as unknown as DecodedMessage);
+
+      // Add to message list
       const currentIds = this.getMessageIds(conversationId);
       if (!currentIds.includes(messageId)) {
         this.setMessageIds(conversationId, [messageId, ...currentIds]);
+      }
+
+      // Update conversation metadata with preview
+      const metadata = this.conversationMetadata.get(conversationId);
+      if (metadata) {
+        metadata.lastMessagePreview = content.trim();
+        metadata.lastActivityNs = sentAtNs;
+        this.incrementMetadataVersion();
+        this.resortConversations();
       }
 
       return messageId;
@@ -1686,6 +1707,8 @@ class XMTPStreamManager {
       const { ContentTypeReply } = await import('@xmtp/content-type-reply');
       const { ContentTypeText } = await import('@xmtp/content-type-text');
 
+      const sentAtNs = BigInt(Date.now()) * 1_000_000n;
+
       const replyContent = {
         content: content.trim(),
         reference: replyToMessageId,
@@ -1694,10 +1717,30 @@ class XMTPStreamManager {
 
       const messageId = await conv.send(replyContent, ContentTypeReply);
 
+      // Add message to cache immediately for optimistic display
+      const optimisticMessage = {
+        id: messageId,
+        conversationId,
+        content: replyContent, // Reply content object
+        senderInboxId: this.client?.inboxId ?? '',
+        sentAtNs,
+        contentType: { typeId: 'reply', authorityId: 'xmtp.org' },
+      };
+      messageCache.set(messageId, optimisticMessage as unknown as DecodedMessage);
+
       // Add to message list immediately
       const currentIds = this.getMessageIds(conversationId);
       if (!currentIds.includes(messageId)) {
         this.setMessageIds(conversationId, [messageId, ...currentIds]);
+      }
+
+      // Update conversation metadata with preview
+      const metadata = this.conversationMetadata.get(conversationId);
+      if (metadata) {
+        metadata.lastMessagePreview = content.trim();
+        metadata.lastActivityNs = sentAtNs;
+        this.incrementMetadataVersion();
+        this.resortConversations();
       }
 
       return messageId;

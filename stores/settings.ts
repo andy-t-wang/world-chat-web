@@ -10,6 +10,6 @@ export const soundMutedAtom = atomWithStorage('sound-muted', false);
 // Settings panel open state
 export const settingsPanelOpenAtom = atom(false);
 
-// Seen message request IDs - persisted to localStorage
-// These are request IDs that the user has viewed (opened the message requests panel)
-export const seenRequestIdsAtom = atomWithStorage<string[]>('seen-request-ids', []);
+// Timestamps when message requests were first seen - persisted to localStorage
+// Used to show a "new" dot for 5 seconds after a request appears
+export const requestFirstSeenAtom = atomWithStorage<Record<string, number>>('request-first-seen', {});
