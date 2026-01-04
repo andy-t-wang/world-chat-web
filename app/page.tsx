@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { RemoteSigner, generateSessionId } from "@/lib/signing-relay";
-import { Loader2, X, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
@@ -20,6 +20,24 @@ type LoginState =
   | "signing"
   | "success"
   | "error";
+
+// Subtle pulsing loader - Apple style
+function PulseLoader() {
+  return (
+    <div className="flex items-center gap-1.5">
+      {[0, 1, 2].map((i) => (
+        <div
+          key={i}
+          className="w-2 h-2 rounded-full bg-[#86868B]"
+          style={{
+            animation: "pulse-fade 1.4s ease-in-out infinite",
+            animationDelay: `${i * 0.16}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -134,19 +152,19 @@ export default function Home() {
       case "checking_session":
         return "Checking session...";
       case "generating":
-        return "Generating QR code...";
+        return "Preparing...";
       case "waiting_for_scan":
-        return "Scan with Camera";
+        return "Scan with World App";
       case "mobile_connected":
-        return "Connected!";
+        return "Connected";
       case "authenticating":
-        return "Approve in World App...";
+        return "Approve in World App";
       case "signing":
-        return "Approve in World App...";
+        return "Approve in World App";
       case "initializing_xmtp":
-        return "Setting up messaging...";
+        return "Setting up...";
       case "success":
-        return "Welcome!";
+        return "Welcome";
       case "error":
         return error || "Something went wrong";
       default:
@@ -163,102 +181,147 @@ export default function Home() {
     "initializing_xmtp",
   ].includes(state);
 
+  const showQR = state === "waiting_for_scan" && qrUrl;
+
   return (
-    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-sm flex flex-col items-center">
-        {/* Title */}
-        <h1 className="text-2xl font-semibold text-[#181818] mb-8">
-          World Chat
-        </h1>
+    <>
+      {/* Keyframe animations */}
+      <style jsx global>{`
+        @keyframes pulse-fade {
+          0%, 100% { opacity: 0.4; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1); }
+        }
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes scale-in {
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        .animate-fade-in {
+          animation: fade-in 0.3s ease-out forwards;
+        }
+        .animate-scale-in {
+          animation: scale-in 0.25s ease-out forwards;
+        }
+      `}</style>
 
-        {/* QR Code Box */}
-        <div className="w-64 h-64 bg-[#F5F5F5] rounded-2xl flex items-center justify-center mb-6">
-          {state === "waiting_for_scan" && qrUrl ? (
-            <QRCodeSVG
-              value={qrUrl}
-              size={224}
-              level="M"
-              includeMargin={false}
-              className="rounded-lg"
-            />
-          ) : state === "error" ? (
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-              <X className="w-8 h-8 text-red-500" />
-            </div>
-          ) : state === "success" ? (
-            <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-              <svg
-                className="w-8 h-8 text-green-500"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M5 13l4 4L19 7"
+      <div className="min-h-screen bg-gradient-to-b from-white via-white to-[#F5F5F7] flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm flex flex-col items-center">
+          {/* Title */}
+          <h1 className="text-[28px] font-medium text-[#1D1D1F] tracking-[-0.02em] mb-10">
+            World Chat
+          </h1>
+
+          {/* QR Code Card - Frosted glass effect */}
+          <div className="w-[280px] h-[280px] rounded-3xl flex items-center justify-center mb-8 bg-white/80 backdrop-blur-xl shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] border border-black/[0.04] transition-all duration-300">
+            {showQR ? (
+              <div className="animate-fade-in">
+                <QRCodeSVG
+                  value={qrUrl}
+                  size={232}
+                  level="M"
+                  includeMargin={false}
+                  bgColor="transparent"
+                  fgColor="#1D1D1F"
                 />
-              </svg>
-            </div>
-          ) : (
-            <Loader2 className="w-8 h-8 text-[#717680] animate-spin" />
-          )}
-        </div>
+              </div>
+            ) : state === "error" ? (
+              <div className="animate-scale-in w-16 h-16 rounded-full bg-[#FF3B30]/10 flex items-center justify-center">
+                <svg
+                  className="w-7 h-7 text-[#FF3B30]"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </div>
+            ) : state === "success" ? (
+              <div className="animate-scale-in w-16 h-16 rounded-full bg-[#34C759]/10 flex items-center justify-center">
+                <svg
+                  className="w-7 h-7 text-[#34C759]"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2.5}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              </div>
+            ) : (
+              <PulseLoader />
+            )}
+          </div>
 
-        {/* Status */}
-        <p
-          className={`text-sm mb-4 ${
-            state === "error" ? "text-red-500" : "text-[#717680]"
-          }`}
-        >
-          {getStatusText()}
-        </p>
-
-        {/* Address */}
-        {connectedAddress && state !== "error" && (
-          <p className="text-xs text-[#9BA3AE] font-mono mb-4">
-            {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
-          </p>
-        )}
-
-        {/* Retry */}
-        {state === "error" && (
-          <button
-            onClick={handleRetry}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-[#005CFF] hover:bg-[#005CFF]/5 rounded-lg transition-colors"
+          {/* Status */}
+          <p
+            className={`text-[15px] mb-3 transition-all duration-200 ${
+              state === "error"
+                ? "text-[#FF3B30]"
+                : state === "success"
+                ? "text-[#34C759]"
+                : "text-[#86868B]"
+            }`}
           >
-            <RefreshCw className="w-4 h-4" />
-            Try again
-          </button>
-        )}
+            {getStatusText()}
+          </p>
 
-        {/* Loading indicator for states that need it */}
-        {isLoading &&
-          state !== "generating" &&
-          state !== "checking_session" && (
-            <div className="flex items-center gap-2 text-xs text-[#9BA3AE]">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Keep World App open
-            </div>
+          {/* Address */}
+          {connectedAddress && state !== "error" && (
+            <p className="text-[13px] text-[#AEAEB2] font-mono mb-4 animate-fade-in">
+              {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
+            </p>
           )}
 
-        {/* Disclaimer */}
-        <div className="mt-10 text-center">
-          <p className="text-[11px] text-[#9BA3AE] leading-[1.6] max-w-[280px]">
-            Messages stored locally only · Clearing browser data deletes history
-            <span className="mx-1.5 opacity-50">•</span>
+          {/* Retry */}
+          {state === "error" && (
+            <button
+              onClick={handleRetry}
+              className="flex items-center gap-2 px-5 py-2.5 text-[15px] text-[#0066CC] hover:bg-[#0066CC]/5 active:bg-[#0066CC]/10 rounded-full transition-all duration-200"
+            >
+              <RefreshCw className="w-4 h-4" />
+              Try again
+            </button>
+          )}
+
+          {/* Loading hint */}
+          {isLoading &&
+            state !== "generating" &&
+            state !== "checking_session" && (
+              <p className="text-[13px] text-[#AEAEB2] animate-fade-in">
+                Keep World App open
+              </p>
+            )}
+
+          {/* Disclaimer */}
+          <div className="mt-16 text-center">
+            <p className="text-[12px] text-[#AEAEB2] leading-[1.6] max-w-[300px]">
+              Messages stored locally only
+              <span className="mx-2 opacity-40">·</span>
+              Clearing browser data deletes history
+            </p>
             <a
               href="https://world.org/download"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#717680] hover:text-[#005CFF] transition-colors"
+              className="inline-block mt-2 text-[12px] text-[#0066CC] hover:text-[#0052A3] transition-colors duration-200"
             >
-              Get the full app
+              Get World App
             </a>
-          </p>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }

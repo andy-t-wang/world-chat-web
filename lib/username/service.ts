@@ -52,17 +52,13 @@ function loadFromStorage(): void {
     }
 
     const now = Date.now();
-    let validCount = 0;
 
     for (const [address, entry] of Object.entries(data.entries)) {
       // Only load entries that haven't expired
       if (now - entry.timestamp < USERNAME_API.CACHE_TTL_MS) {
         usernameCache.set(address, entry);
-        validCount++;
       }
     }
-
-    console.log(`[Username] Loaded ${validCount} cached usernames from storage`);
   } catch (error) {
     console.error('[Username] Failed to load from storage:', error);
     localStorage.removeItem(STORAGE_KEY);

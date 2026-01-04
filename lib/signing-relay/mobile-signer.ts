@@ -57,7 +57,6 @@ export class MobileSigner {
     return new Promise((resolve, reject) => {
       this.channel!.subscribe((status) => {
         if (status === 'SUBSCRIBED') {
-          console.log('[MobileSigner] Connected to channel:', channelName);
           // Notify web client that we're connected (triggers auth challenge)
           this.sendMessage({
             type: 'mobile_connected',
@@ -83,7 +82,6 @@ export class MobileSigner {
 
       case 'auth_success':
         this.isAuthenticated = true;
-        console.log('[MobileSigner] Authentication successful');
         this.callbacks.onAuthenticated?.();
         break;
 
@@ -94,9 +92,7 @@ export class MobileSigner {
         break;
 
       case 'sign_request':
-        console.log('[MobileSigner] Received sign_request:', message.requestId);
         if (!this.isAuthenticated) {
-          console.warn('[MobileSigner] Ignoring sign_request - not authenticated');
           this.sendMessage({
             type: 'sign_error',
             requestId: message.requestId,
@@ -104,7 +100,6 @@ export class MobileSigner {
           });
           return;
         }
-        console.log('[MobileSigner] Processing sign_request...');
         await this.handleSignRequest(message.requestId, message.message, message.timestamp);
         break;
 
@@ -119,7 +114,6 @@ export class MobileSigner {
    * Handle authentication challenge from web client
    */
   private async handleAuthChallenge(challenge: string): Promise<void> {
-    console.log('[MobileSigner] Received auth challenge');
     this.callbacks.onAuthChallenge?.(challenge);
 
     try {
@@ -150,7 +144,6 @@ export class MobileSigner {
     // Validate timestamp to prevent replay attacks (SEC-004)
     const now = Date.now();
     if (Math.abs(now - timestamp) > MAX_REQUEST_AGE_MS) {
-      console.warn('[MobileSigner] Rejecting stale signing request');
       this.sendMessage({
         type: 'sign_error',
         requestId,

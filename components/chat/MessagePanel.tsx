@@ -1111,26 +1111,11 @@ export function MessagePanel({
                           encodedContent.content
                         );
                         txContent = JSON.parse(decoded);
-                        console.log(
-                          "[MessagePanel] Manually decoded transaction:",
-                          txContent
-                        );
-                      } catch (e) {
-                        console.log(
-                          "[MessagePanel] Failed to decode transaction:",
-                          e
-                        );
+                      } catch {
+                        // Decode failed
                       }
                     }
 
-                    // Also check fallback string
-                    const fallback = (msg as { fallback?: string }).fallback;
-                    if (fallback) {
-                      console.log(
-                        "[MessagePanel] Transaction fallback:",
-                        fallback
-                      );
-                    }
                   }
 
                   const isPayment =

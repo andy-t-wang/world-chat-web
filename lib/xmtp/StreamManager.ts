@@ -135,8 +135,7 @@ function parseProtobufReaction(bytes: Uint8Array): ReactionContent | null {
       return { reference, action, content, schema: 'custom' };
     }
     return null;
-  } catch (e) {
-    console.log('[StreamManager] Protobuf parse error:', e);
+  } catch {
     return null;
   }
 }
@@ -167,7 +166,6 @@ async function tryDecodeReaction(msg: {
   // Try manual protobuf parsing first (for World App messages)
   const protoResult = parseProtobufReaction(rawBytes);
   if (protoResult) {
-    console.log('[StreamManager] Decoded reaction from protobuf:', protoResult);
     return protoResult;
   }
 
@@ -176,7 +174,6 @@ async function tryDecodeReaction(msg: {
     const text = new TextDecoder().decode(rawBytes);
     const reaction = JSON.parse(text) as ReactionContent;
     if (reaction && reaction.reference && reaction.content) {
-      console.log('[StreamManager] Decoded reaction from JSON:', reaction);
       return reaction;
     }
   } catch {
@@ -189,14 +186,12 @@ async function tryDecodeReaction(msg: {
     const codec = new ReactionCodec();
     const decoded = codec.decode(msg.encodedContent) as ReactionContent;
     if (decoded && decoded.reference && decoded.content) {
-      console.log('[StreamManager] Decoded reaction with codec:', decoded);
       return decoded;
     }
   } catch {
     // Codec failed
   }
 
-  console.log('[StreamManager] All reaction decode methods failed');
   return null;
 }
 
@@ -232,7 +227,6 @@ async function tryDecodeRawRemoteAttachment(msg: {
 
     // Mutate the message content to the decoded value
     (msg as { content: unknown }).content = decoded;
-    console.log('[StreamManager] Decoded raw remote attachment');
     return true;
   } catch (error) {
     console.error('[StreamManager] Failed to decode raw remote attachment:', error);
@@ -1491,7 +1485,6 @@ class XMTPStreamManager {
                 this.conversationMetadata.set(conversationId, metadata);
               } else {
                 // Couldn't get conversation, create minimal metadata from message
-                console.log('[StreamManager] Creating minimal metadata for unknown conversation:', conversationId);
                 metadata = {
                   id: conversationId,
                   conversationType: 'dm',
@@ -1504,8 +1497,7 @@ class XMTPStreamManager {
                 };
                 this.conversationMetadata.set(conversationId, metadata);
               }
-            } catch (e) {
-              console.warn('[StreamManager] Failed to get conversation for message:', conversationId, e);
+            } catch {
               // Still create minimal metadata so the conversation shows up
               metadata = {
                 id: conversationId,
@@ -1558,7 +1550,6 @@ class XMTPStreamManager {
           const shouldAdd = hasDisplayableContent && (hasValidConsent || isOwnMsg);
 
           if (!currentConvIds.includes(conversationId) && shouldAdd) {
-            console.log('[StreamManager] Adding conversation to list:', conversationId, { hasValidConsent, isOwnMsg });
             store.set(conversationIdsAtom, [conversationId, ...currentConvIds]);
             // Trigger UI update even if we don't have full metadata
             this.incrementMetadataVersion();
@@ -1890,7 +1881,6 @@ class XMTPStreamManager {
       // Trigger UI update
       this.incrementMetadataVersion();
 
-      console.log('[StreamManager] Accepted conversation:', conversationId);
       return true;
     } catch (error) {
       console.error('[StreamManager] Failed to accept conversation:', error);
@@ -1930,7 +1920,6 @@ class XMTPStreamManager {
       // Trigger UI update
       this.incrementMetadataVersion();
 
-      console.log('[StreamManager] Rejected conversation:', conversationId);
       return true;
     } catch (error) {
       console.error('[StreamManager] Failed to reject conversation:', error);
@@ -1990,10 +1979,6 @@ class XMTPStreamManager {
     });
 
     if (!content) {
-      // Log message structure for debugging when decode fails
-      const msgAny = msg as unknown as Record<string, unknown>;
-      console.log('[StreamManager] Failed to decode reaction. Message keys:', Object.keys(msgAny));
-      console.log('[StreamManager] encodedContent:', msgAny.encodedContent);
       return;
     }
 
@@ -2002,8 +1987,6 @@ class XMTPStreamManager {
     const action = content.action || 'added';
     const senderInboxId = msg.senderInboxId;
     const conversationId = (msg as unknown as { conversationId: string }).conversationId;
-
-    console.log('[StreamManager] Processing reaction:', { emoji, action, targetMessageId: targetMessageId.slice(0, 16) + '...' });
 
     const currentReactions = store.get(reactionsAtom);
     const messageReactions = currentReactions.get(targetMessageId) ?? [];

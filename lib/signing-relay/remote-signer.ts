@@ -89,9 +89,7 @@ export class RemoteSigner {
 
       // Subscribe to channel
       this.channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('[RemoteSigner] Connected to channel:', channelName);
-        } else if (status === 'CHANNEL_ERROR') {
+        if (status === 'CHANNEL_ERROR') {
           clearTimeout(timeout);
           reject(new Error('Failed to connect to signing channel'));
         }
@@ -220,8 +218,6 @@ export class RemoteSigner {
       this.sendMessage({ type: 'auth_success' });
       this.authResolve?.(this.mobileAddress);
       this.callbacks.onAuthenticated?.(this.mobileAddress);
-
-      console.log('[RemoteSigner] Authenticated SCW address:', this.mobileAddress);
     } catch (error) {
       this.authChallenge = null;
       this.mobileAddress = null;
@@ -282,7 +278,6 @@ export class RemoteSigner {
       });
 
       // Send request to mobile with timestamp
-      console.log('[RemoteSigner] Sending sign_request:', requestId);
       this.callbacks.onSigningRequest?.();
       this.sendMessage({
         type: 'sign_request',
@@ -290,7 +285,6 @@ export class RemoteSigner {
         message,
         timestamp,
       });
-      console.log('[RemoteSigner] sign_request sent, waiting for response...');
     });
   }
 
@@ -315,9 +309,7 @@ export class RemoteSigner {
         identifierKind: 'Ethereum' as const,
       }),
       signMessage: async (message: string): Promise<Uint8Array> => {
-        console.log('[RemoteSigner] signMessage called, message length:', message.length);
         const signature = await this.requestSignature(message);
-        console.log('[RemoteSigner] Got signature:', signature.slice(0, 20) + '...');
         return toBytes(signature);
       },
       // World Chain mainnet chain ID

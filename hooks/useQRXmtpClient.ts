@@ -119,19 +119,16 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
 
     const cachedSession = getCachedSession();
     if (!cachedSession) {
-      console.log('[QRXmtpClient] No cached session to restore');
       return false;
     }
 
     // Check if another tab has the XMTP client
     if (isLockedByAnotherTab()) {
-      console.log('[QRXmtpClient] Another tab has the XMTP client');
       throw new Error('TAB_LOCKED');
     }
 
     // Try to acquire the lock
     if (!acquireTabLock()) {
-      console.log('[QRXmtpClient] Failed to acquire tab lock');
       throw new Error('TAB_LOCKED');
     }
 
@@ -139,7 +136,6 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     dispatch({ type: 'INIT_START' });
 
     try {
-      console.log('[QRXmtpClient] Restoring session for:', cachedSession.address);
 
       const [
           { Client },
@@ -160,7 +156,6 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       // Create a cached signer - works for existing installations
       const cachedSigner = createCachedSigner(cachedSession.address);
 
-      const startTime = Date.now();
       const xmtpClient = await Client.create(cachedSigner, {
         env: 'production',
         appVersion: 'WorldChat/1.0.0',
@@ -173,10 +168,6 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           new TransactionReferenceCodec(),
         ],
       });
-      const duration = Date.now() - startTime;
-
-      console.log('[QRXmtpClient] Session restored in', duration, 'ms');
-      console.log('[QRXmtpClient] InboxId:', xmtpClient.inboxId);
 
       // Update cache timestamp
       if (xmtpClient.inboxId) {
@@ -201,10 +192,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
                                errorMessage.includes('signature');
 
       if (isSessionExpired) {
-        console.log('[QRXmtpClient] Session expired, clearing...');
         clearSession();
-      } else {
-        console.log('[QRXmtpClient] Transient error, keeping session for retry');
       }
 
       dispatch({
@@ -225,13 +213,11 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
 
       // Check if another tab has the XMTP client
       if (isLockedByAnotherTab()) {
-        console.log('[QRXmtpClient] Another tab has the XMTP client');
         throw new Error('TAB_LOCKED');
       }
 
       // Try to acquire the lock
       if (!acquireTabLock()) {
-        console.log('[QRXmtpClient] Failed to acquire tab lock');
         throw new Error('TAB_LOCKED');
       }
 
@@ -257,10 +243,6 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             import('@/lib/xmtp/TransactionReferenceCodec'),
           ]);
 
-        console.log('[QRXmtpClient] Creating XMTP client with remote signer...');
-        console.log('[QRXmtpClient] Signer address:', address);
-
-        const startTime = Date.now();
         const xmtpClient = await Client.create(signer, {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
@@ -273,11 +255,6 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new TransactionReferenceCodec(),
           ],
         });
-        const duration = Date.now() - startTime;
-
-        console.log('[QRXmtpClient] XMTP client created in', duration, 'ms');
-        console.log('[QRXmtpClient] InboxId:', xmtpClient.inboxId);
-        console.log('[QRXmtpClient] InstallationId:', xmtpClient.installationId);
 
         // Cache session for page reloads
         if (xmtpClient.inboxId) {

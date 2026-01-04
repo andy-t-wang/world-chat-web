@@ -86,10 +86,6 @@ export default function ChatPage() {
 
     try {
       const success = await restoreSession();
-      console.log(
-        "[ChatPage] Session restoration:",
-        success ? "success" : "failed"
-      );
 
       if (!success) {
         // Check if session was cleared (expired) vs transient error
