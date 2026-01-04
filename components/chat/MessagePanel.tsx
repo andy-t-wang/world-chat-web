@@ -1774,7 +1774,7 @@ export function MessagePanel({
                         )}
                         <div className="max-w-[300px]">
                           <div
-                            className={`bg-[#F2F2F7] px-3 py-2 ${recipientRadius}`}
+                            className={`bg-white px-3 py-2 ${recipientRadius}`}
                             onContextMenu={(e) =>
                               handleMessageContextMenu(
                                 e,

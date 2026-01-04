@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { RemoteSigner, generateSessionId } from "@/lib/signing-relay";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Shield, Check } from "lucide-react";
 
 const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
@@ -36,6 +36,19 @@ function PulseLoader() {
         />
       ))}
     </div>
+  );
+}
+
+// Corner brackets for QR scanning guide
+function ScanningCorners() {
+  const cornerStyle = "absolute w-5 h-5 border-[#1D1D1F]";
+  return (
+    <>
+      <div className={`${cornerStyle} top-0 left-0 border-t-2 border-l-2 rounded-tl-lg`} />
+      <div className={`${cornerStyle} top-0 right-0 border-t-2 border-r-2 rounded-tr-lg`} />
+      <div className={`${cornerStyle} bottom-0 left-0 border-b-2 border-l-2 rounded-bl-lg`} />
+      <div className={`${cornerStyle} bottom-0 right-0 border-b-2 border-r-2 rounded-br-lg`} />
+    </>
   );
 }
 
@@ -188,115 +201,106 @@ export default function Home() {
       {/* Keyframe animations */}
       <style jsx global>{`
         @keyframes pulse-fade {
-          0%,
-          100% {
-            opacity: 0.4;
-            transform: scale(0.95);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1);
-          }
+          0%, 100% { opacity: 0.4; transform: scale(0.95); }
+          50% { opacity: 1; transform: scale(1); }
         }
         @keyframes fade-in {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes scale-in {
-          from {
-            opacity: 0;
-            transform: scale(0.9);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
+          from { opacity: 0; transform: scale(0.9); }
+          to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes glow-pulse {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.02); }
+        }
+        @keyframes shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
         }
         .animate-fade-in {
-          animation: fade-in 0.3s ease-out forwards;
+          animation: fade-in 0.5s ease-out forwards;
         }
         .animate-scale-in {
-          animation: scale-in 0.25s ease-out forwards;
+          animation: scale-in 0.3s ease-out forwards;
         }
+        .animate-glow {
+          animation: glow-pulse 3s ease-in-out infinite;
+        }
+        .stagger-1 { animation-delay: 0.1s; opacity: 0; }
+        .stagger-2 { animation-delay: 0.2s; opacity: 0; }
+        .stagger-3 { animation-delay: 0.3s; opacity: 0; }
+        .stagger-4 { animation-delay: 0.5s; opacity: 0; }
       `}</style>
 
-      <div className="min-h-screen bg-gradient-to-b from-white via-white to-[#F5F5F7] flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-sm flex flex-col items-center">
-          {/* Title */}
-          <h1 className="text-[18px] font-bold text-[#1D1D1F] tracking-[-0.02em] mb-10">
+      <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6 relative overflow-hidden">
+        {/* Subtle radial gradient background */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,122,255,0.03)_0%,_transparent_50%)]" />
+
+        <div className="w-full max-w-sm flex flex-col items-center relative z-10">
+          {/* Title with staggered animation */}
+          <h1 className="text-[28px] font-semibold text-[#1D1D1F] tracking-[-0.03em] mb-3 animate-fade-in">
             World Chat
           </h1>
 
-          {/* QR Code Card - Frosted glass effect */}
-          <div className="w-[280px] h-[280px] rounded-3xl flex items-center justify-center mb-8 bg-white/80 backdrop-blur-xl shadow-[0_2px_8px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.06)] border border-black/[0.04] transition-all duration-300">
-            {showQR ? (
-              <div className="animate-fade-in">
-                <QRCodeSVG
-                  value={qrUrl}
-                  size={232}
-                  level="M"
-                  includeMargin={false}
-                  bgColor="transparent"
-                  fgColor="#1D1D1F"
-                />
-              </div>
-            ) : state === "error" ? (
-              <div className="animate-scale-in w-16 h-16 rounded-full bg-[#FF3B30]/10 flex items-center justify-center">
-                <svg
-                  className="w-7 h-7 text-[#FF3B30]"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </div>
-            ) : state === "success" ? (
-              <div className="animate-scale-in w-16 h-16 rounded-full bg-[#34C759]/10 flex items-center justify-center">
-                <svg
-                  className="w-7 h-7 text-[#34C759]"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2.5}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-            ) : (
-              <PulseLoader />
+          {/* E2EE Badge - Refined pill design */}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#E8F5E9] border border-[#A5D6A7]/30 mb-10 animate-fade-in stagger-1">
+            <Shield className="w-3.5 h-3.5 text-[#2E7D32]" />
+            <span className="text-[13px] font-medium text-[#2E7D32]">End-to-end encrypted</span>
+          </div>
+
+          {/* QR Code Card with glow effect */}
+          <div className="relative mb-8 animate-fade-in stagger-2">
+            {/* Animated glow ring - only when showing QR */}
+            {showQR && (
+              <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-r from-[#007AFF]/20 via-[#34C759]/20 to-[#007AFF]/20 blur-xl animate-glow" />
             )}
+
+            {/* Main card */}
+            <div className="relative w-[280px] h-[280px] rounded-3xl flex items-center justify-center bg-white shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.04]">
+              {showQR ? (
+                <div className="relative animate-scale-in">
+                  {/* Scanning corners */}
+                  <div className="absolute -inset-4">
+                    <ScanningCorners />
+                  </div>
+                  <QRCodeSVG
+                    value={qrUrl}
+                    size={220}
+                    level="M"
+                    includeMargin={false}
+                    bgColor="transparent"
+                    fgColor="#1D1D1F"
+                  />
+                </div>
+              ) : state === "error" ? (
+                <div className="animate-scale-in w-16 h-16 rounded-full bg-[#FF3B30]/10 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-[#FF3B30]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              ) : state === "success" ? (
+                <div className="animate-scale-in w-16 h-16 rounded-full bg-[#34C759]/10 flex items-center justify-center">
+                  <Check className="w-7 h-7 text-[#34C759]" strokeWidth={2.5} />
+                </div>
+              ) : (
+                <PulseLoader />
+              )}
+            </div>
           </div>
 
           {/* Status */}
-          <p
-            className={`text-[15px] mb-3 transition-all duration-200 ${
-              state === "error"
-                ? "text-[#FF3B30]"
-                : state === "success"
-                ? "text-[#34C759]"
-                : "text-[#86868B]"
-            }`}
-          >
+          <p className={`text-[15px] font-medium mb-3 transition-all duration-200 animate-fade-in stagger-3 ${
+            state === "error" ? "text-[#FF3B30]" : state === "success" ? "text-[#34C759]" : "text-[#1D1D1F]"
+          }`}>
             {getStatusText()}
           </p>
 
           {/* Address */}
           {connectedAddress && state !== "error" && (
-            <p className="text-[13px] text-[#AEAEB2] font-mono mb-4 animate-fade-in">
+            <p className="text-[13px] text-[#86868B] font-mono mb-4 animate-fade-in">
               {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
             </p>
           )}
@@ -305,7 +309,7 @@ export default function Home() {
           {state === "error" && (
             <button
               onClick={handleRetry}
-              className="flex items-center gap-2 px-5 py-2.5 text-[15px] text-[#0066CC] hover:bg-[#0066CC]/5 active:bg-[#0066CC]/10 rounded-full transition-all duration-200"
+              className="flex items-center gap-2 px-5 py-2.5 text-[15px] font-medium text-[#007AFF] hover:bg-[#007AFF]/5 active:bg-[#007AFF]/10 rounded-full transition-all duration-200"
             >
               <RefreshCw className="w-4 h-4" />
               Try again
@@ -313,27 +317,36 @@ export default function Home() {
           )}
 
           {/* Loading hint */}
-          {isLoading &&
-            state !== "generating" &&
-            state !== "checking_session" && (
-              <p className="text-[13px] text-[#AEAEB2] animate-fade-in">
-                Keep World App open
-              </p>
-            )}
+          {isLoading && state !== "generating" && state !== "checking_session" && (
+            <p className="text-[13px] text-[#86868B] animate-fade-in">
+              Keep World App open
+            </p>
+          )}
 
-          {/* Disclaimer */}
-          <div className="mt-16 text-center">
-            <p className="text-[12px] text-[#AEAEB2] leading-[1.6] max-w-[300px]">
-              Messages stored locally only <br />
-              Clearing browser data deletes history
+          {/* Footer - Trust signals */}
+          <div className="mt-16 text-center animate-fade-in stagger-4">
+            {/* Trust badges */}
+            <div className="flex items-center justify-center gap-4 mb-4">
+              <div className="flex items-center gap-1.5 text-[11px] text-[#86868B]">
+                <div className="w-1 h-1 rounded-full bg-[#34C759]" />
+                <span>Secured by XMTP</span>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] text-[#86868B]">
+                <div className="w-1 h-1 rounded-full bg-[#007AFF]" />
+                <span>World ID Verified</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[#AEAEB2] leading-[1.6] max-w-[280px] mb-3">
+              Messages stored locally only. Clearing browser data deletes history.
             </p>
             <a
               href="https://world.org/download"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block mt-2 text-[12px] text-[#0066CC] hover:text-[#0052A3] transition-colors duration-200"
+              className="inline-block text-[12px] font-medium text-[#007AFF] hover:text-[#0066CC] transition-colors duration-200"
             >
-              Get World App
+              Get World App →
             </a>
           </div>
         </div>
