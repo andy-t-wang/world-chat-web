@@ -188,16 +188,33 @@ export default function Home() {
       {/* Keyframe animations */}
       <style jsx global>{`
         @keyframes pulse-fade {
-          0%, 100% { opacity: 0.4; transform: scale(0.95); }
-          50% { opacity: 1; transform: scale(1); }
+          0%,
+          100% {
+            opacity: 0.4;
+            transform: scale(0.95);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
         @keyframes fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
         @keyframes scale-in {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 1; transform: scale(1); }
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
         .animate-fade-in {
           animation: fade-in 0.3s ease-out forwards;
@@ -307,8 +324,7 @@ export default function Home() {
           {/* Disclaimer */}
           <div className="mt-16 text-center">
             <p className="text-[12px] text-[#AEAEB2] leading-[1.6] max-w-[300px]">
-              Messages stored locally only
-              <span className="mx-2 opacity-40">·</span>
+              Messages stored locally only <br />
               Clearing browser data deletes history
             </p>
             <a
