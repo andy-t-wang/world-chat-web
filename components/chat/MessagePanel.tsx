@@ -49,7 +49,7 @@ import {
   isMultiAttachmentWrapper,
   extractAttachments,
 } from "@/types/attachments";
-import { useUsername } from "@/hooks/useUsername";
+import { useDisplayName } from "@/hooks/useDisplayName";
 import { useMessages } from "@/hooks/useMessages";
 import { xmtpClientAtom } from "@/stores/client";
 import {
@@ -153,7 +153,7 @@ function MemberName({
 
   // Use the best available address
   const address = cachedAddress || lookedUpAddress;
-  const { displayName } = useUsername(address || null);
+  const { displayName } = useDisplayName(address || null);
 
   if (displayName) return <>{displayName}</>;
   if (address) return <>{`${address.slice(0, 6)}...${address.slice(-4)}`}</>;
@@ -587,7 +587,7 @@ interface MemberPreview {
 
 // Helper component to display sender name above messages
 function SenderName({ address }: { address: string | undefined }) {
-  const { displayName } = useUsername(address);
+  const { displayName } = useDisplayName(address);
   const name =
     displayName ??
     (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Unknown");
@@ -746,6 +746,7 @@ interface MessagePanelProps {
   conversationId: string;
   conversationType: "dm" | "group";
   peerAddress?: string;
+  peerInboxId?: string;
   name?: string;
   avatarUrl?: string | null;
   isVerified?: boolean;
@@ -758,12 +759,14 @@ interface MessagePanelProps {
   isMessageRequest?: boolean;
   onOpenGroupDetails?: () => void;
   onMemberAvatarClick?: (address: string, inboxId: string) => void;
+  onOpenPeerProfile?: () => void;
 }
 
 export function MessagePanel({
   conversationId,
   conversationType,
   peerAddress,
+  peerInboxId,
   name: nameOverride,
   avatarUrl,
   isVerified = false,
@@ -776,6 +779,7 @@ export function MessagePanel({
   isMessageRequest = false,
   onOpenGroupDetails,
   onMemberAvatarClick,
+  onOpenPeerProfile,
 }: MessagePanelProps) {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -803,7 +807,7 @@ export function MessagePanel({
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { displayName } = useUsername(
+  const { displayName } = useDisplayName(
     conversationType === "dm" ? peerAddress : null
   );
   const name =
@@ -1400,11 +1404,17 @@ export function MessagePanel({
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div
           className={`flex items-center gap-3 ${
-            conversationType === "group" && onOpenGroupDetails
+            (conversationType === "group" && onOpenGroupDetails) || (conversationType === "dm" && onOpenPeerProfile)
               ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
               : ""
           }`}
-          onClick={() => conversationType === "group" && onOpenGroupDetails?.()}
+          onClick={() => {
+            if (conversationType === "group") {
+              onOpenGroupDetails?.();
+            } else if (conversationType === "dm") {
+              onOpenPeerProfile?.();
+            }
+          }}
         >
           {conversationType === "group" ? (
             <Avatar
@@ -2031,7 +2041,23 @@ export function MessagePanel({
                         {!isOwnMessage && (
                           <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
                             {isLastInGroup && (
-                              <Avatar address={replySenderAddress} size="sm" />
+                              conversationType === "group" && onMemberAvatarClick && replySenderAddress ? (
+                                <button
+                                  onClick={() => onMemberAvatarClick(replySenderAddress, msg.senderInboxId)}
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                >
+                                  <Avatar address={replySenderAddress} size="sm" />
+                                </button>
+                              ) : conversationType === "dm" && onOpenPeerProfile ? (
+                                <button
+                                  onClick={onOpenPeerProfile}
+                                  className="cursor-pointer hover:opacity-80 transition-opacity"
+                                >
+                                  <Avatar address={replySenderAddress} size="sm" />
+                                </button>
+                              ) : (
+                                <Avatar address={replySenderAddress} size="sm" />
+                              )
                             )}
                           </div>
                         )}

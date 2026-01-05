@@ -3,7 +3,7 @@
 import { Pin, BellOff, Image, Video, Ban } from 'lucide-react';
 import { Avatar } from '@/components/ui/Avatar';
 import { VerificationBadge } from '@/components/ui/VerificationBadge';
-import { useUsername } from '@/hooks/useUsername';
+import { useDisplayName } from '@/hooks/useDisplayName';
 
 interface MemberPreview {
   inboxId: string;
@@ -109,8 +109,8 @@ export function ConversationItem(props: ConversationItemProps) {
     onClick,
   } = props;
 
-  // For DMs: Fetch username and profile picture from World App Username API
-  const { displayName, profilePicture } = useUsername(conversationType === 'dm' ? peerAddress : null);
+  // For DMs: Fetch display name (custom nickname > world username > address) and profile picture
+  const { displayName, profilePicture } = useDisplayName(conversationType === 'dm' ? peerAddress : null);
 
   // User is verified if they have a profile_picture_url (even if it's a default one)
   const isVerified = conversationType === 'dm' && profilePicture !== null;

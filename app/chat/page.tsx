@@ -10,7 +10,7 @@ import { clientStateAtom } from "@/stores/client";
 import { xmtpClientAtom } from "@/stores/client";
 import { useConversationMetadata, useIsMessageRequest } from "@/hooks/useConversations";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
-import { useUsername } from "@/hooks/useUsername";
+import { useDisplayName } from "@/hooks/useDisplayName";
 import { useGroupMemberVerification } from "@/hooks/useGroupMemberVerification";
 import { hasQRSession } from "@/lib/auth/session";
 import { setCurrentChatName } from "@/lib/notifications";
@@ -50,7 +50,8 @@ export default function ChatPage() {
   // - Username but no profile picture → unverified
   // - Resolution failed (no record) → not verified
   const peerAddress = conversationMetadata?.conversationType === 'dm' ? conversationMetadata.peerAddress : null;
-  const { record: peerRecord, displayName: peerDisplayName } = useUsername(peerAddress);
+  const peerInboxId = conversationMetadata?.conversationType === 'dm' ? conversationMetadata.peerInboxId : null;
+  const { record: peerRecord, displayName: peerDisplayName } = useDisplayName(peerAddress);
   const isPeerVerified = Boolean(peerRecord?.profile_picture_url || peerRecord?.minimized_profile_picture_url);
 
   // Update browser tab title with current chat name
@@ -86,6 +87,13 @@ export default function ChatPage() {
     setShowGroupDetails(false); // Close group details if open
     setSelectedMemberProfile({ address, inboxId });
   }, []);
+
+  // Handle opening peer profile in DM
+  const handleOpenPeerProfile = useCallback(() => {
+    if (peerAddress && peerInboxId) {
+      setSelectedMemberProfile({ address: peerAddress, inboxId: peerInboxId });
+    }
+  }, [peerAddress, peerInboxId]);
 
   // Handle leave group
   const handleLeaveGroup = useCallback(async () => {
@@ -332,8 +340,10 @@ export default function ChatPage() {
               conversationId={selectedId}
               conversationType="dm"
               peerAddress={conversationMetadata.peerAddress}
+              peerInboxId={conversationMetadata.peerInboxId}
               isVerified={isPeerVerified}
               isMessageRequest={isMessageRequest}
+              onOpenPeerProfile={handleOpenPeerProfile}
             />
           )
         ) : (
