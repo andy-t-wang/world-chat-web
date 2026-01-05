@@ -1631,35 +1631,41 @@ class XMTPStreamManager {
                 // Track messages received while tab is hidden
                 this.hiddenTabMessageCount++;
 
-                let senderName: string;
-                let avatarUrl: string | undefined = metadata.groupImageUrl;
+                // Resolve sender name asynchronously for better UX
+                (async () => {
+                  let senderName: string;
+                  let avatarUrl: string | undefined = metadata.groupImageUrl;
 
-                if (metadata.conversationType === 'group') {
-                  senderName = metadata.groupName || 'Group';
-                } else if (metadata.peerAddress) {
-                  // Try to get username from cache (synchronous, no network delay)
-                  const usernameRecord = getCachedUsername(metadata.peerAddress);
-                  if (usernameRecord?.username) {
-                    senderName = usernameRecord.username;
-                    avatarUrl = getAvatarUrl(usernameRecord.username);
+                  if (metadata.conversationType === 'group') {
+                    senderName = metadata.groupName || 'Group';
+                  } else if (metadata.peerAddress) {
+                    // Try to resolve username (will fetch if not cached)
+                    try {
+                      const usernameRecord = await resolveAddress(metadata.peerAddress);
+                      if (usernameRecord?.username) {
+                        senderName = usernameRecord.username;
+                        avatarUrl = getAvatarUrl(usernameRecord.username);
+                      } else {
+                        senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                      }
+                    } catch {
+                      senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                    }
                   } else {
-                    // Fallback to truncated address
-                    senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                    senderName = 'Someone';
                   }
-                } else {
-                  senderName = 'Someone';
-                }
 
-                showMessageNotification({
-                  conversationId,
-                  senderName,
-                  messagePreview: content || 'New message',
-                  avatarUrl,
-                });
-                this.updateTabTitle();
+                  showMessageNotification({
+                    conversationId,
+                    senderName,
+                    messagePreview: content || 'New message',
+                    avatarUrl,
+                  });
+                  this.updateTabTitle();
 
-                // Start flashing the tab title to get user's attention
-                startTitleFlash(senderName, false);
+                  // Start flashing the tab title to get user's attention
+                  startTitleFlash(senderName, false);
+                })();
               } else if (!isSelected) {
                 // Tab visible but different conversation - still update title
                 this.updateTabTitle();
@@ -2276,31 +2282,38 @@ class XMTPStreamManager {
           if (!tabVisible) {
             this.hiddenTabMessageCount++;
 
-            let senderName: string;
-            let avatarUrl: string | undefined = metadata.groupImageUrl;
+            // Resolve sender name asynchronously for better UX
+            (async () => {
+              let senderName: string;
+              let avatarUrl: string | undefined = metadata.groupImageUrl;
 
-            if (metadata.conversationType === 'group') {
-              senderName = metadata.groupName || 'Group';
-            } else if (metadata.peerAddress) {
-              const usernameRecord = getCachedUsername(metadata.peerAddress);
-              if (usernameRecord?.username) {
-                senderName = usernameRecord.username;
-                avatarUrl = getAvatarUrl(usernameRecord.username);
+              if (metadata.conversationType === 'group') {
+                senderName = metadata.groupName || 'Group';
+              } else if (metadata.peerAddress) {
+                try {
+                  const usernameRecord = await resolveAddress(metadata.peerAddress);
+                  if (usernameRecord?.username) {
+                    senderName = usernameRecord.username;
+                    avatarUrl = getAvatarUrl(usernameRecord.username);
+                  } else {
+                    senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                  }
+                } catch {
+                  senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                }
               } else {
-                senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                senderName = 'Someone';
               }
-            } else {
-              senderName = 'Someone';
-            }
 
-            showMessageNotification({
-              conversationId,
-              senderName,
-              messagePreview: `Reacted ${emoji}`,
-              avatarUrl,
-            });
-            this.updateTabTitle();
-            startTitleFlash(senderName, false);
+              showMessageNotification({
+                conversationId,
+                senderName,
+                messagePreview: `Reacted ${emoji}`,
+                avatarUrl,
+              });
+              this.updateTabTitle();
+              startTitleFlash(senderName, false);
+            })();
           } else if (!isSelected) {
             this.updateTabTitle();
           }
