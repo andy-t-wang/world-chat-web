@@ -2065,7 +2065,7 @@ export function MessagePanel({
                           </div>
                         )}
                         <div
-                          className="flex flex-col"
+                          className={`flex flex-col ${isOwnMessage ? "items-end" : ""}`}
                           onContextMenu={(e) =>
                             handleMessageContextMenu(
                               e,

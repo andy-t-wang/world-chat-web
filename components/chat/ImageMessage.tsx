@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Loader2, ImageIcon, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useImageAttachment } from '@/hooks/useImageAttachment';
 import type { RemoteAttachmentContent } from '@/types/attachments';
@@ -20,9 +20,29 @@ interface ImageMessageProps {
  * Matches Figma design: rounded corners, subtle border, no bubble background
  */
 export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize }: ImageMessageProps) {
-  const { status, blobUrl, error, isLoading, canRetry, retry } = useImageAttachment(remoteAttachment);
+  const { status, blobUrl, error, isLoading, canRetry, retry, mimeType } = useImageAttachment(remoteAttachment);
   const [imageError, setImageError] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+
+  // Detect if this is a video based on MIME type
+  const isVideo = mimeType?.startsWith('video/');
+
+  // Retry handler that also resets imageError state
+  const handleRetry = useCallback(async () => {
+    setImageError(false);
+    await retry();
+  }, [retry]);
+
+  // Handle image element load error
+  const handleImageError = useCallback(() => {
+    console.error('[ImageMessage] Image element failed to render:', {
+      filename: remoteAttachment.filename,
+      contentDigest: remoteAttachment.contentDigest,
+      url: remoteAttachment.url,
+      mimeType,
+    });
+    setImageError(true);
+  }, [remoteAttachment, mimeType]);
 
   // Determine if image is vertical or horizontal for sizing
   const isVertical = imageDimensions ? imageDimensions.height > imageDimensions.width : true;
@@ -69,16 +89,29 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
     const isUntrusted = error === 'Untrusted CDN source';
 
     if (compact) {
+      const showCompactRetry = canRetry || imageError;
       return (
-        <div className="w-full h-full bg-[#F3F4F5] flex items-center justify-center">
+        <div className="w-full h-full bg-[#F3F4F5] flex flex-col items-center justify-center gap-1">
           {isUntrusted ? (
             <AlertTriangle className="w-5 h-5 text-amber-500" />
           ) : (
             <ImageIcon className="w-5 h-5 text-[#9BA3AE]" />
           )}
+          {showCompactRetry && (
+            <button
+              onClick={handleRetry}
+              className="p-1 rounded hover:bg-black/5"
+              title="Retry"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-[#005CFF]" />
+            </button>
+          )}
         </div>
       );
     }
+
+    // Show retry for download failures (canRetry) or render failures (imageError)
+    const showRetry = canRetry || imageError;
 
     return (
       <div className="flex items-center gap-1.5">
@@ -92,9 +125,9 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
             ) : (
               <ImageIcon className="w-6 h-6 text-[#9BA3AE]" />
             )}
-            {canRetry && !imageError && (
+            {showRetry && (
               <button
-                onClick={retry}
+                onClick={handleRetry}
                 className="flex items-center gap-1 text-[13px] text-[#005CFF] hover:underline"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -114,33 +147,73 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
     );
   }
 
-  // Success state - show image
+  // Success state - show image or video
   if (blobUrl) {
-    // Compact mode for grid
+    // Render video element for video MIME types
+    if (isVideo) {
+      if (compact) {
+        return (
+          <video
+            src={blobUrl}
+            className="w-full h-full object-cover"
+            controls
+            playsInline
+            onError={handleImageError}
+          />
+        );
+      }
+
+      if (fullSize) {
+        return (
+          <video
+            src={blobUrl}
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+            controls
+            playsInline
+            onError={handleImageError}
+          />
+        );
+      }
+
+      // Default video mode
+      return (
+        <div className="overflow-hidden rounded-[16px] border border-[rgba(0,0,0,0.1)]">
+          <video
+            src={blobUrl}
+            className="block max-w-[250px] max-h-[300px] object-cover"
+            controls
+            playsInline
+            onError={handleImageError}
+          />
+        </div>
+      );
+    }
+
+    // Compact mode for grid (images)
     if (compact) {
       return (
         <img
           src={blobUrl}
           alt={remoteAttachment.filename || 'Image'}
           className="w-full h-full object-cover"
-          onError={() => setImageError(true)}
+          onError={handleImageError}
         />
       );
     }
 
-    // Full size mode for lightbox
+    // Full size mode for lightbox (images)
     if (fullSize) {
       return (
         <img
           src={blobUrl}
           alt={remoteAttachment.filename || 'Image'}
           className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
-          onError={() => setImageError(true)}
+          onError={handleImageError}
         />
       );
     }
 
-    // Default mode
+    // Default image mode
     return (
       <div className="overflow-hidden rounded-[16px] border border-[rgba(0,0,0,0.1)]">
         <img
@@ -151,7 +224,7 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
             const img = e.target as HTMLImageElement;
             setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
           }}
-          onError={() => setImageError(true)}
+          onError={handleImageError}
           onClick={() => {
             // Open in new tab for full view
             window.open(blobUrl, '_blank');

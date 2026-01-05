@@ -179,6 +179,15 @@ async function downloadAndDecrypt(
       mimeType: entry.mimeType,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Download failed';
+    console.error('[ImageService] Failed to load image:', {
+      contentDigest,
+      filename,
+      url,
+      error: errorMessage,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+
     // Cache the failure
     const failedEntry: WorldChatImage = {
       contentDigest,
@@ -195,7 +204,7 @@ async function downloadAndDecrypt(
     return {
       status: 'failed',
       blobUrl: null,
-      error: error instanceof Error ? error.message : 'Download failed',
+      error: errorMessage,
     };
   }
 }
@@ -225,6 +234,7 @@ export async function loadImage(
 
   // Return cached failure state (allows retry via retryImage)
   if (cached && cached.status === 'failed') {
+    console.warn('[ImageService] Returning cached failure for:', contentDigest);
     return {
       status: 'failed',
       blobUrl: null,
@@ -240,6 +250,7 @@ export async function loadImage(
 
   // Verify trusted CDN
   if (!isTrustedCdnUrl(url)) {
+    console.warn('[ImageService] Untrusted CDN source:', { url, contentDigest });
     const failedEntry: WorldChatImage = {
       contentDigest,
       fileLocation: url,

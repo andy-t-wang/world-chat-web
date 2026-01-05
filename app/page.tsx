@@ -38,19 +38,6 @@ function PulseLoader() {
   );
 }
 
-// Corner brackets for QR scanning guide
-function ScanningCorners() {
-  const cornerStyle = "absolute w-5 h-5 border-[#1D1D1F]";
-  return (
-    <>
-      <div className={`${cornerStyle} top-0 left-0 border-t-2 border-l-2 rounded-tl-lg`} />
-      <div className={`${cornerStyle} top-0 right-0 border-t-2 border-r-2 rounded-tr-lg`} />
-      <div className={`${cornerStyle} bottom-0 left-0 border-b-2 border-l-2 rounded-bl-lg`} />
-      <div className={`${cornerStyle} bottom-0 right-0 border-b-2 border-r-2 rounded-br-lg`} />
-    </>
-  );
-}
-
 export default function Home() {
   const router = useRouter();
   const [state, setState] = useState<LoginState>("initializing");
@@ -58,6 +45,7 @@ export default function Home() {
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false); // Only true once we know we need QR login
+  const [showStagingWarning, setShowStagingWarning] = useState(false);
   const signerRef = useRef<RemoteSigner | null>(null);
   const { initializeWithRemoteSigner, restoreSession } = useQRXmtpClient();
 
@@ -164,12 +152,26 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Show staging app warning after 10 seconds of waiting for scan
+  useEffect(() => {
+    if (state !== "waiting_for_scan") {
+      setShowStagingWarning(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setShowStagingWarning(true);
+    }, 10000);
+
+    return () => clearTimeout(timer);
+  }, [state]);
+
   const getStatusText = () => {
     switch (state) {
       case "initializing":
         return ""; // Don't show text while checking session
       case "waiting_for_scan":
-        return "Scan with Camera. Not World App QR Scanner";
+        return "Scan with your Phone Camera";
       case "mobile_connected":
         return "Connected";
       case "authenticating":
@@ -211,24 +213,54 @@ export default function Home() {
       {/* Keyframe animations */}
       <style jsx global>{`
         @keyframes pulse-fade {
-          0%, 100% { opacity: 0.4; transform: scale(0.95); }
-          50% { opacity: 1; transform: scale(1); }
+          0%,
+          100% {
+            opacity: 0.4;
+            transform: scale(0.95);
+          }
+          50% {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
         @keyframes fade-in {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
+          from {
+            opacity: 0;
+            transform: translateY(8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
         }
         @keyframes scale-in {
-          from { opacity: 0; transform: scale(0.9); }
-          to { opacity: 1; transform: scale(1); }
+          from {
+            opacity: 0;
+            transform: scale(0.9);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
         @keyframes glow-pulse {
-          0%, 100% { opacity: 0.4; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.02); }
+          0%,
+          100% {
+            opacity: 0.4;
+            transform: scale(1);
+          }
+          50% {
+            opacity: 0.7;
+            transform: scale(1.02);
+          }
         }
         @keyframes shimmer {
-          0% { background-position: -200% center; }
-          100% { background-position: 200% center; }
+          0% {
+            background-position: -200% center;
+          }
+          100% {
+            background-position: 200% center;
+          }
         }
         .animate-fade-in {
           animation: fade-in 0.5s ease-out forwards;
@@ -239,10 +271,22 @@ export default function Home() {
         .animate-glow {
           animation: glow-pulse 3s ease-in-out infinite;
         }
-        .stagger-1 { animation-delay: 0.1s; opacity: 0; }
-        .stagger-2 { animation-delay: 0.2s; opacity: 0; }
-        .stagger-3 { animation-delay: 0.3s; opacity: 0; }
-        .stagger-4 { animation-delay: 0.5s; opacity: 0; }
+        .stagger-1 {
+          animation-delay: 0.1s;
+          opacity: 0;
+        }
+        .stagger-2 {
+          animation-delay: 0.2s;
+          opacity: 0;
+        }
+        .stagger-3 {
+          animation-delay: 0.3s;
+          opacity: 0;
+        }
+        .stagger-4 {
+          animation-delay: 0.5s;
+          opacity: 0;
+        }
       `}</style>
 
       <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -258,7 +302,9 @@ export default function Home() {
           {/* E2EE Badge - Refined pill design */}
           <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#E8F5E9] border border-[#A5D6A7]/30 mb-10 animate-fade-in stagger-1">
             <Shield className="w-3.5 h-3.5 text-[#2E7D32]" />
-            <span className="text-[13px] font-medium text-[#2E7D32]">End-to-end encrypted</span>
+            <span className="text-[13px] font-medium text-[#2E7D32]">
+              End-to-end encrypted
+            </span>
           </div>
 
           {/* QR Code Card with glow effect */}
@@ -272,10 +318,6 @@ export default function Home() {
             <div className="relative w-[280px] h-[280px] rounded-3xl flex items-center justify-center bg-white shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.04]">
               {showQR ? (
                 <div className="relative animate-scale-in">
-                  {/* Scanning corners */}
-                  <div className="absolute -inset-4">
-                    <ScanningCorners />
-                  </div>
                   <QRCodeSVG
                     value={qrUrl}
                     size={220}
@@ -287,8 +329,18 @@ export default function Home() {
                 </div>
               ) : state === "error" ? (
                 <div className="animate-scale-in w-16 h-16 rounded-full bg-[#FF3B30]/10 flex items-center justify-center">
-                  <svg className="w-7 h-7 text-[#FF3B30]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <svg
+                    className="w-7 h-7 text-[#FF3B30]"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 18L18 6M6 6l12 12"
+                    />
                   </svg>
                 </div>
               ) : state === "success" ? (
@@ -302,9 +354,15 @@ export default function Home() {
           </div>
 
           {/* Status */}
-          <p className={`text-[15px] font-medium mb-3 transition-all duration-200 animate-fade-in stagger-3 ${
-            state === "error" ? "text-[#FF3B30]" : state === "success" ? "text-[#34C759]" : "text-[#1D1D1F]"
-          }`}>
+          <p
+            className={`text-[15px] font-medium mb-3 transition-all duration-200 animate-fade-in stagger-3 ${
+              state === "error"
+                ? "text-[#FF3B30]"
+                : state === "success"
+                ? "text-[#34C759]"
+                : "text-[#1D1D1F]"
+            }`}
+          >
             {getStatusText()}
           </p>
 
@@ -333,6 +391,14 @@ export default function Home() {
             </p>
           )}
 
+          {/* Staging app warning - shown after 10 seconds */}
+          {showStagingWarning && state === "waiting_for_scan" && (
+            <p className="text-[12px] text-[#FF9500] text-center max-w-[280px] animate-fade-in mt-2">
+              If you have the staging World App installed, the deep link will
+              not work. Make sure to delete it.
+            </p>
+          )}
+
           {/* Footer - Trust signals */}
           <div className="mt-16 text-center animate-fade-in stagger-4">
             {/* Trust badges */}
@@ -348,7 +414,8 @@ export default function Home() {
             </div>
 
             <p className="text-[11px] text-[#AEAEB2] leading-[1.6] max-w-[280px] mb-3">
-              Messages stored locally only. Clearing browser data deletes history.
+              Messages stored locally only. Clearing browser data deletes
+              history.
             </p>
             <a
               href="https://world.org/download"

@@ -19,6 +19,8 @@ interface UseImageAttachmentReturn {
   canRetry: boolean;
   /** Retry the download */
   retry: () => Promise<void>;
+  /** MIME type of the attachment */
+  mimeType: string | null;
 }
 
 /**
@@ -119,5 +121,6 @@ export function useImageAttachment(
     isLoading,
     canRetry,
     retry,
+    mimeType: result.mimeType ?? null,
   };
 }
