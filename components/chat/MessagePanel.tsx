@@ -20,6 +20,7 @@ import {
   Lock,
   LogOut,
   Clock,
+  SmilePlus,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
@@ -294,6 +295,28 @@ interface ReactionPickerProps {
 
 function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
   const pickerRef = useRef<HTMLDivElement>(null);
+  const [showFullPicker, setShowFullPicker] = useState(false);
+  const [EmojiPicker, setEmojiPicker] = useState<React.ComponentType<{
+    data: unknown;
+    onEmojiSelect: (emoji: { native: string }) => void;
+    theme: string;
+    previewPosition: string;
+    skinTonePosition: string;
+  }> | null>(null);
+  const [emojiData, setEmojiData] = useState<unknown>(null);
+
+  // Lazy load emoji-mart only when full picker is opened
+  useEffect(() => {
+    if (showFullPicker && !EmojiPicker) {
+      Promise.all([
+        import("@emoji-mart/react"),
+        import("@emoji-mart/data"),
+      ]).then(([pickerModule, dataModule]) => {
+        setEmojiPicker(() => pickerModule.default);
+        setEmojiData(dataModule.default);
+      });
+    }
+  }, [showFullPicker, EmojiPicker]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -305,10 +328,54 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [onClose]);
 
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showFullPicker) {
+          setShowFullPicker(false);
+        } else {
+          onClose();
+        }
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [onClose, showFullPicker]);
+
+  const handleEmojiSelect = (emoji: { native: string }) => {
+    onSelect(emoji.native);
+  };
+
+  // Full emoji picker view
+  if (showFullPicker) {
+    return (
+      <div
+        ref={pickerRef}
+        className="fixed z-50"
+        style={{ left: position.x - 100, top: position.y - 350 }}
+      >
+        {EmojiPicker && emojiData ? (
+          <EmojiPicker
+            data={emojiData}
+            onEmojiSelect={handleEmojiSelect}
+            theme="light"
+            previewPosition="none"
+            skinTonePosition="search"
+          />
+        ) : (
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 flex items-center justify-center">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Quick reaction bar
   return (
     <div
       ref={pickerRef}
-      className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 px-2 py-1.5 flex gap-1"
+      className="fixed z-50 bg-white rounded-2xl shadow-lg border border-gray-200 px-2 py-1.5 flex items-center gap-1"
       style={{ left: position.x, top: position.y }}
     >
       {REACTION_EMOJIS.map((emoji) => (
@@ -320,6 +387,70 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
           {emoji}
         </button>
       ))}
+      {/* Divider */}
+      <div className="w-px h-6 bg-gray-200 mx-0.5" />
+      {/* Open full emoji picker */}
+      <button
+        onClick={() => setShowFullPicker(true)}
+        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+        title="More emojis"
+      >
+        <SmilePlus className="w-4 h-4" />
+      </button>
+    </div>
+  );
+}
+
+// Wrapper component that shows reaction button on hover (like Messenger)
+interface MessageWrapperProps {
+  children: React.ReactNode;
+  isOwnMessage: boolean;
+  messageId: string;
+  onReactionClick: (messageId: string, position: { x: number; y: number }) => void;
+}
+
+function MessageWrapper({
+  children,
+  isOwnMessage,
+  messageId,
+  onReactionClick,
+}: MessageWrapperProps) {
+  const handleReactionClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    // Position picker centered above the button
+    const pickerWidth = 280; // Approximate width of picker
+    onReactionClick(messageId, {
+      x: rect.left + rect.width / 2 - pickerWidth / 2,
+      y: rect.top - 48,
+    });
+  };
+
+  return (
+    <div className="group/msg relative flex items-center gap-1">
+      {/* Reaction button - left side for outgoing messages */}
+      {isOwnMessage && (
+        <button
+          onClick={handleReactionClick}
+          className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 group-hover/msg:opacity-100 hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-all shrink-0"
+          title="Add reaction"
+        >
+          <SmilePlus className="w-4 h-4" />
+        </button>
+      )}
+
+      {children}
+
+      {/* Reaction button - right side for incoming messages */}
+      {!isOwnMessage && (
+        <button
+          onClick={handleReactionClick}
+          className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 group-hover/msg:opacity-100 hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-all shrink-0"
+          title="Add reaction"
+        >
+          <SmilePlus className="w-4 h-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -1156,6 +1287,14 @@ export function MessagePanel({
     setContextMenu(null);
   }, [contextMenu]);
 
+  // Handle reaction button click (from MessageWrapper hover button)
+  const handleReactionButtonClick = useCallback(
+    (messageId: string, position: { x: number; y: number }) => {
+      setReactionPicker({ messageId, position });
+    },
+    []
+  );
+
   // Handle reaction selection
   const handleReactionSelect = useCallback(
     async (emoji: string) => {
@@ -1924,23 +2063,29 @@ export function MessagePanel({
                             isFirstInGroup ? "mt-3" : "mt-0.5"
                           }`}
                         >
-                          <div
-                            onContextMenu={(e) =>
-                              handleMessageContextMenu(e, item.id, text, "")
-                            }
+                          <MessageWrapper
+                            isOwnMessage={true}
+                            messageId={item.id}
+                            onReactionClick={handleReactionButtonClick}
                           >
-                            <MessageLinkPreview
-                              text={text}
-                              isOwnMessage={true}
-                            />
-                            <MessageReactions
-                              messageId={item.id}
-                              isOwnMessage={true}
-                              memberPreviews={memberPreviews}
-                              peerAddress={peerAddress}
-                              ownInboxId={ownInboxId}
-                            />
-                          </div>
+                            <div
+                              onContextMenu={(e) =>
+                                handleMessageContextMenu(e, item.id, text, "")
+                              }
+                            >
+                              <MessageLinkPreview
+                                text={text}
+                                isOwnMessage={true}
+                              />
+                              <MessageReactions
+                                messageId={item.id}
+                                isOwnMessage={true}
+                                memberPreviews={memberPreviews}
+                                peerAddress={peerAddress}
+                                ownInboxId={ownInboxId}
+                              />
+                            </div>
+                          </MessageWrapper>
                           {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
                           {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                             <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
@@ -1970,23 +2115,29 @@ export function MessagePanel({
                           isFirstInGroup ? "mt-3" : "mt-0.5"
                         }`}
                       >
-                        <div className="max-w-[300px]">
-                          <div
-                            className={`${isVerified ? "bg-[#007AFF] shadow-sm shadow-[#007AFF]/20" : "bg-[#717680]"} px-3 py-2 ${senderRadius}`}
-                            onContextMenu={(e) =>
-                              handleMessageContextMenu(e, item.id, text, "")
-                            }
-                          >
-                            <MessageText text={text} isOwnMessage={true} />
+                        <MessageWrapper
+                          isOwnMessage={true}
+                          messageId={item.id}
+                          onReactionClick={handleReactionButtonClick}
+                        >
+                          <div className="max-w-[300px]">
+                            <div
+                              className={`${isVerified ? "bg-[#007AFF] shadow-sm shadow-[#007AFF]/20" : "bg-[#717680]"} px-3 py-2 ${senderRadius}`}
+                              onContextMenu={(e) =>
+                                handleMessageContextMenu(e, item.id, text, "")
+                              }
+                            >
+                              <MessageText text={text} isOwnMessage={true} />
+                            </div>
+                            <MessageReactions
+                              messageId={item.id}
+                              isOwnMessage={true}
+                              memberPreviews={memberPreviews}
+                              peerAddress={peerAddress}
+                              ownInboxId={ownInboxId}
+                            />
                           </div>
-                          <MessageReactions
-                            messageId={item.id}
-                            isOwnMessage={true}
-                            memberPreviews={memberPreviews}
-                            peerAddress={peerAddress}
-                            ownInboxId={ownInboxId}
-                          />
-                        </div>
+                        </MessageWrapper>
                         {/* Link preview outside the bubble for messages with text + URL */}
                         {linkPreviewEnabled && extractUrls(text).length > 0 && (
                           <div className="mt-2">
@@ -2059,28 +2210,34 @@ export function MessagePanel({
                           {isFirstInGroup && (
                             <SenderName address={senderAddress} />
                           )}
-                          <div
-                            onContextMenu={(e) =>
-                              handleMessageContextMenu(
-                                e,
-                                item.id,
-                                text,
-                                senderAddress ?? ""
-                              )
-                            }
+                          <MessageWrapper
+                            isOwnMessage={false}
+                            messageId={item.id}
+                            onReactionClick={handleReactionButtonClick}
                           >
-                            <MessageLinkPreview
-                              text={text}
-                              isOwnMessage={false}
-                            />
-                            <MessageReactions
-                              messageId={item.id}
-                              isOwnMessage={false}
-                              memberPreviews={memberPreviews}
-                              peerAddress={peerAddress}
-                              ownInboxId={ownInboxId}
-                            />
-                          </div>
+                            <div
+                              onContextMenu={(e) =>
+                                handleMessageContextMenu(
+                                  e,
+                                  item.id,
+                                  text,
+                                  senderAddress ?? ""
+                                )
+                              }
+                            >
+                              <MessageLinkPreview
+                                text={text}
+                                isOwnMessage={false}
+                              />
+                              <MessageReactions
+                                messageId={item.id}
+                                isOwnMessage={false}
+                                memberPreviews={memberPreviews}
+                                peerAddress={peerAddress}
+                                ownInboxId={ownInboxId}
+                              />
+                            </div>
+                          </MessageWrapper>
                           {isLastInGroup && (
                             <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
                               {formatTime(msg.sentAtNs)}
@@ -2109,28 +2266,34 @@ export function MessagePanel({
                         {isFirstInGroup && (
                           <SenderName address={senderAddress} />
                         )}
-                        <div className="max-w-[300px]">
-                          <div
-                            className={`bg-white px-3 py-2 ${recipientRadius}`}
-                            onContextMenu={(e) =>
-                              handleMessageContextMenu(
-                                e,
-                                item.id,
-                                text,
-                                senderAddress ?? ""
-                              )
-                            }
-                          >
-                            <MessageText text={text} isOwnMessage={false} />
+                        <MessageWrapper
+                          isOwnMessage={false}
+                          messageId={item.id}
+                          onReactionClick={handleReactionButtonClick}
+                        >
+                          <div className="max-w-[300px]">
+                            <div
+                              className={`bg-white px-3 py-2 ${recipientRadius}`}
+                              onContextMenu={(e) =>
+                                handleMessageContextMenu(
+                                  e,
+                                  item.id,
+                                  text,
+                                  senderAddress ?? ""
+                                )
+                              }
+                            >
+                              <MessageText text={text} isOwnMessage={false} />
+                            </div>
+                            <MessageReactions
+                              messageId={item.id}
+                              isOwnMessage={false}
+                              memberPreviews={memberPreviews}
+                              peerAddress={peerAddress}
+                              ownInboxId={ownInboxId}
+                            />
                           </div>
-                          <MessageReactions
-                            messageId={item.id}
-                            isOwnMessage={false}
-                            memberPreviews={memberPreviews}
-                            peerAddress={peerAddress}
-                            ownInboxId={ownInboxId}
-                          />
-                        </div>
+                        </MessageWrapper>
                         {/* Link preview outside the bubble for messages with text + URL */}
                         {linkPreviewEnabled && extractUrls(text).length > 0 && (
                           <div className="mt-2">

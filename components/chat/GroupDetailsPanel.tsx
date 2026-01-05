@@ -200,7 +200,7 @@ function GroupMembersView({
       <div className="shrink-0 p-4 border-t border-[#E5E5EA]">
         <button
           onClick={onAddNew}
-          className="w-full h-12 flex items-center justify-center gap-2 rounded-full border border-[#E5E5EA] text-[15px] font-medium text-[#1D1D1F] hover:bg-[#F2F2F7] transition-colors"
+          className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-[15px] font-medium text-white hover:bg-[#2D2D2F] transition-colors"
         >
           <UserPlus className="w-5 h-5" />
           Add new

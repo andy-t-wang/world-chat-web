@@ -10,6 +10,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@emoji-mart/data": "^1.2.1",
+    "@emoji-mart/react": "^1.1.1",
     "@supabase/supabase-js": "^2.89.0",
     "@tanstack/react-virtual": "^3.13.14",
     "@worldcoin/minikit-js": "^1.9.9",
