@@ -2418,7 +2418,7 @@ export function MessagePanel({
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               rows={1}
-              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all"
+              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all scrollbar-hide"
               style={{ minHeight: '44px', maxHeight: '128px' }}
             />
             <button

@@ -68,3 +68,13 @@ body {
 .scrollbar-auto-hide.is-scrolling {
   scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
 }
+
+/* Completely hide scrollbar while maintaining scroll functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari, Opera */
+}

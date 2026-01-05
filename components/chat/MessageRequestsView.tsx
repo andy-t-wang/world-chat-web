@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useMemo, useState, useEffect } from "react";
+import { useRef, useMemo, useState, useEffect, useCallback } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useAtomValue, useSetAtom } from "jotai";
-import { ArrowLeft, Search, SearchX } from "lucide-react";
+import { ArrowLeft, Search, SearchX, Check, X, Loader2 } from "lucide-react";
 import {
   ConversationItem,
   type ConversationItemProps,
@@ -15,6 +15,7 @@ import {
 import { VIRTUALIZATION } from "@/config/constants";
 import { useMessageRequests } from "@/hooks/useConversations";
 import { getCachedUsername } from "@/lib/username/service";
+import { streamManager } from "@/lib/xmtp/StreamManager";
 
 interface MessageRequestsViewProps {
   onBack: () => void;
@@ -28,6 +29,13 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
   // Use message requests hook
   const { requestIds, metadata, requestCount, isNewRequest } = useMessageRequests();
+
+  // Multi-select state
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+  const hasSelection = selectedIds.size > 0;
 
   // Track username cache for search
   const [usernameCacheVersion, setUsernameCacheVersion] = useState(0);
@@ -71,6 +79,85 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       return false;
     });
   }, [requestIds, metadata, searchQuery, usernameCacheVersion]);
+
+  // Check if all filtered items are selected
+  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id));
+
+  // Toggle individual selection with shift-click support
+  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+
+      // Shift-click: select range from last clicked to current
+      if (shiftKey && lastClickedIndex !== null) {
+        const start = Math.min(lastClickedIndex, index);
+        const end = Math.max(lastClickedIndex, index);
+        for (let i = start; i <= end; i++) {
+          next.add(filteredIds[i]);
+        }
+      } else {
+        // Normal click: toggle single item
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+      }
+
+      return next;
+    });
+    setLastClickedIndex(index);
+  }, [lastClickedIndex, filteredIds]);
+
+  // Select/deselect all
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredIds));
+    }
+  }, [allSelected, filteredIds]);
+
+  // Clear selection and exit select mode
+  const exitSelectMode = useCallback(() => {
+    setSelectedIds(new Set());
+    setIsSelectMode(false);
+    setLastClickedIndex(null);
+  }, []);
+
+  // Accept selected requests
+  const acceptSelected = useCallback(async () => {
+    if (selectedIds.size === 0 || isProcessing) return;
+
+    setIsProcessing(true);
+    const idsToProcess = Array.from(selectedIds);
+
+    try {
+      await Promise.all(idsToProcess.map(id => streamManager.acceptConversation(id)));
+      exitSelectMode();
+    } catch (error) {
+      console.error('Failed to accept requests:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedIds, isProcessing, exitSelectMode]);
+
+  // Reject selected requests
+  const rejectSelected = useCallback(async () => {
+    if (selectedIds.size === 0 || isProcessing) return;
+
+    setIsProcessing(true);
+    const idsToProcess = Array.from(selectedIds);
+
+    try {
+      await Promise.all(idsToProcess.map(id => streamManager.rejectConversation(id)));
+      exitSelectMode();
+    } catch (error) {
+      console.error('Failed to reject requests:', error);
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [selectedIds, isProcessing, exitSelectMode]);
 
   // Format timestamp for display
   const formatTimestamp = (ns: bigint): string => {
@@ -156,6 +243,79 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
         </div>
       </div>
 
+      {/* Selection Bar - shows when in select mode or as a button to enter select mode */}
+      {filteredIds.length > 0 && (
+        <div className="shrink-0 px-4 py-2 border-b border-gray-100 flex items-center justify-between">
+          {isSelectMode ? (
+            <>
+              {/* Select all checkbox */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20"
+                />
+                <span className="text-sm text-[#717680]">
+                  {allSelected ? "Deselect all" : "Select all"}
+                </span>
+              </label>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2">
+                {hasSelection && (
+                  <span className="text-sm text-[#717680] mr-1">
+                    {selectedIds.size} selected
+                  </span>
+                )}
+                <button
+                  onClick={acceptSelected}
+                  disabled={isProcessing || !hasSelection}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1D1D1F] text-white text-sm font-medium hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  Accept
+                </button>
+                <button
+                  onClick={rejectSelected}
+                  disabled={isProcessing || !hasSelection}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E5EA] bg-white text-[#1D1D1F] text-sm font-medium hover:bg-[#F5F5F5] transition-colors disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <X className="w-4 h-4" />
+                  )}
+                  Reject
+                </button>
+                <button
+                  onClick={exitSelectMode}
+                  className="px-3 py-1.5 rounded-lg text-sm text-[#717680] hover:bg-[#F5F5F5] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-sm text-[#717680]">
+                {filteredIds.length} {filteredIds.length === 1 ? 'request' : 'requests'}
+              </span>
+              <button
+                onClick={() => setIsSelectMode(true)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-[#005CFF] hover:bg-[#005CFF]/10 transition-colors"
+              >
+                Select
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
       {/* Search */}
       <div className="shrink-0 px-4 py-3">
         <div className="relative">
@@ -227,6 +387,9 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                 );
               }
 
+              const isChecked = selectedIds.has(id);
+              const rowIndex = virtualRow.index;
+
               return (
                 <div
                   key={id}
@@ -238,12 +401,28 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                     height: virtualRow.size,
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
+                  className="flex items-center"
                 >
-                  <ConversationItem
-                    {...props}
-                    isSelected={selectedId === id}
-                    onClick={() => setSelectedId(id)}
-                  />
+                  {/* Checkbox - only show in select mode */}
+                  {isSelectMode && (
+                    <div className="pl-4 pr-1 flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onClick={(e) => toggleSelect(id, rowIndex, e.shiftKey)}
+                        onChange={() => {}} // Controlled by onClick for shift-click support
+                        className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20 cursor-pointer"
+                      />
+                    </div>
+                  )}
+                  {/* Conversation item */}
+                  <div className="flex-1 min-w-0">
+                    <ConversationItem
+                      {...props}
+                      isSelected={selectedId === id}
+                      onClick={() => setSelectedId(id)}
+                    />
+                  </div>
                 </div>
               );
             })}
