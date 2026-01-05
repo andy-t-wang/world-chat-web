@@ -757,6 +757,7 @@ interface MessagePanelProps {
   memberPreviews?: MemberPreview[];
   isMessageRequest?: boolean;
   onOpenGroupDetails?: () => void;
+  onMemberAvatarClick?: (address: string, inboxId: string) => void;
 }
 
 export function MessagePanel({
@@ -774,6 +775,7 @@ export function MessagePanel({
   memberPreviews,
   isMessageRequest = false,
   onOpenGroupDetails,
+  onMemberAvatarClick,
 }: MessagePanelProps) {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -2242,7 +2244,16 @@ export function MessagePanel({
                       >
                         <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
                           {isLastInGroup && (
-                            <Avatar address={senderAddress} size="sm" />
+                            conversationType === "group" && onMemberAvatarClick && senderAddress ? (
+                              <button
+                                onClick={() => onMemberAvatarClick(senderAddress, msg.senderInboxId)}
+                                className="cursor-pointer hover:opacity-80 transition-opacity"
+                              >
+                                <Avatar address={senderAddress} size="sm" />
+                              </button>
+                            ) : (
+                              <Avatar address={senderAddress} size="sm" />
+                            )
                           )}
                         </div>
                         <div className="flex flex-col">
@@ -2298,7 +2309,16 @@ export function MessagePanel({
                       {/* Avatar - only show on last message of group, otherwise spacer */}
                       <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
                         {isLastInGroup && (
-                          <Avatar address={senderAddress} size="sm" />
+                          conversationType === "group" && onMemberAvatarClick && senderAddress ? (
+                            <button
+                              onClick={() => onMemberAvatarClick(senderAddress, msg.senderInboxId)}
+                              className="cursor-pointer hover:opacity-80 transition-opacity"
+                            >
+                              <Avatar address={senderAddress} size="sm" />
+                            </button>
+                          ) : (
+                            <Avatar address={senderAddress} size="sm" />
+                          )
                         )}
                       </div>
                       <div className="flex flex-col">

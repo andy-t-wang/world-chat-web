@@ -11,3 +11,4 @@ export { MessageRequestsView } from './MessageRequestsView';
 export { RequestActionBar } from './RequestActionBar';
 export { GroupDetailsPanel } from './GroupDetailsPanel';
 export { AddMemberModal } from './AddMemberModal';
+export { MemberProfilePanel } from './MemberProfilePanel';

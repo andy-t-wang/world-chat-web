@@ -3,7 +3,7 @@
 import { useEffect, useState, memo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAtomValue } from "jotai";
-import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel } from "@/components/chat";
+import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel, MemberProfilePanel } from "@/components/chat";
 import { NewConversationModal } from "@/components/chat/NewConversationModal";
 import { selectedConversationIdAtom } from "@/stores/ui";
 import { clientStateAtom } from "@/stores/client";
@@ -33,6 +33,10 @@ export default function ChatPage() {
   const [isLockedByOtherTab, setIsLockedByOtherTab] = useState(false);
   const [showGroupDetails, setShowGroupDetails] = useState(false);
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
+  const [selectedMemberProfile, setSelectedMemberProfile] = useState<{
+    address: string;
+    inboxId: string;
+  } | null>(null);
   const restorationRef = useRef(false);
 
   const hasXmtpClient = clientState.client !== null;
@@ -71,10 +75,17 @@ export default function ChatPage() {
   // Group is considered verified only if all members are verified
   const isGroupVerified = verifiedCount > 0 && unverifiedCount === 0;
 
-  // Close group details panel when conversation changes
+  // Close side panels when conversation changes
   useEffect(() => {
     setShowGroupDetails(false);
+    setSelectedMemberProfile(null);
   }, [selectedId]);
+
+  // Handle member avatar click in group chat
+  const handleMemberAvatarClick = useCallback((address: string, inboxId: string) => {
+    setShowGroupDetails(false); // Close group details if open
+    setSelectedMemberProfile({ address, inboxId });
+  }, []);
 
   // Handle leave group
   const handleLeaveGroup = useCallback(async () => {
@@ -313,6 +324,7 @@ export default function ChatPage() {
               verifiedCount={verifiedCount}
               unverifiedCount={unverifiedCount}
               onOpenGroupDetails={() => setShowGroupDetails(true)}
+              onMemberAvatarClick={handleMemberAvatarClick}
             />
           ) : (
             <MemoizedMessagePanel
@@ -343,6 +355,15 @@ export default function ChatPage() {
             ownInboxId={client?.inboxId}
             onMemberAdded={handleMemberAdded}
             onMemberRemoved={handleMemberRemoved}
+          />
+        )}
+
+        {/* Member Profile Panel - shows when clicking on a member avatar in group */}
+        {selectedMemberProfile && (
+          <MemberProfilePanel
+            address={selectedMemberProfile.address}
+            inboxId={selectedMemberProfile.inboxId}
+            onClose={() => setSelectedMemberProfile(null)}
           />
         )}
       </div>

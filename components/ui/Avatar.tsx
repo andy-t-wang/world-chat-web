@@ -15,7 +15,7 @@ interface AvatarProps {
   address?: string | null;
   /** Direct image URL (overrides address lookup) */
   imageUrl?: string | null;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   /** Whether this is a group avatar */
   isGroup?: boolean;
@@ -60,6 +60,7 @@ const SIZE_MAP = {
   sm: { container: 32, text: 14 },  // Small for message avatars (32px per Figma)
   md: { container: 44, text: 16 },  // Medium for conversation list
   lg: { container: 52, text: 22 },  // Large for headers
+  xl: { container: 80, text: 28 },  // Extra large for profile panels
 } as const;
 
 function getInitials(name: string): string {
@@ -130,7 +131,7 @@ function GroupAvatar({
   groupName?: string;
   groupImageUrl?: string;
   memberPreviews?: MemberPreview[];
-  size: 'sm' | 'md' | 'lg';
+  size: 'sm' | 'md' | 'lg' | 'xl';
   className: string;
 }) {
   const [imgError, setImgError] = useState(false);
