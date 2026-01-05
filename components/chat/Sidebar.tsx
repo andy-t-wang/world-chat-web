@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
-import { linkPreviewEnabledAtom, soundMutedAtom } from '@/stores/settings';
+import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
 
@@ -14,6 +14,7 @@ function GlobalSettingsDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
+  const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,6 +94,36 @@ function GlobalSettingsDropdown() {
               <div
                 className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
                   !soundMuted ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </button>
+          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider border-t border-gray-100 mt-1 pt-2">
+            Display
+          </div>
+          <button
+            onClick={() => setHideEmptyConversations(!hideEmptyConversations)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+          >
+            {hideEmptyConversations ? (
+              <MessageSquareOff className="w-5 h-5 text-[#00C230]" />
+            ) : (
+              <MessageSquare className="w-5 h-5 text-[#9BA3AE]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[#181818]">Hide Empty Chats</p>
+              <p className="text-[12px] text-[#717680]">
+                {hideEmptyConversations ? 'Chats with no messages hidden' : 'Showing all chats'}
+              </p>
+            </div>
+            <div
+              className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
+                hideEmptyConversations ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                  hideEmptyConversations ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </div>

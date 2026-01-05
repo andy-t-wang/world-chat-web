@@ -6,6 +6,7 @@ import { useAtomValue, useSetAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
 import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
+import { hideEmptyConversationsAtom } from '@/stores/settings';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
 import { Loader2, SearchX } from 'lucide-react';
@@ -29,6 +30,7 @@ export function ConversationList({
   const parentRef = useRef<HTMLDivElement>(null);
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
+  const hideEmptyConversations = useAtomValue(hideEmptyConversationsAtom);
 
   // Use conversations hook - it handles all loading and provides metadata
   const { conversationIds, metadata, isLoading } = useConversations();
@@ -46,17 +48,25 @@ export function ConversationList({
     return () => clearInterval(interval);
   }, [searchQuery]);
 
-  // Filter conversations based on search query and consent state
+  // Filter conversations based on search query, consent state, and empty state
   // Main list only shows Allowed conversations (Unknown go to requests)
   const filteredIds = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _version = usernameCacheVersion; // Dependency to trigger re-filter
 
-    // First filter out Unknown consent (message requests)
+    // First filter out Unknown consent (message requests) and optionally empty conversations
     const allowedIds = conversationIds.filter((id) => {
       const data = metadata.get(id);
       // Only show allowed conversations in main list
-      return data && data.consentState !== 'unknown';
+      if (!data || data.consentState === 'unknown') return false;
+
+      // Filter out empty conversations if setting is enabled
+      if (hideEmptyConversations) {
+        const isEmpty = !data.lastMessagePreview && data.lastActivityNs === BigInt(0);
+        if (isEmpty) return false;
+      }
+
+      return true;
     });
 
     if (!searchQuery.trim()) return allowedIds;
@@ -86,7 +96,7 @@ export function ConversationList({
 
       return false;
     });
-  }, [conversationIds, metadata, searchQuery, usernameCacheVersion]);
+  }, [conversationIds, metadata, searchQuery, usernameCacheVersion, hideEmptyConversations]);
 
   // Format timestamp for display using user's locale
   const formatTimestamp = (ns: bigint): string => {

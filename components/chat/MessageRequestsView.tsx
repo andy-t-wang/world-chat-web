@@ -28,7 +28,8 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
 
   // Use message requests hook
-  const { requestIds, metadata, requestCount, isNewRequest } = useMessageRequests();
+  const { requestIds, metadata, requestCount, isNewRequest } =
+    useMessageRequests();
 
   // Multi-select state
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -81,33 +82,37 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   }, [requestIds, metadata, searchQuery, usernameCacheVersion]);
 
   // Check if all filtered items are selected
-  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id));
+  const allSelected =
+    filteredIds.length > 0 && filteredIds.every((id) => selectedIds.has(id));
 
   // Toggle individual selection with shift-click support
-  const toggleSelect = useCallback((id: string, index: number, shiftKey: boolean) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
+  const toggleSelect = useCallback(
+    (id: string, index: number, shiftKey: boolean) => {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
 
-      // Shift-click: select range from last clicked to current
-      if (shiftKey && lastClickedIndex !== null) {
-        const start = Math.min(lastClickedIndex, index);
-        const end = Math.max(lastClickedIndex, index);
-        for (let i = start; i <= end; i++) {
-          next.add(filteredIds[i]);
-        }
-      } else {
-        // Normal click: toggle single item
-        if (next.has(id)) {
-          next.delete(id);
+        // Shift-click: select range from last clicked to current
+        if (shiftKey && lastClickedIndex !== null) {
+          const start = Math.min(lastClickedIndex, index);
+          const end = Math.max(lastClickedIndex, index);
+          for (let i = start; i <= end; i++) {
+            next.add(filteredIds[i]);
+          }
         } else {
-          next.add(id);
+          // Normal click: toggle single item
+          if (next.has(id)) {
+            next.delete(id);
+          } else {
+            next.add(id);
+          }
         }
-      }
 
-      return next;
-    });
-    setLastClickedIndex(index);
-  }, [lastClickedIndex, filteredIds]);
+        return next;
+      });
+      setLastClickedIndex(index);
+    },
+    [lastClickedIndex, filteredIds]
+  );
 
   // Select/deselect all
   const toggleSelectAll = useCallback(() => {
@@ -133,10 +138,12 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
     const idsToProcess = Array.from(selectedIds);
 
     try {
-      await Promise.all(idsToProcess.map(id => streamManager.acceptConversation(id)));
+      await Promise.all(
+        idsToProcess.map((id) => streamManager.acceptConversation(id))
+      );
       exitSelectMode();
     } catch (error) {
-      console.error('Failed to accept requests:', error);
+      console.error("Failed to accept requests:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -150,10 +157,12 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
     const idsToProcess = Array.from(selectedIds);
 
     try {
-      await Promise.all(idsToProcess.map(id => streamManager.rejectConversation(id)));
+      await Promise.all(
+        idsToProcess.map((id) => streamManager.rejectConversation(id))
+      );
       exitSelectMode();
     } catch (error) {
-      console.error('Failed to reject requests:', error);
+      console.error("Failed to reject requests:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -237,87 +246,11 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
           <h1 className="text-lg font-semibold text-[#181818]">
             Message Requests
           </h1>
-          {requestCount > 0 && (
-            <p className="text text-[#717680]">({requestCount})</p>
-          )}
         </div>
       </div>
 
-      {/* Selection Bar - shows when in select mode or as a button to enter select mode */}
-      {filteredIds.length > 0 && (
-        <div className="shrink-0 px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-          {isSelectMode ? (
-            <>
-              {/* Select all checkbox */}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={allSelected}
-                  onChange={toggleSelectAll}
-                  className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20"
-                />
-                <span className="text-sm text-[#717680]">
-                  {allSelected ? "Deselect all" : "Select all"}
-                </span>
-              </label>
-
-              {/* Action buttons */}
-              <div className="flex items-center gap-2">
-                {hasSelection && (
-                  <span className="text-sm text-[#717680] mr-1">
-                    {selectedIds.size} selected
-                  </span>
-                )}
-                <button
-                  onClick={acceptSelected}
-                  disabled={isProcessing || !hasSelection}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1D1D1F] text-white text-sm font-medium hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
-                  Accept
-                </button>
-                <button
-                  onClick={rejectSelected}
-                  disabled={isProcessing || !hasSelection}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E5EA] bg-white text-[#1D1D1F] text-sm font-medium hover:bg-[#F5F5F5] transition-colors disabled:opacity-50"
-                >
-                  {isProcessing ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <X className="w-4 h-4" />
-                  )}
-                  Reject
-                </button>
-                <button
-                  onClick={exitSelectMode}
-                  className="px-3 py-1.5 rounded-lg text-sm text-[#717680] hover:bg-[#F5F5F5] transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <span className="text-sm text-[#717680]">
-                {filteredIds.length} {filteredIds.length === 1 ? 'request' : 'requests'}
-              </span>
-              <button
-                onClick={() => setIsSelectMode(true)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-[#005CFF] hover:bg-[#005CFF]/10 transition-colors"
-              >
-                Select
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
       {/* Search */}
-      <div className="shrink-0 px-4 py-3">
+      <div className="shrink-0 px-4 py-3 border-b border-gray-100">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE]" />
           <input
@@ -329,6 +262,84 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
           />
         </div>
       </div>
+
+      {/* Selection Bar - shows when in select mode or as a button to enter select mode */}
+      {filteredIds.length > 0 && (
+        <div className="shrink-0 px-4 py-2 border-b border-gray-100">
+          {isSelectMode ? (
+            <div className="flex flex-col gap-2">
+              {/* First row: Select all and Cancel */}
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20"
+                  />
+                  <span className="text-sm text-[#717680]">
+                    {allSelected ? "Deselect all" : "Select all"}
+                  </span>
+                </label>
+                <button
+                  onClick={exitSelectMode}
+                  className="px-3 py-1.5 rounded-lg text-sm text-[#717680] hover:bg-[#F5F5F5] transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              {/* Second row: Selection count and action buttons */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[#717680]">
+                  {hasSelection
+                    ? `${selectedIds.size} selected`
+                    : "None selected"}
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={acceptSelected}
+                    disabled={isProcessing || !hasSelection}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1D1D1F] text-white text-sm font-medium hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Check className="w-4 h-4" />
+                    )}
+                    Accept
+                  </button>
+                  <button
+                    onClick={rejectSelected}
+                    disabled={isProcessing || !hasSelection}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E5EA] bg-white text-[#1D1D1F] text-sm font-medium hover:bg-[#F5F5F5] transition-colors disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <X className="w-4 h-4" />
+                    )}
+                    Reject
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-[#717680]">
+                {filteredIds.length}{" "}
+                {filteredIds.length === 1 ? "request" : "requests"}
+              </span>
+              <button
+                onClick={() => setIsSelectMode(true)}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-[#005CFF] hover:bg-[#005CFF]/10 transition-colors"
+              >
+                Select
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Empty state - no requests */}
       {requestCount === 0 && (
@@ -353,7 +364,10 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
       {/* Virtualized Request List */}
       {filteredIds.length > 0 && (
-        <div ref={parentRef} className="flex-1 overflow-auto scrollbar-auto-hide">
+        <div
+          ref={parentRef}
+          className="flex-1 overflow-auto scrollbar-auto-hide"
+        >
           <div
             style={{
               height: virtualizer.getTotalSize(),

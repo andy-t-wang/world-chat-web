@@ -7,6 +7,9 @@ export const linkPreviewEnabledAtom = atomWithStorage('link-preview-enabled', tr
 // Sound muted setting - persisted to localStorage
 export const soundMutedAtom = atomWithStorage('sound-muted', false);
 
+// Hide empty conversations setting - persisted to localStorage (default: true)
+export const hideEmptyConversationsAtom = atomWithStorage('hide-empty-conversations', true);
+
 // Settings panel open state
 export const settingsPanelOpenAtom = atom(false);
 
