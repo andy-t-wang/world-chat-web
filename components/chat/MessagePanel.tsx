@@ -1482,18 +1482,20 @@ export function MessagePanel({
         )}
       </header>
 
-      {/* Message Request Banner - below header */}
-      {isMessageRequest && (
-        <MessageRequestBanner conversationId={conversationId} />
-      )}
-
       {/* Messages Area */}
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto flex flex-col scrollbar-auto-hide"
+        className="flex-1 overflow-auto flex flex-col scrollbar-auto-hide relative"
         style={chatBackgroundStyle}
       >
+        {/* Message Request Banner - floating at top */}
+        {isMessageRequest && (
+          <MessageRequestBanner
+            conversationId={conversationId}
+            peerAddress={peerAddress}
+          />
+        )}
         {isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />

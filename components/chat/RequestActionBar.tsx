@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { useSetAtom } from "jotai";
-import { Loader2, AlertTriangle, Check, X } from "lucide-react";
+import { Loader2, Check, X } from "lucide-react";
 import { streamManager } from "@/lib/xmtp/StreamManager";
 import { selectedConversationIdAtom } from "@/stores/ui";
+import { useUsername } from "@/hooks/useUsername";
 
 interface RequestActionBarProps {
   conversationId: string;
   peerAddress?: string;
+  senderName?: string;
 }
 
 /**
@@ -16,7 +18,12 @@ interface RequestActionBarProps {
  */
 export function MessageRequestBanner({
   conversationId,
+  peerAddress,
+  senderName,
 }: RequestActionBarProps) {
+  // Get display name from address if not provided
+  const { displayName } = useUsername(peerAddress);
+  const name = senderName || displayName || (peerAddress ? `${peerAddress.slice(0, 6)}...${peerAddress.slice(-4)}` : "Someone");
   const [isAccepting, setIsAccepting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
@@ -53,32 +60,40 @@ export function MessageRequestBanner({
   const isLoading = isAccepting || isDeleting;
 
   return (
-    <div className="shrink-0 px-4 py-3 border-b border-[#E5E5EA] bg-[#FAFAFA]">
-      <div className="flex items-center justify-between gap-4">
-        {/* Text */}
-        <p className="text-[14px] text-[#86868B]">
-          <span className="font-medium text-[#1D1D1F]">Message request</span>
-          <span className="mx-2">·</span>
-          <span>Accept to start chatting</span>
+    <div className="sticky top-4 z-10 flex justify-center pointer-events-none">
+      <div className="bg-white rounded-2xl shadow-lg border border-[#E5E5EA] px-4 py-3 pointer-events-auto max-w-[320px]">
+        {/* Disclaimer text */}
+        <p className="text-[13px] text-[#717680] text-center mb-3 leading-snug">
+          <span className="font-medium text-[#1D1D1F]">{name}</span> wants to message you. If you don&apos;t recognize them, you can decline or block the chat.
         </p>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-3 shrink-0">
+        <div className="flex items-center gap-1">
+          {/* Reject button */}
           <button
             onClick={handleDelete}
             disabled={isLoading}
-            className="h-9 px-4 flex items-center justify-center gap-2 rounded-full border border-[#E5E5EA] text-[#1D1D1F] text-[14px] font-medium hover:bg-[#F5F5F5] hover:border-[#D1D1D6] transition-colors disabled:opacity-50"
+            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[#F5F5F5] text-[#1D1D1F] text-[14px] font-medium hover:bg-[#EBEBEB] transition-colors disabled:opacity-50"
           >
-            {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
-            Delete
+            {isDeleting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <X className="w-4 h-4 text-red-500" />
+            )}
+            <span>Reject</span>
           </button>
+
+          {/* Accept button */}
           <button
             onClick={handleAccept}
             disabled={isLoading}
-            className="h-9 px-4 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-white text-[14px] font-medium hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
+            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[#F5F5F5] text-[#1D1D1F] text-[14px] font-medium hover:bg-[#EBEBEB] transition-colors disabled:opacity-50"
           >
-            {isAccepting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            Accept
+            {isAccepting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Check className="w-4 h-4 text-[#00C230]" />
+            )}
+            <span>Accept</span>
           </button>
         </div>
       </div>
