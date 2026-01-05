@@ -784,6 +784,7 @@ export function MessagePanel({
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
@@ -1310,6 +1311,8 @@ export function MessagePanel({
       senderAddress: contextMenu.senderAddress,
     });
     setContextMenu(null);
+    // Focus the textarea after a brief delay to ensure UI has updated
+    setTimeout(() => textareaRef.current?.focus(), 0);
   }, [contextMenu, setReplyingTo]);
 
   // Handle copy from context menu
@@ -2436,6 +2439,7 @@ export function MessagePanel({
               <Paperclip className="w-5 h-5 text-[#86868B]" />
             </button>
             <textarea
+              ref={textareaRef}
               value={message}
               onChange={(e) => {
                 setMessage(e.target.value);
