@@ -582,6 +582,9 @@ class XMTPStreamManager {
 
   /**
    * Load conversations from local cache (no network)
+   * Uses two-phase loading for faster initial render:
+   * Phase 1: Show conversation list immediately with minimal metadata
+   * Phase 2: Build full metadata in parallel in background
    */
   private async loadConversationsFromCache(): Promise<void> {
     if (!this.client || this.conversationsLoaded) return;
@@ -598,17 +601,65 @@ class XMTPStreamManager {
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
 
-      // Track DMs by peer address to detect duplicates
-      const dmsByPeerAddress = new Map<string, { convId: string; peerInboxId: string; createdAtNs?: bigint }[]>();
-
       const ids: string[] = [];
 
+      // PHASE 1: Store conversations immediately with placeholder metadata
+      // This lets the UI render the list fast
       for (const conv of localConversations) {
         this.conversations.set(conv.id, conv);
 
-        // Build metadata from local cache only
-        const metadata = await this.buildConversationMetadata(conv, false);
-        this.conversationMetadata.set(conv.id, metadata);
+        // Create placeholder metadata (fast, no async)
+        const isConvDm = isDm(conv);
+        const placeholderMetadata: ConversationMetadata = {
+          id: conv.id,
+          conversationType: isConvDm ? 'dm' : 'group',
+          peerAddress: '',
+          peerInboxId: '',
+          groupName: isConvDm ? undefined : (conv as Group).name,
+          groupImageUrl: isConvDm ? undefined : (conv as Group).imageUrl,
+          memberCount: undefined,
+          memberPreviews: undefined,
+          lastMessagePreview: '', // Will be populated in phase 2
+          lastActivityNs: BigInt(0),
+          unreadCount: 0,
+          consentState: 'unknown',
+        };
+        this.conversationMetadata.set(conv.id, placeholderMetadata);
+        ids.push(conv.id);
+      }
+
+      // Show list immediately (fast first render)
+      store.set(conversationIdsAtom, ids);
+      store.set(isLoadingConversationsAtom, false);
+      this.incrementMetadataVersion();
+
+      // PHASE 2: Build full metadata in parallel (background)
+      // This runs after UI has rendered
+      const metadataPromises = localConversations.map(async (conv) => {
+        try {
+          const metadata = await this.buildConversationMetadata(conv, false);
+          this.conversationMetadata.set(conv.id, metadata);
+          return { convId: conv.id, metadata };
+        } catch (err) {
+          console.error('[StreamManager] Failed to build metadata for', conv.id, err);
+          return null;
+        }
+      });
+
+      // Wait for all metadata to be built
+      const results = await Promise.all(metadataPromises);
+
+      // Track DMs by peer address to detect duplicates
+      const dmsByPeerAddress = new Map<string, { convId: string; peerInboxId: string; createdAtNs?: bigint }[]>();
+
+      // Filter and sort based on actual metadata
+      const filteredIds: string[] = [];
+      const selectedId = store.get(selectedConversationIdAtom);
+
+      for (const result of results) {
+        if (!result) continue;
+        const { convId, metadata } = result;
+        const conv = this.conversations.get(convId);
 
         // Log DM duplicates
         if (metadata.conversationType === 'dm' && metadata.peerAddress) {
@@ -617,17 +668,15 @@ class XMTPStreamManager {
             dmsByPeerAddress.set(normalizedAddress, []);
           }
           dmsByPeerAddress.get(normalizedAddress)!.push({
-            convId: conv.id,
+            convId,
             peerInboxId: metadata.peerInboxId,
-            createdAtNs: (conv as unknown as { createdAtNs?: bigint }).createdAtNs,
+            createdAtNs: (conv as unknown as { createdAtNs?: bigint })?.createdAtNs,
           });
         }
 
-        // Only show conversations that have displayable messages (not just system/welcome messages)
-        // Always include the currently selected conversation (so newly created ones are visible)
-        const selectedId = store.get(selectedConversationIdAtom);
-        if (metadata.lastMessagePreview || conv.id === selectedId) {
-          ids.push(conv.id);
+        // Only show conversations that have displayable messages
+        if (metadata.lastMessagePreview || convId === selectedId) {
+          filteredIds.push(convId);
         }
       }
 
@@ -642,9 +691,8 @@ class XMTPStreamManager {
         }
       }
 
-      // Sort by last activity (most recent first), but keep selected at top if no activity
-      const selectedId = store.get(selectedConversationIdAtom);
-      ids.sort((a, b) => {
+      // Sort by last activity (most recent first)
+      filteredIds.sort((a, b) => {
         const metaA = this.conversationMetadata.get(a);
         const metaB = this.conversationMetadata.get(b);
         if (!metaA || !metaB) return 0;
@@ -654,9 +702,9 @@ class XMTPStreamManager {
         return Number(metaB.lastActivityNs - metaA.lastActivityNs);
       });
 
-      store.set(conversationIdsAtom, ids);
+      // Update with sorted/filtered list and trigger re-render
+      store.set(conversationIdsAtom, filteredIds);
       this.incrementMetadataVersion();
-      store.set(isLoadingConversationsAtom, false);
 
       // Save any newly initialized lastReadTimestamps
       this.saveLastReadTimestamps();
@@ -937,8 +985,26 @@ class XMTPStreamManager {
     let consentState: 'allowed' | 'denied' | 'unknown' = 'unknown';
 
     try {
-      // Get consent state
-      const rawConsentState = await conv.consentState();
+      const isConvDm = isDm(conv);
+      conversationType = isConvDm ? 'dm' : 'group';
+
+      // Sync first if requested (skip for fast local load)
+      if (shouldSync) {
+        await conv.sync();
+      }
+
+      // Parallelize all async calls for much faster metadata building
+      const [rawConsentState, members, messages, dmPeerInboxId] = await Promise.all([
+        conv.consentState(),
+        conv.members(),
+        conv.messages({
+          limit: BigInt(MAX_MESSAGES_FOR_UNREAD_COUNT),
+          direction: SortDirection.Descending,
+        }),
+        isConvDm ? conv.peerInboxId() : Promise.resolve(''),
+      ]);
+
+      // Process consent state
       if (rawConsentState === ConsentState.Allowed) {
         consentState = 'allowed';
       } else if (rawConsentState === ConsentState.Denied) {
@@ -947,11 +1013,9 @@ class XMTPStreamManager {
         consentState = 'unknown';
       }
 
-      if (isDm(conv)) {
-        // DM: Get peer info
-        conversationType = 'dm';
-        peerInboxId = await conv.peerInboxId();
-        const members = await conv.members();
+      if (isConvDm) {
+        // DM: Get peer info from parallel results
+        peerInboxId = dmPeerInboxId;
         for (const member of members) {
           if (member.inboxId === peerInboxId && member.accountIdentifiers?.length) {
             peerAddress = member.accountIdentifiers[0].identifier;
@@ -960,11 +1024,9 @@ class XMTPStreamManager {
         }
       } else {
         // Group: Get group info
-        conversationType = 'group';
         const group = conv as Group;
         groupName = group.name;
         groupImageUrl = group.imageUrl;
-        const members = await group.members();
         memberCount = members.length;
         // Include ALL members so we can look up sender addresses for messages
         // Avatar component will only use first 2 for the preview display
@@ -979,17 +1041,6 @@ class XMTPStreamManager {
           }
         }
       }
-
-      // Only sync if requested (skip for fast local load)
-      if (shouldSync) {
-        await conv.sync();
-      }
-
-      // Fetch messages for preview and unread count
-      const messages = await conv.messages({
-        limit: BigInt(MAX_MESSAGES_FOR_UNREAD_COUNT),
-        direction: SortDirection.Descending,
-      });
 
       // Get last read timestamp for this conversation
       // If no timestamp exists, assume fully read (use current time) to avoid counting old messages as unread
