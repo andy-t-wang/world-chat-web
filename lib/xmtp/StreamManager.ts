@@ -395,13 +395,15 @@ class XMTPStreamManager {
     this.loadLastReadTimestamps();
     this.loadPeerReadReceipts();
 
-    // Request notification permission (non-blocking)
-    requestNotificationPermission().catch(() => {
-      // Ignore permission errors
-    });
-
     // Listen for tab visibility changes to reset hidden tab count
     this.setupVisibilityListener();
+
+    // Request notification permission after delay (don't interrupt login flow)
+    setTimeout(() => {
+      requestNotificationPermission().catch(() => {
+        // Ignore permission errors
+      });
+    }, 5000);
 
     // Phase 1: Load from local cache (instant)
     await this.loadConversationsFromCache();
