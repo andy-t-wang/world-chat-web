@@ -88,8 +88,8 @@ function decodeHTMLEntities(text: string): string {
     .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
-// Check if URL is a Twitter/X post
-function isTwitterUrl(url: string): boolean {
+// Check if URL is a Twitter/X post (tweet)
+function isTwitterTweetUrl(url: string): boolean {
   try {
     const urlObj = new URL(url);
     return (urlObj.hostname === 'twitter.com' || urlObj.hostname === 'x.com' ||
@@ -97,6 +97,25 @@ function isTwitterUrl(url: string): boolean {
            urlObj.pathname.includes('/status/');
   } catch {
     return false;
+  }
+}
+
+// Check if URL is a Twitter/X profile page
+function isTwitterProfileUrl(url: string): { isProfile: boolean; username?: string } {
+  try {
+    const urlObj = new URL(url);
+    const isTwitterDomain = urlObj.hostname === 'twitter.com' || urlObj.hostname === 'x.com' ||
+                            urlObj.hostname === 'www.twitter.com' || urlObj.hostname === 'www.x.com';
+    if (!isTwitterDomain) return { isProfile: false };
+
+    // Extract username from path (e.g., /worldcoin or /worldcoin?s=21)
+    const pathParts = urlObj.pathname.split('/').filter(Boolean);
+    if (pathParts.length === 1 && !['status', 'home', 'explore', 'search', 'notifications', 'messages', 'settings', 'i'].includes(pathParts[0])) {
+      return { isProfile: true, username: pathParts[0] };
+    }
+    return { isProfile: false };
+  } catch {
+    return { isProfile: false };
   }
 }
 
@@ -170,9 +189,29 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Handle Twitter/X URLs specially using oEmbed
-    if (isTwitterUrl(url)) {
+    // Handle Twitter/X tweet URLs specially using oEmbed
+    if (isTwitterTweetUrl(url)) {
       const metadata = await fetchTwitterMetadata(url);
+      return NextResponse.json(metadata, {
+        headers: {
+          'Cache-Control': 'public, max-age=604800, s-maxage=604800',
+        },
+      });
+    }
+
+    // Handle Twitter/X profile URLs with a static fallback
+    // (X blocks most scraping, so we provide a meaningful fallback)
+    const profileCheck = isTwitterProfileUrl(url);
+    if (profileCheck.isProfile && profileCheck.username) {
+      const metadata: LinkMetadata = {
+        url,
+        domain: 'x.com',
+        type: 'twitter',
+        title: `@${profileCheck.username} on X`,
+        description: 'View profile on X (formerly Twitter)',
+        author: profileCheck.username,
+        authorUsername: profileCheck.username,
+      };
       return NextResponse.json(metadata, {
         headers: {
           'Cache-Control': 'public, max-age=604800, s-maxage=604800',
