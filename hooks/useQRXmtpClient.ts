@@ -12,6 +12,75 @@ import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-
 
 const XMTP_SESSION_KEY = 'xmtp-session-cache';
 
+// Module cache for faster subsequent loads
+let cachedModules: Awaited<ReturnType<typeof loadAllModules>> | null = null;
+let moduleLoadPromise: Promise<Awaited<ReturnType<typeof loadAllModules>>> | null = null;
+
+/**
+ * Load all XMTP modules in parallel (cached)
+ */
+async function loadAllModules() {
+  const [
+    xmtpModule,
+    reactionModule,
+    replyModule,
+    readReceiptModule,
+    remoteAttachmentModule,
+    transactionRefModule,
+  ] = await Promise.all([
+    import('@xmtp/browser-sdk'),
+    import('@xmtp/content-type-reaction'),
+    import('@xmtp/content-type-reply'),
+    import('@xmtp/content-type-read-receipt'),
+    import('@xmtp/content-type-remote-attachment'),
+    import('@/lib/xmtp/TransactionReferenceCodec'),
+  ]);
+
+  return {
+    Client: xmtpModule.Client,
+    ReactionCodec: reactionModule.ReactionCodec,
+    ReplyCodec: replyModule.ReplyCodec,
+    ReadReceiptCodec: readReceiptModule.ReadReceiptCodec,
+    RemoteAttachmentCodec: remoteAttachmentModule.RemoteAttachmentCodec,
+    AttachmentCodec: remoteAttachmentModule.AttachmentCodec,
+    TransactionReferenceCodec: transactionRefModule.TransactionReferenceCodec,
+  };
+}
+
+/**
+ * Get cached modules or load them (deduplicates concurrent requests)
+ */
+async function getModules() {
+  if (cachedModules) return cachedModules;
+
+  if (!moduleLoadPromise) {
+    moduleLoadPromise = loadAllModules().then(modules => {
+      cachedModules = modules;
+      return modules;
+    });
+  }
+
+  return moduleLoadPromise;
+}
+
+/**
+ * Pre-load modules in background (call early to warm cache)
+ */
+export function preloadXmtpModules() {
+  if (typeof window === 'undefined') return;
+  // Start loading modules in background
+  getModules().catch(() => {
+    // Ignore errors - will retry when actually needed
+  });
+}
+
+// Auto-preload on module import (starts loading immediately when this file is imported)
+if (typeof window !== 'undefined') {
+  // Use requestIdleCallback to load during idle time, fallback to setTimeout
+  const schedulePreload = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 1));
+  schedulePreload(() => preloadXmtpModules());
+}
+
 interface SessionCache {
   address: string;
   inboxId: string;
@@ -77,14 +146,6 @@ function createCachedSigner(address: string) {
   };
 }
 
-/**
- * Dynamically import the XMTP browser SDK
- */
-async function getXmtpModule() {
-  const module = await import('@xmtp/browser-sdk');
-  return module;
-}
-
 interface UseQRXmtpClientResult {
   client: Client | null;
   isInitializing: boolean;
@@ -136,22 +197,16 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
     dispatch({ type: 'INIT_START' });
 
     try {
-
-      const [
-          { Client },
-          { ReactionCodec },
-          { ReplyCodec },
-          { ReadReceiptCodec },
-          { RemoteAttachmentCodec, AttachmentCodec },
-          { TransactionReferenceCodec },
-        ] = await Promise.all([
-          getXmtpModule(),
-          import('@xmtp/content-type-reaction'),
-          import('@xmtp/content-type-reply'),
-          import('@xmtp/content-type-read-receipt'),
-          import('@xmtp/content-type-remote-attachment'),
-          import('@/lib/xmtp/TransactionReferenceCodec'),
-        ]);
+      // Use cached modules for faster load
+      const {
+        Client,
+        ReactionCodec,
+        ReplyCodec,
+        ReadReceiptCodec,
+        RemoteAttachmentCodec,
+        AttachmentCodec,
+        TransactionReferenceCodec,
+      } = await getModules();
 
       // Create a cached signer - works for existing installations
       const cachedSigner = createCachedSigner(cachedSession.address);
@@ -231,21 +286,16 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       const address = signer.getIdentifier().identifier;
 
       try {
-        const [
-            { Client },
-            { ReactionCodec },
-            { ReplyCodec },
-            { ReadReceiptCodec },
-            { RemoteAttachmentCodec, AttachmentCodec },
-            { TransactionReferenceCodec },
-          ] = await Promise.all([
-            getXmtpModule(),
-            import('@xmtp/content-type-reaction'),
-            import('@xmtp/content-type-reply'),
-            import('@xmtp/content-type-read-receipt'),
-            import('@xmtp/content-type-remote-attachment'),
-            import('@/lib/xmtp/TransactionReferenceCodec'),
-          ]);
+        // Use cached modules for faster load
+        const {
+          Client,
+          ReactionCodec,
+          ReplyCodec,
+          ReadReceiptCodec,
+          RemoteAttachmentCodec,
+          AttachmentCodec,
+          TransactionReferenceCodec,
+        } = await getModules();
 
         const xmtpClient = await Client.create(signer, {
           env: 'production',

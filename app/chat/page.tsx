@@ -214,19 +214,50 @@ export default function ChatPage() {
     attemptRestore();
   }, [attemptRestore]);
 
-  // Show loading while restoring or initializing
+  // Show skeleton UI while restoring or initializing (feels faster than spinner)
   if (isRestoring || clientState.isInitializing || !restorationAttempted) {
     return (
-      <div className="flex w-full h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
-            <MessageCircle className="w-8 h-8 text-[#005CFF]" />
+      <div className="flex w-full h-screen overflow-hidden">
+        {/* Skeleton Sidebar */}
+        <div className="w-[320px] lg:w-[380px] border-r border-[#E5E5EA] bg-white flex flex-col flex-shrink-0">
+          {/* Header skeleton */}
+          <div className="px-4 py-3 border-b border-[#E5E5EA]">
+            <div className="h-8 w-32 bg-[#F2F2F7] rounded-lg animate-pulse" />
           </div>
-          <div className="flex items-center gap-2">
-            <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
-            <span className="text-[#717680]">
-              {isRestoring ? "Loading..." : "Loading..."}
-            </span>
+          {/* Search skeleton */}
+          <div className="px-3 py-2">
+            <div className="h-9 bg-[#F2F2F7] rounded-lg animate-pulse" />
+          </div>
+          {/* Conversation list skeleton */}
+          <div className="flex-1 px-2 py-1 space-y-1">
+            {[...Array(6)].map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl">
+                <div className="w-[52px] h-[52px] rounded-full bg-[#F2F2F7] animate-pulse flex-shrink-0" />
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="h-4 w-24 bg-[#F2F2F7] rounded animate-pulse" />
+                  <div className="h-3 w-40 bg-[#F2F2F7] rounded animate-pulse" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        {/* Skeleton Message Panel */}
+        <div className="flex-1 flex flex-col bg-[#F5F5F5]">
+          {/* Header skeleton */}
+          <div className="h-16 border-b border-[#E5E5EA] bg-white px-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[#F2F2F7] animate-pulse" />
+            <div className="h-5 w-32 bg-[#F2F2F7] rounded animate-pulse" />
+          </div>
+          {/* Messages area skeleton */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <Loader2 className="w-6 h-6 text-[#86868B] animate-spin" />
+              <span className="text-[13px] text-[#86868B]">Loading messages...</span>
+            </div>
+          </div>
+          {/* Input skeleton */}
+          <div className="h-16 border-t border-[#E5E5EA] bg-white px-4 flex items-center">
+            <div className="flex-1 h-10 bg-[#F2F2F7] rounded-full animate-pulse" />
           </div>
         </div>
       </div>
