@@ -1250,6 +1250,10 @@ export function MessagePanel({
     const replyToId = replyingTo?.messageId;
     setMessage("");
     setReplyingTo(null); // Clear reply state
+    // Reset textarea height to original size
+    if (textareaRef.current) {
+      textareaRef.current.style.height = '44px';
+    }
     setIsSending(true);
     try {
       await sendMessage(content, replyToId);
