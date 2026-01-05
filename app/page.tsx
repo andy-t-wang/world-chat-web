@@ -169,7 +169,7 @@ export default function Home() {
       case "initializing":
         return ""; // Don't show text while checking session
       case "waiting_for_scan":
-        return "Scan with Camera";
+        return "Scan with Camera. Not World App QR Scanner";
       case "mobile_connected":
         return "Connected";
       case "authenticating":
