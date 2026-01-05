@@ -840,18 +840,18 @@ class XMTPStreamManager {
         }
 
         if (newMessageIds.length > 0) {
-          // Merge new messages with existing (maintain order)
-          const allIds = [...newMessageIds, ...currentIds];
-          // Sort by sentAtNs descending (newest first)
-          allIds.sort((a, b) => {
-            const msgA = messageCache.get(a);
-            const msgB = messageCache.get(b);
-            if (!msgA || !msgB) return 0;
-            return Number(msgB.sentAtNs - msgA.sentAtNs);
-          });
-          // Remove duplicates
-          const uniqueIds = [...new Set(allIds)];
-          this.setMessageIds(conversationId, uniqueIds);
+          // Messages from SDK are already in correct sequence order (MLS protocol order)
+          // Don't re-sort by sentAtNs as device clocks may differ
+          // Build ordered list from the messages we already fetched
+          const orderedIds: string[] = [];
+          for (const msg of messages) {
+            const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+            if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
+              continue;
+            }
+            orderedIds.push(msg.id);
+          }
+          this.setMessageIds(conversationId, orderedIds);
         }
       } catch {
         // Ignore refresh errors - messages will sync via stream
@@ -1445,18 +1445,30 @@ class XMTPStreamManager {
       }
 
       if (newMessageIds.length > 0) {
-        // Merge new messages with existing (maintain order)
-        const allIds = [...newMessageIds, ...currentIds];
-        // Sort by sentAtNs descending (newest first)
-        allIds.sort((a, b) => {
-          const msgA = messageCache.get(a);
-          const msgB = messageCache.get(b);
-          if (!msgA || !msgB) return 0;
-          return Number(msgB.sentAtNs - msgA.sentAtNs);
+        // After sync, re-fetch to get messages in correct sequence order from SDK
+        // The SDK orders messages by their sequence in the MLS group, which is
+        // the authoritative order - don't re-sort by sentAtNs as device clocks may differ
+        const refreshedMessages = await conv.messages({
+          limit: BigInt(BACKGROUND_REFRESH_LIMIT),
+          direction: SortDirection.Descending,
         });
-        // Remove duplicates
-        const uniqueIds = [...new Set(allIds)];
-        this.setMessageIds(conversationId, uniqueIds);
+
+        // Build the ID list in SDK order (which reflects true message sequence)
+        const orderedIds: string[] = [];
+        for (const msg of refreshedMessages) {
+          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+          // Skip non-displayable types
+          if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
+            continue;
+          }
+          // Ensure message is in cache
+          if (!messageCache.has(msg.id)) {
+            messageCache.set(msg.id, msg as unknown as DecodedMessage);
+          }
+          orderedIds.push(msg.id);
+        }
+
+        this.setMessageIds(conversationId, orderedIds);
       }
     } catch {
       // Background sync errors are non-fatal - stream will catch new messages
@@ -1910,18 +1922,26 @@ class XMTPStreamManager {
       }
 
       if (newMessageIds.length > 0) {
-        // Merge new messages with existing (maintain order)
-        const allIds = [...newMessageIds, ...currentIds];
-        // Sort by sentAtNs descending (newest first)
-        allIds.sort((a, b) => {
-          const msgA = messageCache.get(a);
-          const msgB = messageCache.get(b);
-          if (!msgA || !msgB) return 0;
-          return Number(msgB.sentAtNs - msgA.sentAtNs);
-        });
-        // Remove duplicates
-        const uniqueIds = [...new Set(allIds)];
-        this.setMessageIds(conversationId, uniqueIds);
+        // Messages from SDK are already in correct sequence order (MLS protocol order)
+        // Don't re-sort by sentAtNs as device clocks may differ
+        const orderedIds: string[] = [];
+        for (const msg of messages) {
+          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+          const msgKind = (msg as { kind?: unknown }).kind;
+          // Skip non-displayable types
+          if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
+            continue;
+          }
+          // Skip membership changes (handled separately)
+          const isMembershipChange =
+            msgKind === GroupMessageKind.MembershipChange ||
+            msgKind === 'membership_change' ||
+            msgKind === 1;
+          if (isMembershipChange) continue;
+
+          orderedIds.push(msg.id);
+        }
+        this.setMessageIds(conversationId, orderedIds);
       }
     } catch (error) {
       console.error('[StreamManager] Failed to sync and refresh messages:', error);
