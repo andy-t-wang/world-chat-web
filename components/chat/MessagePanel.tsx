@@ -2066,33 +2066,42 @@ export function MessagePanel({
                         )}
                         <div
                           className={`flex flex-col ${isOwnMessage ? "items-end" : ""}`}
-                          onContextMenu={(e) =>
-                            handleMessageContextMenu(
-                              e,
-                              item.id,
-                              replyText,
-                              replySenderAddress ?? ""
-                            )
-                          }
                         >
                           {/* Sender name for incoming */}
                           {!isOwnMessage && isFirstInGroup && (
                             <SenderName address={replySenderAddress} />
                           )}
-                          <ReplyBubble
-                            quotedContent={quotedContent}
-                            quotedSenderAddress={quotedSenderAddress}
-                            replyContent={replyText}
+                          <MessageWrapper
                             isOwnMessage={isOwnMessage}
-                            isFirstInGroup={isFirstInGroup}
-                            isLastInGroup={isLastInGroup}
-                            timestamp={
-                              isLastInGroup
-                                ? formatTime(msg.sentAtNs)
-                                : undefined
-                            }
-                            isVerified={isVerified}
-                          />
+                            messageId={item.id}
+                            onReactionClick={handleReactionButtonClick}
+                          >
+                            <div
+                              onContextMenu={(e) =>
+                                handleMessageContextMenu(
+                                  e,
+                                  item.id,
+                                  replyText,
+                                  replySenderAddress ?? ""
+                                )
+                              }
+                            >
+                              <ReplyBubble
+                                quotedContent={quotedContent}
+                                quotedSenderAddress={quotedSenderAddress}
+                                replyContent={replyText}
+                                isOwnMessage={isOwnMessage}
+                                isFirstInGroup={isFirstInGroup}
+                                isLastInGroup={isLastInGroup}
+                                timestamp={
+                                  isLastInGroup
+                                    ? formatTime(msg.sentAtNs)
+                                    : undefined
+                                }
+                                isVerified={isVerified}
+                              />
+                            </div>
+                          </MessageWrapper>
                           <MessageReactions
                             messageId={item.id}
                             conversationId={conversationId}
