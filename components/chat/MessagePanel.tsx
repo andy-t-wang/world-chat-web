@@ -375,27 +375,27 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
   return (
     <div
       ref={pickerRef}
-      className="fixed z-50 bg-white rounded-2xl shadow-lg border border-gray-200 px-2 py-1.5 flex items-center gap-1"
+      className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 px-1.5 py-1 flex items-center"
       style={{ left: position.x, top: position.y }}
     >
       {REACTION_EMOJIS.map((emoji) => (
         <button
           key={emoji}
           onClick={() => onSelect(emoji)}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-lg"
+          className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-2xl"
         >
           {emoji}
         </button>
       ))}
       {/* Divider */}
-      <div className="w-px h-6 bg-gray-200 mx-0.5" />
+      <div className="w-px h-6 bg-gray-200 mx-1" />
       {/* Open full emoji picker */}
       <button
         onClick={() => setShowFullPicker(true)}
-        className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
+        className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-600"
         title="More emojis"
       >
-        <SmilePlus className="w-4 h-4" />
+        <SmilePlus className="w-5 h-5" />
       </button>
     </div>
   );
@@ -458,6 +458,7 @@ function MessageWrapper({
 // Display reactions below a message (overlapping style per Figma)
 interface MessageReactionsProps {
   messageId: string;
+  conversationId: string;
   isOwnMessage: boolean;
   memberPreviews?: MemberPreview[];
   peerAddress?: string;
@@ -466,6 +467,7 @@ interface MessageReactionsProps {
 
 function MessageReactions({
   messageId,
+  conversationId,
   isOwnMessage,
   memberPreviews,
   peerAddress,
@@ -502,6 +504,29 @@ function MessageReactions({
     return acc;
   }, {} as Record<string, Array<{ inboxId: string; address?: string; isYou?: boolean }>>);
 
+  // Handle click to toggle own reaction
+  const handleClick = async (
+    e: React.MouseEvent,
+    emoji: string,
+    reactors: Array<{ inboxId: string; address?: string; isYou?: boolean }>
+  ) => {
+    e.stopPropagation();
+
+    // Check if current user has reacted with this emoji
+    const hasOwnReaction = reactors.some(r => r.isYou);
+
+    try {
+      await streamManager.sendReaction(
+        conversationId,
+        messageId,
+        emoji,
+        hasOwnReaction ? 'removed' : 'added'
+      );
+    } catch (error) {
+      console.error("Failed to toggle reaction:", error);
+    }
+  };
+
   const handleContextMenu = (
     e: React.MouseEvent,
     emoji: string,
@@ -523,24 +548,25 @@ function MessageReactions({
           isOwnMessage ? "justify-end pr-1" : "justify-start pl-1"
         }`}
       >
-        {Object.entries(grouped).map(([emoji, reactors]) => (
-          <div
-            key={emoji}
-            className="inline-flex items-center h-[24px] px-[9px] bg-[#F3F4F5] border-2 border-white rounded-[13px] text-[16px] cursor-pointer hover:bg-[#EBECEF] transition-colors"
-            onContextMenu={(e) => handleContextMenu(e, emoji, reactors)}
-            onClick={(e) => handleContextMenu(e, emoji, reactors)}
-            title={`${reactors.length} ${
-              reactors.length === 1 ? "reaction" : "reactions"
-            }`}
-          >
-            <span>{emoji}</span>
-            {reactors.length > 1 && (
-              <span className="text-xs text-[#717680] ml-1">
-                {reactors.length}
-              </span>
-            )}
-          </div>
-        ))}
+        {Object.entries(grouped).map(([emoji, reactors]) => {
+          const hasOwnReaction = reactors.some(r => r.isYou);
+          return (
+            <div
+              key={emoji}
+              className="inline-flex items-center h-[22px] px-1.5 bg-white border border-[#E5E5EA] rounded-full text-[15px] cursor-pointer hover:bg-[#F5F5F5] transition-colors"
+              onContextMenu={(e) => handleContextMenu(e, emoji, reactors)}
+              onClick={(e) => handleClick(e, emoji, reactors)}
+              title={hasOwnReaction ? "Click to remove your reaction" : "Click to add this reaction"}
+            >
+              <span>{emoji}</span>
+              {reactors.length > 1 && (
+                <span className="text-[11px] font-medium ml-0.5 text-[#717680]">
+                  {reactors.length}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
       {reactionMenu && (
         <ReactionDetailsMenu
@@ -1295,22 +1321,30 @@ export function MessagePanel({
     []
   );
 
-  // Handle reaction selection
+  // Handle reaction selection (toggle - add if not present, remove if already reacted)
   const handleReactionSelect = useCallback(
     async (emoji: string) => {
-      if (!reactionPicker) return;
+      if (!reactionPicker || !client?.inboxId) return;
       try {
+        // Check if user already has this reaction
+        const existingReactions = streamManager.getReactions(reactionPicker.messageId);
+        const hasReaction = existingReactions.some(
+          r => r.emoji === emoji && r.senderInboxId === client.inboxId
+        );
+
+        // Toggle: remove if exists, add if not
         await streamManager.sendReaction(
           conversationId,
           reactionPicker.messageId,
-          emoji
+          emoji,
+          hasReaction ? 'removed' : 'added'
         );
       } catch (error) {
         console.error("Failed to send reaction:", error);
       }
       setReactionPicker(null);
     },
-    [conversationId, reactionPicker]
+    [conversationId, reactionPicker, client?.inboxId]
   );
 
   // Close menu when clicking outside
@@ -1754,6 +1788,7 @@ export function MessagePanel({
                           <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
                           <MessageReactions
                             messageId={item.id}
+                            conversationId={conversationId}
                             isOwnMessage={isOwnMessage}
                             memberPreviews={memberPreviews}
                             peerAddress={peerAddress}
@@ -1917,6 +1952,7 @@ export function MessagePanel({
                           )}
                           <MessageReactions
                             messageId={item.id}
+                            conversationId={conversationId}
                             isOwnMessage={isOwnMessage}
                             memberPreviews={memberPreviews}
                             peerAddress={peerAddress}
@@ -2026,6 +2062,7 @@ export function MessagePanel({
                           />
                           <MessageReactions
                             messageId={item.id}
+                            conversationId={conversationId}
                             isOwnMessage={isOwnMessage}
                             memberPreviews={memberPreviews}
                             peerAddress={peerAddress}
@@ -2079,6 +2116,7 @@ export function MessagePanel({
                               />
                               <MessageReactions
                                 messageId={item.id}
+                                conversationId={conversationId}
                                 isOwnMessage={true}
                                 memberPreviews={memberPreviews}
                                 peerAddress={peerAddress}
@@ -2131,6 +2169,7 @@ export function MessagePanel({
                             </div>
                             <MessageReactions
                               messageId={item.id}
+                              conversationId={conversationId}
                               isOwnMessage={true}
                               memberPreviews={memberPreviews}
                               peerAddress={peerAddress}
@@ -2231,6 +2270,7 @@ export function MessagePanel({
                               />
                               <MessageReactions
                                 messageId={item.id}
+                                conversationId={conversationId}
                                 isOwnMessage={false}
                                 memberPreviews={memberPreviews}
                                 peerAddress={peerAddress}
@@ -2287,6 +2327,7 @@ export function MessagePanel({
                             </div>
                             <MessageReactions
                               messageId={item.id}
+                              conversationId={conversationId}
                               isOwnMessage={false}
                               memberPreviews={memberPreviews}
                               peerAddress={peerAddress}
