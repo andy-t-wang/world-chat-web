@@ -9,6 +9,7 @@ import {
   useLayoutEffect,
 } from "react";
 import { useAtomValue, useAtom } from "jotai";
+import { GroupMessageKind } from "@xmtp/browser-sdk";
 import {
   MoreHorizontal,
   Paperclip,
@@ -90,6 +91,197 @@ function StatusMessage({ text }: { text: string }) {
         </p>
       </div>
     </div>
+  );
+}
+
+// Membership change content structure from XMTP
+interface MembershipChangeContent {
+  initiatedByInboxId?: string;
+  addedInboxes?: Array<{ inboxId: string }>;
+  removedInboxes?: Array<{ inboxId: string }>;
+  metadataFieldChanges?: Array<{ fieldName: string; oldValue?: string; newValue?: string }>;
+}
+
+// Check if a message is an XMTP membership change message
+function isMembershipChangeMessage(message: {
+  kind?: unknown;
+  contentType?: { typeId?: string };
+}): boolean {
+  const kind = message.kind as unknown;
+  const typeId = message.contentType?.typeId;
+
+  return (
+    kind === GroupMessageKind.MembershipChange ||
+    kind === 1 ||
+    kind === 'membership_change' ||
+    typeId === 'membershipChange' ||
+    typeId === 'group_updated'  // XMTP uses this typeId for membership changes
+  );
+}
+
+// Component to resolve a single member's name
+function MemberName({
+  inboxId,
+  memberPreviews
+}: {
+  inboxId: string;
+  memberPreviews?: Array<{ inboxId: string; address: string }>;
+}) {
+  // First try to get address from current member previews
+  const preview = memberPreviews?.find((m) => m.inboxId === inboxId);
+
+  // If not in current members, check the StreamManager cache (for removed members)
+  const cachedAddress = preview?.address || streamManager.getCachedAddress(inboxId);
+
+  // State for async lookup result
+  const [lookedUpAddress, setLookedUpAddress] = useState<string | null>(null);
+
+  // If we don't have an address yet, trigger async lookup
+  useEffect(() => {
+    if (cachedAddress || lookedUpAddress) return;
+
+    let cancelled = false;
+    streamManager.getAddressFromInboxId(inboxId).then((address) => {
+      if (!cancelled && address) {
+        setLookedUpAddress(address);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [inboxId, cachedAddress, lookedUpAddress]);
+
+  // Use the best available address
+  const address = cachedAddress || lookedUpAddress;
+  const { displayName } = useUsername(address || null);
+
+  if (displayName) return <>{displayName}</>;
+  if (address) return <>{`${address.slice(0, 6)}...${address.slice(-4)}`}</>;
+  return <>{`${inboxId.slice(0, 6)}...${inboxId.slice(-4)}`}</>;
+}
+
+// Grouped membership change message - renders multiple changes as a single pill
+function GroupedMembershipChangeMessage({
+  changes,
+  memberPreviews,
+}: {
+  changes: Array<{ type: 'added' | 'removed'; inboxIds: string[] }>;
+  memberPreviews?: Array<{ inboxId: string; address: string }>;
+}) {
+  // Collect all added and removed members
+  const addedInboxIds: string[] = [];
+  const removedInboxIds: string[] = [];
+
+  for (const change of changes) {
+    if (change.type === 'added') {
+      addedInboxIds.push(...change.inboxIds);
+    } else {
+      removedInboxIds.push(...change.inboxIds);
+    }
+  }
+
+  // Deduplicate
+  const uniqueAdded = [...new Set(addedInboxIds)];
+  const uniqueRemoved = [...new Set(removedInboxIds)];
+
+  if (uniqueAdded.length === 0 && uniqueRemoved.length === 0) return null;
+
+  return (
+    <>
+      {uniqueAdded.length > 0 && (
+        <div className="flex items-center justify-center py-2">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+              {uniqueAdded.map((inboxId, i) => (
+                <span key={inboxId}>
+                  {i > 0 && (i === uniqueAdded.length - 1 ? ' and ' : ', ')}
+                  <MemberName inboxId={inboxId} memberPreviews={memberPreviews} />
+                </span>
+              ))}
+              {' '}joined the group
+            </p>
+          </div>
+        </div>
+      )}
+      {uniqueRemoved.length > 0 && (
+        <div className="flex items-center justify-center py-2">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+              {uniqueRemoved.map((inboxId, i) => (
+                <span key={inboxId}>
+                  {i > 0 && (i === uniqueRemoved.length - 1 ? ' and ' : ', ')}
+                  <MemberName inboxId={inboxId} memberPreviews={memberPreviews} />
+                </span>
+              ))}
+              {' '}left the group
+            </p>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Membership change message component - renders XMTP membership changes as status pills
+function MembershipChangeMessage({
+  content,
+  memberPreviews,
+}: {
+  content: MembershipChangeContent;
+  memberPreviews?: Array<{ inboxId: string; address: string }>;
+}) {
+  const addedInboxIds = content.addedInboxes?.map(m => m.inboxId) || [];
+  const removedInboxIds = content.removedInboxes?.map(m => m.inboxId) || [];
+
+  // Handle metadata changes
+  const metadataTexts: string[] = [];
+  if (content.metadataFieldChanges?.length) {
+    for (const change of content.metadataFieldChanges) {
+      if (change.fieldName === 'group_name' && change.newValue) {
+        metadataTexts.push(`Group name changed to "${change.newValue}"`);
+      }
+    }
+  }
+
+  if (addedInboxIds.length === 0 && removedInboxIds.length === 0 && metadataTexts.length === 0) {
+    return null;
+  }
+
+  return (
+    <>
+      {addedInboxIds.length > 0 && (
+        <div className="flex items-center justify-center py-2">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+              {addedInboxIds.map((inboxId, i) => (
+                <span key={inboxId}>
+                  {i > 0 && (i === addedInboxIds.length - 1 ? ' and ' : ', ')}
+                  <MemberName inboxId={inboxId} memberPreviews={memberPreviews} />
+                </span>
+              ))}
+              {' '}joined the group
+            </p>
+          </div>
+        </div>
+      )}
+      {removedInboxIds.length > 0 && (
+        <div className="flex items-center justify-center py-2">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+              {removedInboxIds.map((inboxId, i) => (
+                <span key={inboxId}>
+                  {i > 0 && (i === removedInboxIds.length - 1 ? ' and ' : ', ')}
+                  <MemberName inboxId={inboxId} memberPreviews={memberPreviews} />
+                </span>
+              ))}
+              {' '}left the group
+            </p>
+          </div>
+        </div>
+      )}
+      {metadataTexts.map((text, index) => (
+        <StatusMessage key={`meta-${index}`} text={text} />
+      ))}
+    </>
   );
 }
 
@@ -386,7 +578,12 @@ type DisplayItem =
       isLastInGroup: boolean;
       showAvatar: boolean;
     }
-  | { type: "pending"; id: string };
+  | { type: "pending"; id: string }
+  | {
+      type: "membership-change-group";
+      id: string;
+      changes: Array<{ type: 'added' | 'removed'; inboxIds: string[] }>;
+    };
 
 interface MessagePanelProps {
   conversationId: string;
@@ -634,6 +831,8 @@ export function MessagePanel({
       senderId: string;
       dateKey: string;
       sentAtNs: bigint;
+      isMembershipChange?: boolean;
+      membershipContent?: MembershipChangeContent;
     }> = [];
 
     for (const id of reversedIds) {
@@ -695,25 +894,33 @@ export function MessagePanel({
         typeId === "multiRemoteStaticAttachment"
       )
         hasDisplayableContent = true;
+      // Membership change messages (group updates)
+      if (typeId === "group_updated") hasDisplayableContent = true;
 
       if (!hasDisplayableContent) continue;
 
       const date = new Date(Number(msg.sentAtNs / BigInt(1_000_000)));
+      const isMembershipChange = typeId === "group_updated" || isMembershipChangeMessage(msg as { kind?: unknown; contentType?: { typeId?: string } });
+
       messageData.push({
         id,
         senderId: msg.senderInboxId,
         dateKey: date.toDateString(),
         sentAtNs: msg.sentAtNs,
+        isMembershipChange,
+        membershipContent: isMembershipChange ? content as MembershipChangeContent : undefined,
       });
     }
 
     // Build display items with grouping
     const fiveMinutesNs = BigInt(5 * 60) * BigInt(1_000_000_000);
+    const oneMinuteNs = BigInt(60) * BigInt(1_000_000_000);
 
-    for (let i = 0; i < messageData.length; i++) {
+    // Group consecutive membership changes within 1 minute
+    let i = 0;
+    while (i < messageData.length) {
       const curr = messageData[i];
       const prev = i > 0 ? messageData[i - 1] : null;
-      const next = i < messageData.length - 1 ? messageData[i + 1] : null;
 
       // Add date separator if date changed
       if (!prev || prev.dateKey !== curr.dateKey) {
@@ -724,18 +931,73 @@ export function MessagePanel({
         });
       }
 
+      // Check if this is a membership change that can be grouped
+      if (curr.isMembershipChange && curr.membershipContent) {
+        // Collect consecutive membership changes within 1 minute
+        const groupedChanges: Array<{ type: 'added' | 'removed'; inboxIds: string[] }> = [];
+        const groupedIds: string[] = [];
+        let j = i;
+
+        while (j < messageData.length) {
+          const msg = messageData[j];
+
+          // Stop if not a membership change
+          if (!msg.isMembershipChange || !msg.membershipContent) break;
+
+          // Stop if time gap > 1 minute (except for first message)
+          if (j > i && msg.sentAtNs - messageData[j - 1].sentAtNs > oneMinuteNs) break;
+
+          // Stop if date changed
+          if (msg.dateKey !== curr.dateKey) break;
+
+          // Add this message's changes to the group
+          const content = msg.membershipContent;
+          if (content.addedInboxes?.length) {
+            groupedChanges.push({
+              type: 'added',
+              inboxIds: content.addedInboxes.map(m => m.inboxId),
+            });
+          }
+          if (content.removedInboxes?.length) {
+            groupedChanges.push({
+              type: 'removed',
+              inboxIds: content.removedInboxes.map(m => m.inboxId),
+            });
+          }
+          groupedIds.push(msg.id);
+          j++;
+        }
+
+        // If we grouped multiple changes, output a single grouped item
+        if (groupedChanges.length > 0) {
+          items.push({
+            type: "membership-change-group",
+            id: `membership-group-${groupedIds.join('-')}`,
+            changes: groupedChanges,
+          });
+        }
+
+        i = j; // Skip past all grouped messages
+        continue;
+      }
+
+      // Regular message handling
+      const next = i < messageData.length - 1 ? messageData[i + 1] : null;
+
       // Determine if first/last in group
       const isFirstInGroup =
         !prev ||
         prev.senderId !== curr.senderId ||
         prev.dateKey !== curr.dateKey ||
-        curr.sentAtNs - prev.sentAtNs > fiveMinutesNs;
+        curr.sentAtNs - prev.sentAtNs > fiveMinutesNs ||
+        (prev.isMembershipChange ?? false); // Break group after membership changes
 
       const isLastInGroup =
         !next ||
         next.senderId !== curr.senderId ||
         next.dateKey !== curr.dateKey ||
-        next.sentAtNs - curr.sentAtNs > fiveMinutesNs;
+        next.sentAtNs - curr.sentAtNs > fiveMinutesNs ||
+        (next.isMembershipChange ?? false); // Break group before membership changes
 
       const isOwnMessage = curr.senderId === ownInboxId;
 
@@ -746,6 +1008,8 @@ export function MessagePanel({
         isLastInGroup,
         showAvatar: isFirstInGroup && !isOwnMessage,
       });
+
+      i++;
     }
 
     // Add pending messages at the end, but skip if a matching real message exists
@@ -1177,9 +1441,32 @@ export function MessagePanel({
                     );
                   }
 
+                  // Grouped membership changes
+                  if (item.type === "membership-change-group") {
+                    return (
+                      <GroupedMembershipChangeMessage
+                        key={item.id}
+                        changes={item.changes}
+                        memberPreviews={memberPreviews}
+                      />
+                    );
+                  }
+
                   // Regular message
                   const msg = getMessage(item.id);
                   if (!msg) return null;
+
+                  // Check if this is an XMTP membership change message (fallback for ungrouped)
+                  const isMemberChange = isMembershipChangeMessage(msg as { kind?: unknown; contentType?: { typeId?: string } });
+                  if (isMemberChange) {
+                    return (
+                      <MembershipChangeMessage
+                        key={item.id}
+                        content={msg.content as MembershipChangeContent}
+                        memberPreviews={memberPreviews}
+                      />
+                    );
+                  }
 
                   const isOwnMessage = msg.senderInboxId === ownInboxId;
                   const text = getMessageText(msg);

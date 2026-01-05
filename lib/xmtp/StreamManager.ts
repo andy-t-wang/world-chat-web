@@ -9,7 +9,7 @@
  */
 
 import type { Dm, Group } from '@xmtp/browser-sdk';
-import { SortDirection, ConsentState } from '@xmtp/browser-sdk';
+import { SortDirection, ConsentState, GroupMessageKind } from '@xmtp/browser-sdk';
 import { ContentTypeReadReceipt } from '@xmtp/content-type-read-receipt';
 import type { AnyClient } from '@/types/xmtp';
 import {
@@ -372,6 +372,9 @@ class XMTPStreamManager {
 
   // Track messages received while tab is hidden (for tab title)
   private hiddenTabMessageCount = 0;
+
+  // Cache of inboxId -> address for all members we've seen (persists even after removal)
+  private memberAddressCache = new Map<string, string>();
 
   /**
    * Initialize the manager with an XMTP client
@@ -924,6 +927,12 @@ class XMTPStreamManager {
           inboxId: m.inboxId,
           address: m.accountIdentifiers?.[0]?.identifier ?? '',
         }));
+        // Cache all member addresses for future lookups (even after removal)
+        for (const member of memberPreviews) {
+          if (member.address) {
+            this.memberAddressCache.set(member.inboxId, member.address);
+          }
+        }
       }
 
       // Only sync if requested (skip for fast local load)
@@ -1445,7 +1454,7 @@ class XMTPStreamManager {
         // Reset restart counter on successful connection
         this.allMessagesStreamRestarts = 0;
 
-        for await (const msg of streamProxy as AsyncIterable<{ id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string; authorityId?: string } }>) {
+        for await (const msg of streamProxy as AsyncIterable<{ id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string; contentType?: { typeId?: string; authorityId?: string }; kind?: string }>) {
           if (signal.aborted) break;
 
           const conversationId = msg.conversationId;
@@ -1463,6 +1472,20 @@ class XMTPStreamManager {
           // Handle reaction messages
           if (typeId === CONTENT_TYPE_REACTION) {
             await this.processReaction(msg as unknown as DecodedMessage, true);
+            continue;
+          }
+
+          // Handle membership change messages
+          // Check for both numeric enum value (GroupMessageKind.MembershipChange = 1) and string
+          // Cast to unknown first to handle the type mismatch
+          const msgKind = msg.kind as unknown;
+          const isMembershipChange =
+            msgKind === GroupMessageKind.MembershipChange ||
+            msgKind === 'membership_change' ||
+            msgKind === 1;
+
+          if (isMembershipChange) {
+            await this.processMembershipChange(msg, conversationId);
             continue;
           }
 
@@ -1709,6 +1732,81 @@ class XMTPStreamManager {
   }
 
   /**
+   * Sync a conversation and refresh messages to pick up any new messages
+   * including membership change messages from XMTP
+   * Call this after add/remove member operations
+   */
+  async syncAndRefreshMessages(conversationId: string): Promise<void> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv) return;
+
+    try {
+      // Sync the conversation to get latest messages from network
+      await conv.sync();
+
+      // Fetch recent messages including membership changes
+      const messages = await conv.messages({
+        limit: BigInt(20),
+        direction: SortDirection.Descending,
+      });
+
+      const currentIds = this.getMessageIds(conversationId);
+      const currentIdSet = new Set(currentIds);
+      const newMessageIds: string[] = [];
+
+      for (const msg of messages) {
+        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+        const msgKind = (msg as { kind?: unknown }).kind;
+
+        // Skip read receipts
+        if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
+
+        // Skip reactions (they're processed separately)
+        if (typeId === CONTENT_TYPE_REACTION) continue;
+
+        // Check if this is a membership change message
+        const isMembershipChange =
+          msgKind === GroupMessageKind.MembershipChange ||
+          msgKind === 'membership_change' ||
+          msgKind === 1;
+
+        if (isMembershipChange) {
+          console.log('[StreamManager] Found membership change message:', msg);
+          // Process membership change - creates synthetic status messages
+          await this.processMembershipChange(
+            msg as { id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string },
+            conversationId
+          );
+          continue;
+        }
+
+        // Add regular messages we don't have yet
+        if (!currentIdSet.has(msg.id)) {
+          messageCache.set(msg.id, msg as unknown as DecodedMessage);
+          newMessageIds.push(msg.id);
+        }
+      }
+
+      if (newMessageIds.length > 0) {
+        // Merge new messages with existing (maintain order)
+        const allIds = [...newMessageIds, ...currentIds];
+        // Sort by sentAtNs descending (newest first)
+        allIds.sort((a, b) => {
+          const msgA = messageCache.get(a);
+          const msgB = messageCache.get(b);
+          if (!msgA || !msgB) return 0;
+          return Number(msgB.sentAtNs - msgA.sentAtNs);
+        });
+        // Remove duplicates
+        const uniqueIds = [...new Set(allIds)];
+        this.setMessageIds(conversationId, uniqueIds);
+      }
+    } catch (error) {
+      console.error('[StreamManager] Failed to sync and refresh messages:', error);
+    }
+  }
+
+  /**
    * Send a reply to a message
    */
   async sendReply(
@@ -1884,6 +1982,52 @@ class XMTPStreamManager {
   }
 
   /**
+   * Get address for an inbox ID, looking up from XMTP if not cached
+   * This persists even after members are removed from groups
+   */
+  async getAddressFromInboxId(inboxId: string): Promise<string | null> {
+    // Check cache first
+    const cached = this.memberAddressCache.get(inboxId);
+    if (cached) return cached;
+
+    // Look up from XMTP
+    if (!this.client) return null;
+
+    try {
+      // Use type assertion since AnyClient type doesn't expose this method directly
+      const clientWithMethod = this.client as unknown as {
+        inboxStateFromInboxIds: (ids: string[], refresh: boolean) => Promise<Array<{
+          identifiers?: Array<{ identifier: string; identifierKind: string }>;
+        }>>;
+      };
+      const inboxStates = await clientWithMethod.inboxStateFromInboxIds([inboxId], false);
+      if (inboxStates.length > 0) {
+        const state = inboxStates[0];
+        // Get first Ethereum identifier
+        const ethIdentifier = state.identifiers?.find(
+          (id) => id.identifierKind === 'Ethereum'
+        );
+        if (ethIdentifier?.identifier) {
+          // Cache it
+          this.memberAddressCache.set(inboxId, ethIdentifier.identifier);
+          return ethIdentifier.identifier;
+        }
+      }
+    } catch (error) {
+      console.error('[StreamManager] Failed to look up inbox ID:', error);
+    }
+
+    return null;
+  }
+
+  /**
+   * Get cached address for an inbox ID (synchronous, no XMTP lookup)
+   */
+  getCachedAddress(inboxId: string): string | null {
+    return this.memberAddressCache.get(inboxId) ?? null;
+  }
+
+  /**
    * Accept a conversation (set consent to Allowed)
    * Moves conversation from requests to main chat list
    */
@@ -1988,6 +2132,43 @@ class XMTPStreamManager {
    */
   isInitialized(): boolean {
     return this.client !== null;
+  }
+
+  /**
+   * Process a membership change message from XMTP
+   * Stores the original message for the UI to render appropriately
+   * @param msg - The membership change message
+   * @param conversationId - The conversation ID
+   */
+  private async processMembershipChange(
+    msg: { id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string },
+    conversationId: string
+  ): Promise<void> {
+    // Skip if we already have this message
+    if (messageCache.has(msg.id)) return;
+
+    // Store the original XMTP membership change message
+    // The UI (MessagePanel) will detect and render it appropriately
+    const membershipMessage = {
+      ...msg,
+      // Mark this as a membership change for the UI to detect
+      kind: GroupMessageKind.MembershipChange,
+      contentType: { typeId: 'group_updated', authorityId: 'xmtp.org' },
+    };
+
+    messageCache.set(msg.id, membershipMessage as unknown as DecodedMessage);
+
+    // Add to message list
+    const currentIds = this.getMessageIds(conversationId);
+    if (!currentIds.includes(msg.id)) {
+      this.setMessageIds(conversationId, [msg.id, ...currentIds]);
+    }
+
+    // Refresh conversation metadata to update member list
+    await this.refreshConversationMetadata(conversationId);
+
+    // Update metadata version to trigger re-render
+    this.incrementMetadataVersion();
   }
 
   /**

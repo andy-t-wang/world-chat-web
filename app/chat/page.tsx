@@ -98,24 +98,47 @@ export default function ChatPage() {
     }
   }, [client, selectedId, conversationMetadata?.conversationType, isLeavingGroup]);
 
-  // Handle member added to group - send system message
-  const handleMemberAdded = useCallback(async (address: string, displayName: string | null) => {
+  // Handle member added to group - sync to get XMTP's membership change message
+  const handleMemberAdded = useCallback(async (_address: string, _displayName: string | null) => {
     if (!selectedId) return;
 
     try {
-      // Format the name for the message
-      const memberName = displayName || `${address.slice(0, 6)}...${address.slice(-4)}`;
-
-      // Send a message announcing the new member using StreamManager
-      // This ensures the message appears immediately in the UI
-      await streamManager.sendMessage(selectedId, `${memberName} was added to the group`);
-
-      // Refresh conversation metadata to get updated member list
+      // Sync and refresh to get XMTP's built-in membership change message
+      // XMTP automatically creates these when members are added
+      await streamManager.syncAndRefreshMessages(selectedId);
       await streamManager.refreshConversationMetadata(selectedId);
     } catch (error) {
-      console.error('Failed to send member added message:', error);
+      console.error('Failed to handle member added:', error);
     }
   }, [selectedId]);
+
+  // Handle member removed from group - remove member, sync to get XMTP's membership change message
+  const handleMemberRemoved = useCallback(async (inboxId: string, _address: string, _displayName: string | null) => {
+    if (!client || !selectedId) return;
+
+    try {
+      // Get the conversation
+      const conversation = await client.conversations.getConversationById(selectedId);
+      if (!conversation || !('removeMembers' in conversation)) {
+        throw new Error('Cannot remove members from this conversation');
+      }
+
+      const group = conversation as unknown as {
+        removeMembers: (inboxIds: string[]) => Promise<void>;
+      };
+
+      // Remove the member
+      await group.removeMembers([inboxId]);
+
+      // Sync and refresh to get XMTP's built-in membership change message
+      // XMTP automatically creates these when members are removed
+      await streamManager.syncAndRefreshMessages(selectedId);
+      await streamManager.refreshConversationMetadata(selectedId);
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      throw error;
+    }
+  }, [client, selectedId]);
 
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
@@ -319,6 +342,7 @@ export default function ChatPage() {
             isLeavingGroup={isLeavingGroup}
             ownInboxId={client?.inboxId}
             onMemberAdded={handleMemberAdded}
+            onMemberRemoved={handleMemberRemoved}
           />
         )}
       </div>

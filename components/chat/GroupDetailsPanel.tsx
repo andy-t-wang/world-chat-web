@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useCallback, useState } from "react";
-import { X, Users, Image, Pencil, Bell, Pin, LogOut, ChevronRight, Loader2, ArrowLeft, UserPlus } from "lucide-react";
+import { X, Users, Image, Pencil, Bell, Pin, LogOut, ChevronRight, Loader2, ArrowLeft, UserPlus, UserMinus } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
 import { useUsername } from "@/hooks/useUsername";
@@ -24,6 +24,7 @@ interface GroupDetailsPanelProps {
   isLeavingGroup: boolean;
   ownInboxId?: string;
   onMemberAdded?: (address: string, displayName: string | null) => void;
+  onMemberRemoved?: (inboxId: string, address: string, displayName: string | null) => Promise<void>;
 }
 
 interface MenuItemProps {
@@ -65,14 +66,20 @@ function MenuItem({ icon, label, value, onClick, variant = "default", isLoading 
 // Member row component with username lookup
 function MemberRow({
   address,
+  inboxId,
   isYou,
   isAdmin,
-  isPending
+  isPending,
+  isRemoving,
+  onRemove,
 }: {
   address: string;
+  inboxId: string;
   isYou: boolean;
   isAdmin?: boolean;
   isPending?: boolean;
+  isRemoving?: boolean;
+  onRemove?: (inboxId: string, address: string, displayName: string | null) => void;
 }) {
   const { displayName, profilePicture } = useUsername(address);
   const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -80,14 +87,21 @@ function MemberRow({
   const username = displayName ? `@${displayName.toLowerCase().replace(/\s+/g, '')}` : shortAddress;
   const isVerified = Boolean(profilePicture);
 
+  const handleRemove = () => {
+    if (onRemove && !isYou && !isPending && !isRemoving) {
+      onRemove(inboxId, address, displayName);
+    }
+  };
+
   return (
-    <div className={`flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors ${isPending ? 'opacity-60' : ''}`}>
+    <div className={`group flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors ${isPending || isRemoving ? 'opacity-60' : ''}`}>
       <Avatar address={address} size="md" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-[15px] text-[#1D1D1F] truncate">{name}</span>
           {isVerified && <VerificationBadge size="xs" />}
           {isPending && <Loader2 className="w-3 h-3 animate-spin text-[#86868B]" />}
+          {isRemoving && <Loader2 className="w-3 h-3 animate-spin text-red-500" />}
         </div>
         {!isYou && (
           <span className="text-[13px] text-[#86868B] truncate block">{username}</span>
@@ -95,6 +109,20 @@ function MemberRow({
       </div>
       {isAdmin && (
         <span className="text-[13px] text-[#86868B]">Admin</span>
+      )}
+      {!isYou && !isPending && onRemove && (
+        <button
+          onClick={handleRemove}
+          disabled={isRemoving}
+          className="w-8 h-8 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-50 text-[#86868B] hover:text-red-500 transition-all disabled:opacity-50"
+          title="Remove from group"
+        >
+          {isRemoving ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <UserMinus className="w-4 h-4" />
+          )}
+        </button>
       )}
     </div>
   );
@@ -104,15 +132,19 @@ function MemberRow({
 function GroupMembersView({
   memberPreviews,
   optimisticMembers,
+  removingMembers,
   ownInboxId,
   onBack,
   onAddNew,
+  onRemoveMember,
 }: {
   memberPreviews: MemberPreview[];
   optimisticMembers: MemberPreview[];
+  removingMembers: Set<string>;
   ownInboxId?: string;
   onBack: () => void;
   onAddNew: () => void;
+  onRemoveMember: (inboxId: string, address: string, displayName: string | null) => void;
 }) {
   // Get set of real member addresses for deduplication
   const realMemberAddresses = new Set(memberPreviews.map(m => m.address.toLowerCase()));
@@ -154,9 +186,12 @@ function GroupMembersView({
           <MemberRow
             key={member.inboxId || member.address}
             address={member.address}
+            inboxId={member.inboxId}
             isYou={member.inboxId === ownInboxId}
             isAdmin={member.inboxId === ownInboxId}
             isPending={optimisticAddresses.has(member.address.toLowerCase())}
+            isRemoving={removingMembers.has(member.inboxId)}
+            onRemove={onRemoveMember}
           />
         ))}
       </div>
@@ -187,10 +222,12 @@ export function GroupDetailsPanel({
   isLeavingGroup,
   ownInboxId,
   onMemberAdded,
+  onMemberRemoved,
 }: GroupDetailsPanelProps) {
   const [view, setView] = useState<"details" | "members">("details");
   const [showAddModal, setShowAddModal] = useState(false);
   const [optimisticMembers, setOptimisticMembers] = useState<MemberPreview[]>([]);
+  const [removingMembers, setRemovingMembers] = useState<Set<string>>(new Set());
 
   // Handle escape key
   useEffect(() => {
@@ -232,6 +269,27 @@ export function GroupDetailsPanel({
     }, 3000);
   }, [onMemberAdded]);
 
+  // Handle member removal
+  const handleRemoveMember = useCallback(async (inboxId: string, address: string, displayName: string | null) => {
+    if (!onMemberRemoved || removingMembers.has(inboxId)) return;
+
+    // Mark as removing
+    setRemovingMembers(prev => new Set(prev).add(inboxId));
+
+    try {
+      await onMemberRemoved(inboxId, address, displayName);
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+    } finally {
+      // Remove from removing set
+      setRemovingMembers(prev => {
+        const next = new Set(prev);
+        next.delete(inboxId);
+        return next;
+      });
+    }
+  }, [onMemberRemoved, removingMembers]);
+
   // Build member count string
   const totalMembers = memberPreviews.length + optimisticMembers.length;
   const memberCountText = (() => {
@@ -257,9 +315,11 @@ export function GroupDetailsPanel({
         <GroupMembersView
           memberPreviews={memberPreviews}
           optimisticMembers={optimisticMembers}
+          removingMembers={removingMembers}
           ownInboxId={ownInboxId}
           onBack={() => setView("details")}
           onAddNew={() => setShowAddModal(true)}
+          onRemoveMember={handleRemoveMember}
         />
 
         {/* Add Member Modal */}
