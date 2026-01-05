@@ -138,14 +138,24 @@ async function fetchTwitterMetadata(url: string): Promise<LinkMetadata> {
     const data = await response.json();
 
     // Extract tweet text from HTML (oEmbed returns HTML)
-    // Format: <blockquote>...<p>TWEET TEXT</p>...— AUTHOR (@username)</blockquote>
+    // Format: <blockquote>...<p>TWEET TEXT with <br> and <a> tags</p>...— AUTHOR (@username)</blockquote>
     let tweetText = '';
-    const pMatch = data.html?.match(/<p[^>]*>([^<]*(?:<a[^>]*>[^<]*<\/a>[^<]*)*)<\/p>/);
+    const pMatch = data.html?.match(/<p[^>]*>([\s\S]*?)<\/p>/);
     if (pMatch) {
-      // Remove anchor tags but keep their text
+      // Clean up the tweet text:
+      // 1. Replace <br> with newlines
+      // 2. Remove anchor tags but keep their text
+      // 3. Remove any remaining HTML tags
+      // 4. Decode HTML entities
       tweetText = pMatch[1]
+        .replace(/<br\s*\/?>/gi, '\n')
         .replace(/<a[^>]*>([^<]*)<\/a>/g, '$1')
         .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
         .trim();
     }
 

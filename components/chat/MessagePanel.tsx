@@ -2101,6 +2101,15 @@ export function MessagePanel({
                             peerAddress={peerAddress}
                             ownInboxId={ownInboxId}
                           />
+                          {/* Link preview for reply messages */}
+                          {linkPreviewEnabled && extractUrls(replyText).length > 0 && (
+                            <div className="mt-2">
+                              <MessageLinkPreview
+                                text={replyText}
+                                isOwnMessage={isOwnMessage}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );

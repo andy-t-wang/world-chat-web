@@ -64,30 +64,34 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
         onClick={handleClick}
         className="cursor-pointer overflow-hidden rounded-2xl bg-[#F7F9FA] border border-[#E1E8ED] w-[340px] hover:bg-[#EDF0F3] transition-colors group"
       >
-        {/* Header with X logo */}
+        {/* Header with X logo and author */}
         <div className="px-4 pt-3 pb-2 flex items-center gap-2">
-          <div className="w-5 h-5 flex items-center justify-center">
+          <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
             <XLogo className="w-4 h-4 text-black" />
           </div>
-          <span className="text-[14px] font-medium text-[#536471]">
-            X (formerly Twitter)
-          </span>
+          {author ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="text-[14px] font-semibold text-[#0F1419] truncate">
+                {author}
+              </span>
+              {authorUsername && (
+                <span className="text-[14px] text-[#536471] truncate">
+                  @{authorUsername}
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-[14px] font-medium text-[#536471]">
+              X (formerly Twitter)
+            </span>
+          )}
         </div>
 
-        {/* Title / username */}
+        {/* Tweet text */}
         {title && (
-          <div className="px-4 pb-2">
-            <p className="text-[15px] font-semibold text-[#0F1419] leading-[1.4] line-clamp-2">
-              {title}
-            </p>
-          </div>
-        )}
-
-        {/* Description */}
-        {description && (
           <div className="px-4 pb-3">
-            <p className="text-[14px] text-[#536471] leading-[1.4] line-clamp-3">
-              {description}
+            <p className="text-[15px] text-[#0F1419] leading-[1.4] line-clamp-4 whitespace-pre-wrap">
+              {title}
             </p>
           </div>
         )}
