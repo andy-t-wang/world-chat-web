@@ -565,6 +565,22 @@ class XMTPStreamManager {
   private initialSyncDone = false;
 
   /**
+   * Find an existing DM conversation by peer address
+   */
+  private findExistingDmByPeerAddress(peerAddress: string): { convId: string; peerInboxId: string } | null {
+    if (!peerAddress) return null;
+    const normalizedAddress = peerAddress.toLowerCase();
+
+    for (const [convId, metadata] of this.conversationMetadata) {
+      if (metadata.conversationType === 'dm' &&
+          metadata.peerAddress?.toLowerCase() === normalizedAddress) {
+        return { convId, peerInboxId: metadata.peerInboxId };
+      }
+    }
+    return null;
+  }
+
+  /**
    * Load conversations from local cache (no network)
    */
   private async loadConversationsFromCache(): Promise<void> {
@@ -582,6 +598,9 @@ class XMTPStreamManager {
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
 
+      // Track DMs by peer address to detect duplicates
+      const dmsByPeerAddress = new Map<string, { convId: string; peerInboxId: string; createdAtNs?: bigint }[]>();
+
       const ids: string[] = [];
 
       for (const conv of localConversations) {
@@ -591,11 +610,35 @@ class XMTPStreamManager {
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
 
+        // Log DM duplicates
+        if (metadata.conversationType === 'dm' && metadata.peerAddress) {
+          const normalizedAddress = metadata.peerAddress.toLowerCase();
+          if (!dmsByPeerAddress.has(normalizedAddress)) {
+            dmsByPeerAddress.set(normalizedAddress, []);
+          }
+          dmsByPeerAddress.get(normalizedAddress)!.push({
+            convId: conv.id,
+            peerInboxId: metadata.peerInboxId,
+            createdAtNs: (conv as unknown as { createdAtNs?: bigint }).createdAtNs,
+          });
+        }
+
         // Only show conversations that have displayable messages (not just system/welcome messages)
         // Always include the currently selected conversation (so newly created ones are visible)
         const selectedId = store.get(selectedConversationIdAtom);
         if (metadata.lastMessagePreview || conv.id === selectedId) {
           ids.push(conv.id);
+        }
+      }
+
+      // Log any duplicate DMs (same peer address, multiple conversations)
+      for (const [peerAddress, convs] of dmsByPeerAddress) {
+        if (convs.length > 1) {
+          console.warn('[StreamManager] DUPLICATE DMs detected for', peerAddress, convs.map(c => ({
+            convId: c.convId,
+            peerInboxId: c.peerInboxId,
+            createdAtNs: c.createdAtNs?.toString(),
+          })));
         }
       }
 
@@ -1062,6 +1105,26 @@ class XMTPStreamManager {
           // New streamed conversations - sync to get initial messages
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
+
+          // Log new DM details for debugging
+          if (metadata.conversationType === 'dm') {
+            console.log('[StreamManager] New DM streamed:', {
+              convId: conv.id,
+              peerAddress: metadata.peerAddress,
+              peerInboxId: metadata.peerInboxId,
+              consentState,
+            });
+
+            // Check for existing DM with same peer address
+            const existingDm = this.findExistingDmByPeerAddress(metadata.peerAddress);
+            if (existingDm && existingDm.convId !== conv.id) {
+              console.warn('[StreamManager] DUPLICATE DM detected in stream!', {
+                newConvId: conv.id,
+                existingConvId: existingDm.convId,
+                peerAddress: metadata.peerAddress,
+              });
+            }
+          }
 
           // Add to visible list if:
           // 1. Consent is Allowed or Unknown (show new conversations so user can respond)

@@ -69,8 +69,8 @@ export const USERNAME_API = {
   BASE_URL: 'https://usernames.worldcoin.org',
   /** Maximum addresses to query in a single batch request */
   MAX_BATCH_SIZE: 100,
-  /** Cache TTL in milliseconds (5 minutes) */
-  CACHE_TTL_MS: 5 * 60 * 1000,
+  /** Cache TTL in milliseconds (7 days) */
+  CACHE_TTL_MS: 7 * 24 * 60 * 60 * 1000,
   /** Maximum usernames to cache */
   MAX_CACHE_SIZE: 500,
 } as const;
