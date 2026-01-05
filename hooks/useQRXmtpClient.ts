@@ -125,27 +125,6 @@ function cacheSession(address: string, inboxId: string): void {
   }
 }
 
-/**
- * Create a cached signer for restoring sessions
- * This signer uses the cached address and throws if signing is needed
- * (which shouldn't happen for existing installations)
- */
-function createCachedSigner(address: string) {
-  return {
-    type: 'SCW' as const,
-    getIdentifier: () => ({
-      identifier: address.toLowerCase(),
-      identifierKind: 'Ethereum' as const,
-    }),
-    signMessage: async (): Promise<Uint8Array> => {
-      // For existing installations, XMTP shouldn't need to sign
-      // If it does, we need to re-authenticate via QR
-      throw new Error('Session expired - please scan QR code to reconnect');
-    },
-    getChainId: () => BigInt(480), // World Chain
-  };
-}
-
 interface UseQRXmtpClientResult {
   client: Client | null;
   isInitializing: boolean;
@@ -208,21 +187,26 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         TransactionReferenceCodec,
       } = await getModules();
 
-      // Create a cached signer - works for existing installations
-      const cachedSigner = createCachedSigner(cachedSession.address);
-
-      const xmtpClient = await Client.create(cachedSigner, {
-        env: 'production',
-        appVersion: 'WorldChat/1.0.0',
-        codecs: [
-          new ReactionCodec(),
-          new ReplyCodec(),
-          new ReadReceiptCodec(),
-          new AttachmentCodec(),
-          new RemoteAttachmentCodec(),
-          new TransactionReferenceCodec(),
-        ],
-      });
+      // Use Client.build() for faster session restoration
+      // This skips signer initialization since the client is already registered
+      const xmtpClient = await Client.build(
+        {
+          identifier: cachedSession.address.toLowerCase(),
+          identifierKind: 'Ethereum' as const,
+        },
+        {
+          env: 'production',
+          appVersion: 'WorldChat/1.0.0',
+          codecs: [
+            new ReactionCodec(),
+            new ReplyCodec(),
+            new ReadReceiptCodec(),
+            new AttachmentCodec(),
+            new RemoteAttachmentCodec(),
+            new TransactionReferenceCodec(),
+          ],
+        }
+      );
 
       // Update cache timestamp
       if (xmtpClient.inboxId) {
@@ -243,10 +227,12 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       // Release the tab lock on failure
       releaseTabLock();
 
-      // Only clear session if it's truly invalid (signing was required)
+      // Clear session if the XMTP installation is not found (needs re-registration)
       // For other errors (network, etc.), keep session so user can retry
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const isSessionExpired = errorMessage.includes('Session expired') ||
+      const isSessionExpired = errorMessage.includes('not registered') ||
+                               errorMessage.includes('installation') ||
+                               errorMessage.includes('Session expired') ||
                                errorMessage.includes('scan QR') ||
                                errorMessage.includes('signature');
 
