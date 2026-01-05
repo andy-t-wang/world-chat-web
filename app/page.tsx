@@ -11,8 +11,7 @@ const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
 
 type LoginState =
-  | "checking_session"
-  | "generating"
+  | "initializing"
   | "waiting_for_scan"
   | "mobile_connected"
   | "authenticating"
@@ -54,10 +53,11 @@ function ScanningCorners() {
 
 export default function Home() {
   const router = useRouter();
-  const [state, setState] = useState<LoginState>("checking_session");
+  const [state, setState] = useState<LoginState>("initializing");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [connectedAddress, setConnectedAddress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isReady, setIsReady] = useState(false); // Only true once we know we need QR login
   const signerRef = useRef<RemoteSigner | null>(null);
   const { initializeWithRemoteSigner, restoreSession } = useQRXmtpClient();
 
@@ -67,10 +67,9 @@ export default function Home() {
       )}`
     : null;
 
-  const startSession = async () => {
+  const startSession = async (isInitial = false) => {
     signerRef.current?.cleanup();
 
-    setState("generating");
     setError(null);
     setConnectedAddress(null);
 
@@ -101,6 +100,11 @@ export default function Home() {
 
       signerRef.current = signer;
       setState("waiting_for_scan");
+
+      // Only set ready (trigger animations) on initial load, not retries
+      if (isInitial) {
+        setIsReady(true);
+      }
 
       await signer.connect();
       setState("initializing_xmtp");
@@ -142,7 +146,7 @@ export default function Home() {
           router.push("/chat");
         } else {
           // No session, start QR flow
-          startSession();
+          startSession(true);
         }
       })
       .catch((error) => {
@@ -154,7 +158,7 @@ export default function Home() {
           router.push("/chat");
         } else {
           // Other error, start QR flow
-          startSession();
+          startSession(true);
         }
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,10 +166,8 @@ export default function Home() {
 
   const getStatusText = () => {
     switch (state) {
-      case "checking_session":
-        return "Checking session...";
-      case "generating":
-        return "Preparing...";
+      case "initializing":
+        return ""; // Don't show text while checking session
       case "waiting_for_scan":
         return "Scan with Camera";
       case "mobile_connected":
@@ -186,8 +188,7 @@ export default function Home() {
   };
 
   const isLoading = [
-    "checking_session",
-    "generating",
+    "initializing",
     "mobile_connected",
     "authenticating",
     "signing",
@@ -195,6 +196,15 @@ export default function Home() {
   ].includes(state);
 
   const showQR = state === "waiting_for_scan" && qrUrl;
+
+  // Show minimal loading while checking session
+  if (!isReady) {
+    return (
+      <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6">
+        <PulseLoader />
+      </div>
+    );
+  }
 
   return (
     <>
@@ -317,7 +327,7 @@ export default function Home() {
           )}
 
           {/* Loading hint */}
-          {isLoading && state !== "generating" && state !== "checking_session" && (
+          {isLoading && state !== "initializing" && (
             <p className="text-[13px] text-[#86868B] animate-fade-in">
               Keep World App open
             </p>
