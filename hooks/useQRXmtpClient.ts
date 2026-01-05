@@ -175,7 +175,11 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       }
 
       dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
-      await streamManager.initialize(xmtpClient);
+
+      // Initialize StreamManager in background (don't block UI)
+      streamManager.initialize(xmtpClient).catch((error) => {
+        console.error('[QRXmtpClient] StreamManager initialization error:', error);
+      });
 
       return true;
     } catch (error) {
@@ -262,7 +266,11 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         }
 
         dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
-        await streamManager.initialize(xmtpClient);
+
+        // Initialize StreamManager in background (don't block UI)
+        streamManager.initialize(xmtpClient).catch((error) => {
+          console.error('[QRXmtpClient] StreamManager initialization error:', error);
+        });
       } catch (error) {
         console.error('Failed to initialize XMTP client with remote signer:', error);
         // Release the tab lock on failure
