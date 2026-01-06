@@ -244,6 +244,23 @@ export function updateTitleWithUnreadCount(unreadCount: number): void {
     stopTitleFlash();
   }
   updateTabTitleDisplay();
+
+  // Update Electron dock badge if running in Electron
+  updateElectronBadge(unreadCount);
+}
+
+/**
+ * Update Electron dock badge count (macOS)
+ */
+export function updateElectronBadge(count: number): void {
+  if (typeof window === 'undefined') return;
+
+  const electronAPI = (window as { electronAPI?: { setBadgeCount?: (count: number) => Promise<void> } }).electronAPI;
+  if (electronAPI?.setBadgeCount) {
+    electronAPI.setBadgeCount(count).catch(() => {
+      // Ignore errors - may not be on macOS or dock may not be available
+    });
+  }
 }
 
 /**

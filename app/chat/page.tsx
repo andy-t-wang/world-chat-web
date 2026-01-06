@@ -224,8 +224,10 @@ export default function ChatPage() {
   if (isRestoring || clientState.isInitializing || !restorationAttempted) {
     return (
       <div className="flex w-full h-screen overflow-hidden">
-        {/* Skeleton Sidebar */}
-        <div className="w-[320px] lg:w-[380px] border-r border-[#E5E5EA] bg-white flex flex-col flex-shrink-0">
+        {/* Skeleton Sidebar - full width on mobile */}
+        <div className="w-full md:w-[320px] lg:w-[380px] border-r border-[#E5E5EA] bg-white flex flex-col flex-shrink-0">
+          {/* Electron drag region */}
+          <div className="electron-drag h-8 shrink-0" />
           {/* Header skeleton */}
           <div className="px-4 py-3 border-b border-[#E5E5EA]">
             <div className="h-8 w-32 bg-[#F2F2F7] rounded-lg animate-pulse" />
@@ -247,8 +249,8 @@ export default function ChatPage() {
             ))}
           </div>
         </div>
-        {/* Skeleton Message Panel */}
-        <div className="flex-1 flex flex-col bg-[#F5F5F5]">
+        {/* Skeleton Message Panel - hidden on mobile */}
+        <div className="hidden md:flex flex-1 flex-col bg-[#F5F5F5]">
           {/* Header skeleton */}
           <div className="h-16 border-b border-[#E5E5EA] bg-white px-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-[#F2F2F7] animate-pulse" />
