@@ -113,9 +113,20 @@ export function playNotificationSound(): void {
 
 /**
  * Check if the browser tab is currently visible
+ * In Electron, also check if window is focused
  */
 export function isTabVisible(): boolean {
   if (typeof document === 'undefined') return true;
+
+  // In Electron, check both visibility and focus
+  const isElectron = typeof window !== 'undefined' &&
+    !!(window as { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron;
+
+  if (isElectron) {
+    // In Electron, only consider "visible" if document is visible AND window is focused
+    return document.visibilityState === 'visible' && document.hasFocus();
+  }
+
   return document.visibilityState === 'visible';
 }
 
