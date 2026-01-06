@@ -1409,9 +1409,9 @@ export function MessagePanel({
   }, [client, conversationType, conversationId, isLeavingGroup]);
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
-      {/* Electron drag region */}
-      <div className="electron-drag h-8 shrink-0 md:hidden" />
+    <div className="flex-1 flex flex-col bg-white relative">
+      {/* Invisible drag region for Electron - positioned at top, doesn't affect layout */}
+      <div className="electron-drag absolute top-0 left-0 right-0 h-8 z-10 md:hidden" />
       {/* Header */}
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
         <div className="flex items-center gap-2">
@@ -1419,14 +1419,14 @@ export function MessagePanel({
           {onBack && (
             <button
               onClick={onBack}
-              className="md:hidden w-9 h-9 -ml-2 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              className="electron-no-drag md:hidden w-9 h-9 -ml-2 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors relative z-20"
               aria-label="Back to conversations"
             >
               <ChevronLeft className="w-6 h-6 text-[#005CFF]" />
             </button>
           )}
           <div
-            className={`flex items-center gap-3 ${
+            className={`electron-no-drag relative z-20 flex items-center gap-3 ${
               (conversationType === "group" && onOpenGroupDetails) || (conversationType === "dm" && onOpenPeerProfile)
                 ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
                 : ""
@@ -1487,7 +1487,7 @@ export function MessagePanel({
         </div>
         {/* Menu button - only show for groups */}
         {conversationType === "group" && (
-          <div className="relative" ref={menuRef}>
+          <div className="electron-no-drag relative z-20" ref={menuRef}>
             <button
               onClick={() => setShowMenu(!showMenu)}
               className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
