@@ -9,8 +9,7 @@ import { streamManager } from '@/lib/xmtp/StreamManager';
 import { RemoteSigner } from '@/lib/signing-relay';
 import { clearSession } from '@/lib/auth/session';
 import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-lock';
-
-const XMTP_SESSION_KEY = 'xmtp-session-cache';
+import { getSessionCache, setSessionCache, isElectron } from '@/lib/storage';
 
 // Module cache for faster subsequent loads
 let cachedModules: Awaited<ReturnType<typeof loadAllModules>> | null = null;
@@ -81,50 +80,6 @@ if (typeof window !== 'undefined') {
   schedulePreload(() => preloadXmtpModules());
 }
 
-interface SessionCache {
-  address: string;
-  inboxId: string;
-  timestamp: number;
-}
-
-/**
- * Get cached session from localStorage
- */
-function getCachedSession(): SessionCache | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    const cached = localStorage.getItem(XMTP_SESSION_KEY);
-    if (!cached) return null;
-    const session: SessionCache = JSON.parse(cached);
-    // Check if session is not too old (7 days)
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    if (Date.now() - session.timestamp < maxAge) {
-      return session;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Cache the XMTP session info for faster reconnection
- */
-function cacheSession(address: string, inboxId: string): void {
-  if (typeof window === 'undefined') return;
-  try {
-    const session: SessionCache = {
-      address: address.toLowerCase(),
-      inboxId,
-      timestamp: Date.now(),
-    };
-    localStorage.setItem(XMTP_SESSION_KEY, JSON.stringify(session));
-    localStorage.setItem('world-chat-connected', 'true');
-  } catch {
-    // Ignore localStorage errors
-  }
-}
-
 interface UseQRXmtpClientResult {
   client: Client | null;
   isInitializing: boolean;
@@ -157,7 +112,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       return !!client;
     }
 
-    const cachedSession = getCachedSession();
+    const cachedSession = await getSessionCache();
     if (!cachedSession) {
       return false;
     }
@@ -208,9 +163,9 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         }
       );
 
-      // Update cache timestamp
+      // Update cache timestamp (async, don't await)
       if (xmtpClient.inboxId) {
-        cacheSession(cachedSession.address, xmtpClient.inboxId);
+        setSessionCache(cachedSession.address, xmtpClient.inboxId);
       }
 
       dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
@@ -296,9 +251,9 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           ],
         });
 
-        // Cache session for page reloads
+        // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {
-          cacheSession(address, xmtpClient.inboxId);
+          setSessionCache(address, xmtpClient.inboxId);
         }
 
         dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
