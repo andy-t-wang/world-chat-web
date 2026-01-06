@@ -136,9 +136,10 @@ function GlobalSettingsDropdown() {
 
 interface SidebarProps {
   onNewChat?: () => void;
+  className?: string;
 }
 
-export function Sidebar({ onNewChat }: SidebarProps) {
+export function Sidebar({ onNewChat, className }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -170,16 +171,20 @@ export function Sidebar({ onNewChat }: SidebarProps) {
   // Show MessageRequestsView when toggled
   if (showRequests) {
     return (
-      <aside className="w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
+      <aside className={`w-full md:w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}>
+        {/* Electron drag region */}
+        <div className="electron-drag h-8 shrink-0" />
         <MessageRequestsView onBack={() => setShowRequests(false)} />
       </aside>
     );
   }
 
   return (
-    <aside className="w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0">
+    <aside className={`w-full md:w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}>
+      {/* Electron drag region */}
+      <div className="electron-drag h-8 shrink-0" />
       {/* Header */}
-      <header className="shrink-0 px-4 py-3 border-b border-gray-100">
+      <header className="shrink-0 px-4 pb-3 border-b border-gray-100">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
           <button

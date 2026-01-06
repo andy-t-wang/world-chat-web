@@ -2,7 +2,7 @@
 
 import { useEffect, useState, memo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useAtomValue } from "jotai";
+import { useAtomValue, useSetAtom } from "jotai";
 import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel, MemberProfilePanel } from "@/components/chat";
 import { NewConversationModal } from "@/components/chat/NewConversationModal";
 import { selectedConversationIdAtom } from "@/stores/ui";
@@ -26,6 +26,7 @@ export default function ChatPage() {
   const client = useAtomValue(xmtpClientAtom);
   const { restoreSession } = useQRXmtpClient();
   const selectedId = useAtomValue(selectedConversationIdAtom);
+  const setSelectedId = useSetAtom(selectedConversationIdAtom);
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [restorationAttempted, setRestorationAttempted] = useState(false);
@@ -94,6 +95,11 @@ export default function ChatPage() {
       setSelectedMemberProfile({ address: peerAddress, inboxId: peerInboxId });
     }
   }, [peerAddress, peerInboxId]);
+
+  // Handle back button (for mobile view)
+  const handleBack = useCallback(() => {
+    setSelectedId(null);
+  }, [setSelectedId]);
 
   // Handle leave group
   const handleLeaveGroup = useCallback(async () => {
@@ -344,10 +350,13 @@ export default function ChatPage() {
   return (
     <>
       <div className="flex w-full h-full">
-        {/* Left Sidebar */}
-        <Sidebar onNewChat={() => setIsNewChatOpen(true)} />
+        {/* Left Sidebar - hidden on mobile when conversation selected */}
+        <Sidebar
+          onNewChat={() => setIsNewChatOpen(true)}
+          className={selectedId ? "hidden md:flex" : "flex"}
+        />
 
-        {/* Message Panel */}
+        {/* Message Panel - full width on mobile */}
         {selectedId && conversationMetadata ? (
           conversationMetadata.conversationType === "group" ? (
             <MemoizedMessagePanel
@@ -364,6 +373,7 @@ export default function ChatPage() {
               unverifiedCount={unverifiedCount}
               onOpenGroupDetails={() => setShowGroupDetails(true)}
               onMemberAvatarClick={handleMemberAvatarClick}
+              onBack={handleBack}
             />
           ) : (
             <MemoizedMessagePanel
@@ -375,10 +385,11 @@ export default function ChatPage() {
               isVerified={isPeerVerified}
               isMessageRequest={isMessageRequest}
               onOpenPeerProfile={handleOpenPeerProfile}
+              onBack={handleBack}
             />
           )
         ) : (
-          <EmptyState />
+          <EmptyState className="hidden md:flex" />
         )}
 
         {/* Group Details Panel - inline beside MessagePanel */}

@@ -21,6 +21,7 @@ import {
   LogOut,
   Clock,
   SmilePlus,
+  ChevronLeft,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
@@ -760,6 +761,7 @@ interface MessagePanelProps {
   onOpenGroupDetails?: () => void;
   onMemberAvatarClick?: (address: string, inboxId: string) => void;
   onOpenPeerProfile?: () => void;
+  onBack?: () => void;
 }
 
 export function MessagePanel({
@@ -780,6 +782,7 @@ export function MessagePanel({
   onOpenGroupDetails,
   onMemberAvatarClick,
   onOpenPeerProfile,
+  onBack,
 }: MessagePanelProps) {
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -1407,22 +1410,35 @@ export function MessagePanel({
 
   return (
     <div className="flex-1 flex flex-col bg-white">
+      {/* Electron drag region */}
+      <div className="electron-drag h-8 shrink-0 md:hidden" />
       {/* Header */}
       <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
-        <div
-          className={`flex items-center gap-3 ${
-            (conversationType === "group" && onOpenGroupDetails) || (conversationType === "dm" && onOpenPeerProfile)
-              ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
-              : ""
-          }`}
-          onClick={() => {
-            if (conversationType === "group") {
-              onOpenGroupDetails?.();
-            } else if (conversationType === "dm") {
-              onOpenPeerProfile?.();
-            }
-          }}
-        >
+        <div className="flex items-center gap-2">
+          {/* Back button - mobile only */}
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="md:hidden w-9 h-9 -ml-2 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Back to conversations"
+            >
+              <ChevronLeft className="w-6 h-6 text-[#005CFF]" />
+            </button>
+          )}
+          <div
+            className={`flex items-center gap-3 ${
+              (conversationType === "group" && onOpenGroupDetails) || (conversationType === "dm" && onOpenPeerProfile)
+                ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
+                : ""
+            }`}
+            onClick={() => {
+              if (conversationType === "group") {
+                onOpenGroupDetails?.();
+              } else if (conversationType === "dm") {
+                onOpenPeerProfile?.();
+              }
+            }}
+          >
           {conversationType === "group" ? (
             <Avatar
               isGroup
@@ -1467,6 +1483,7 @@ export function MessagePanel({
               </div>
             )}
           </div>
+        </div>
         </div>
         {/* Menu button - only show for groups */}
         {conversationType === "group" && (

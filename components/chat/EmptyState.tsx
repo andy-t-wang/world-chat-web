@@ -2,9 +2,13 @@
 
 import { MessageSquare } from 'lucide-react';
 
-export function EmptyState() {
+interface EmptyStateProps {
+  className?: string;
+}
+
+export function EmptyState({ className }: EmptyStateProps) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center bg-[#F5F5F5] text-center p-8">
+    <div className={`flex-1 flex flex-col items-center justify-center bg-[#F5F5F5] text-center p-8 ${className || ''}`}>
       <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center mb-4 shadow-sm">
         <MessageSquare className="w-10 h-10 text-[#9BA3AE]" />
       </div>
