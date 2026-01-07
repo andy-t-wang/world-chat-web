@@ -1238,6 +1238,44 @@ export function MessagePanel({
     return () => clearTimeout(timer);
   }, [conversationId, hasMessages]);
 
+  // Telegram-style: capture keyboard input and redirect to textarea
+  // No visible focus indicator, but typing works immediately
+  useEffect(() => {
+    if (!conversationId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if already focused on an input/textarea
+      const activeEl = document.activeElement;
+      if (activeEl?.tagName === 'INPUT' || activeEl?.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      // Ignore modifier keys alone, function keys, navigation keys
+      if (
+        e.key === 'Meta' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Shift' ||
+        e.key === 'Tab' || e.key === 'Escape' ||
+        e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+        e.key === 'Home' || e.key === 'End' || e.key === 'PageUp' || e.key === 'PageDown' ||
+        e.key.startsWith('F') && e.key.length > 1 // F1-F12
+      ) {
+        return;
+      }
+
+      // Ignore keyboard shortcuts (Cmd/Ctrl + key)
+      if (e.metaKey || e.ctrlKey) {
+        return;
+      }
+
+      // Focus textarea and let the key event flow through
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [conversationId]);
+
   // Load more when scrolling to top
   const handleScroll = useCallback(() => {
     if (!parentRef.current) return;
@@ -2489,7 +2527,7 @@ export function MessagePanel({
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               rows={1}
-              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20 focus:border-[#007AFF]/30 resize-none leading-[1.4] transition-all scrollbar-hide"
+              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none resize-none leading-[1.4] transition-all scrollbar-hide"
               style={{ minHeight: '44px', maxHeight: '128px' }}
             />
             <button

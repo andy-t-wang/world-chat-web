@@ -5,6 +5,7 @@ import { useAtom, useSetAtom } from 'jotai';
 import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
+import { NotificationBanner } from './NotificationBanner';
 import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
@@ -222,6 +223,9 @@ export function Sidebar({ onNewChat, className }: SidebarProps) {
           )}
         </div>
       </header>
+
+      {/* Notification Permission Banner */}
+      <NotificationBanner />
 
       {/* Conversation List - with bottom padding for pinned settings */}
       <div className="flex-1 overflow-hidden relative">
