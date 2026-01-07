@@ -345,15 +345,15 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
           onRequestsClick={() => setShowRequests(true)}
         />
 
+        {/* Floating Update Button (Electron only) */}
+        <UpdateBanner />
+
         {/* Pinned Settings Footer */}
         <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-white via-white to-transparent pointer-events-none" />
         <div className="absolute bottom-0 left-0 right-0 px-4 py-3 pointer-events-auto flex justify-end">
           <GlobalSettingsDropdown />
         </div>
       </div>
-
-      {/* Update Banner (Electron only) */}
-      <UpdateBanner />
     </aside>
   );
 }
