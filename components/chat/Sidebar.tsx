@@ -17,7 +17,16 @@ function GlobalSettingsDropdown() {
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
   const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
+  const [version, setVersion] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Fetch version from Electron
+  useEffect(() => {
+    const electronAPI = (window as { electronAPI?: { getVersion?: () => Promise<string> } }).electronAPI;
+    if (electronAPI?.getVersion) {
+      electronAPI.getVersion().then(setVersion).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -130,6 +139,15 @@ function GlobalSettingsDropdown() {
               />
             </div>
           </button>
+
+          {/* Version */}
+          {version && (
+            <div className="px-3 py-2 border-t border-gray-100 mt-1">
+              <p className="text-[11px] text-[#9BA3AE] text-center">
+                World Chat v{version}
+              </p>
+            </div>
+          )}
         </div>
       )}
     </div>
