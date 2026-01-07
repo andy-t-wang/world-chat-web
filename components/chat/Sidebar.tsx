@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
 import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { clearSession } from '@/lib/auth/session';
 import { clearSessionCache } from '@/lib/storage';
 import { streamManager } from '@/lib/xmtp/StreamManager';
@@ -17,7 +16,6 @@ import { useMessageRequests } from '@/hooks/useConversations';
 
 // Global settings dropdown component
 function GlobalSettingsDropdown() {
-  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
@@ -36,8 +34,8 @@ function GlobalSettingsDropdown() {
       clearSession();
       // Clear storage (uses Electron encrypted storage or localStorage)
       await clearSessionCache();
-      // Redirect to login
-      router.push('/');
+      // Hard redirect to login (works better in Electron)
+      window.location.href = '/';
     } catch (error) {
       console.error('Logout failed:', error);
       setIsLoggingOut(false);
