@@ -152,6 +152,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
+          // Explicitly set history sync URL to ensure it's enabled
+          historySyncUrl: 'https://message-history.production.ephemera.network',
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -162,6 +164,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           ],
         }
       );
+
+      console.log('[QRXmtpClient] Client restored with inboxId:', xmtpClient.inboxId);
 
       // Update cache timestamp (async, don't await)
       if (xmtpClient.inboxId) {
@@ -241,6 +245,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         const xmtpClient = await Client.create(signer, {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
+          // Explicitly set history sync URL to ensure it's enabled
+          historySyncUrl: 'https://message-history.production.ephemera.network',
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -250,6 +256,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new TransactionReferenceCodec(),
           ],
         });
+
+        console.log('[QRXmtpClient] Client created with inboxId:', xmtpClient.inboxId);
 
         // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {

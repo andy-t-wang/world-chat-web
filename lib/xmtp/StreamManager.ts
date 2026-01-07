@@ -376,6 +376,9 @@ class XMTPStreamManager {
   // Cache of inboxId -> address for all members we've seen (persists even after removal)
   private memberAddressCache = new Map<string, string>();
 
+  // Periodic history sync interval (to respond to new installation sync requests)
+  private historySyncInterval: ReturnType<typeof setInterval> | null = null;
+
   /**
    * Initialize the manager with an XMTP client
    *
@@ -390,6 +393,10 @@ class XMTPStreamManager {
     this.cleanup();
 
     this.client = client;
+
+    // Log client info for debugging
+    console.log('[StreamManager] Initializing with inboxId:', client.inboxId);
+    console.log('[StreamManager] Account identifier:', client.accountIdentifier);
 
     // Load persisted data from localStorage
     this.loadLastReadTimestamps();
@@ -419,6 +426,10 @@ class XMTPStreamManager {
 
     // Phase 4: One-time background sync to catch up
     this.performInitialSync();
+
+    // Phase 5: Periodic sync to upload history for other devices
+    // This ensures we respond to history sync requests from new installations
+    this.startPeriodicHistorySync();
   }
 
   /**
@@ -731,17 +742,38 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
-      // First sync preferences to pull in history from other devices
-      await this.client.preferences.sync();
+      console.log('[StreamManager] Starting initial sync...');
 
-      // Sync all conversations from network (including Unknown so we don't miss any)
-      // Unknown conversations are ones where someone else messaged us but we haven't responded yet
-      await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+      // Check inbox state to see linked installations
+      try {
+        const inboxState = await this.client.preferences.inboxState(true);
+        console.log('[StreamManager] Inbox state:', {
+          inboxId: inboxState.inboxId,
+          installationCount: inboxState.installations?.length,
+          installations: inboxState.installations,
+        });
+      } catch (e) {
+        console.error('[StreamManager] Failed to get inbox state:', e);
+      }
+
+      // First sync preferences to pull in history from other devices
+      const prefResult = await this.client.preferences.sync();
+      console.log('[StreamManager] Preferences sync result:', prefResult);
+
+      // Sync conversations from network first
+      await this.client.conversations.sync();
+      console.log('[StreamManager] Conversations sync completed');
+
+      // Sync all conversations and messages (including Unknown so we don't miss any)
+      // This also uploads to history sync server for other devices
+      const syncResult = await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+      console.log('[StreamManager] SyncAll result:', syncResult);
 
       // Re-list to get any new conversations (include Unknown in case consent hasn't synced yet)
       const conversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
+      console.log('[StreamManager] Found', conversations.length, 'conversations after sync');
 
       const currentIds = store.get(conversationIdsAtom);
       const currentIdSet = new Set(currentIds);
@@ -749,6 +781,13 @@ class XMTPStreamManager {
 
       for (const conv of conversations) {
         this.conversations.set(conv.id, conv);
+
+        // Sync each conversation to pull in messages from network
+        try {
+          await conv.sync();
+        } catch (e) {
+          console.warn('[StreamManager] Failed to sync conversation', conv.id, e);
+        }
 
         // Rebuild metadata with synced data (messages should now be in local DB)
         const metadata = await this.buildConversationMetadata(conv, false);
@@ -788,8 +827,9 @@ class XMTPStreamManager {
       // Sync may have brought in messages that weren't in local cache
       await this.refreshLoadedConversations();
 
-    } catch {
+    } catch (error) {
       // Sync errors are non-fatal - local data is showing, streams will catch updates
+      console.error('[StreamManager] Initial sync error:', error);
     }
   }
 
@@ -1330,6 +1370,14 @@ class XMTPStreamManager {
 
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
+
+      // IMPORTANT: Sync this conversation to pull in messages from network/history
+      try {
+        console.log('[StreamManager] Syncing conversation before loading messages:', conversationId);
+        await conv.sync();
+      } catch (e) {
+        console.warn('[StreamManager] Failed to sync conversation:', conversationId, e);
+      }
 
       // Keep fetching until we have enough displayable messages
       const displayableIds: string[] = [];
@@ -2551,6 +2599,40 @@ class XMTPStreamManager {
     // Reset restart counters
     this.conversationStreamRestarts = 0;
     this.allMessagesStreamRestarts = 0;
+
+    // Clear history sync interval
+    if (this.historySyncInterval) {
+      clearInterval(this.historySyncInterval);
+      this.historySyncInterval = null;
+    }
+  }
+
+  /**
+   * Start periodic history sync to upload history for other devices
+   * This ensures we respond to history sync requests from new installations
+   * XMTP has a 30-minute debounce, so we sync every 5 minutes to be safe
+   */
+  private startPeriodicHistorySync(): void {
+    if (this.historySyncInterval) {
+      clearInterval(this.historySyncInterval);
+    }
+
+    // Sync every 5 minutes
+    const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
+    this.historySyncInterval = setInterval(async () => {
+      if (!this.client) return;
+
+      try {
+        console.log('[StreamManager] Periodic history sync - uploading for other devices...');
+        await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+        console.log('[StreamManager] Periodic history sync complete');
+      } catch (error) {
+        console.error('[StreamManager] Periodic history sync error:', error);
+      }
+    }, SYNC_INTERVAL_MS);
+
+    console.log('[StreamManager] Started periodic history sync (every 5 minutes)');
   }
 }
 
