@@ -412,7 +412,12 @@ class XMTPStreamManager {
     this.startConversationStream();
     this.startAllMessagesStream();
 
-    // Phase 3: One-time background sync to catch up
+    // Phase 3: Sync preferences (including history sync from other devices)
+    this.client.preferences.sync().catch((error: unknown) => {
+      console.error('[StreamManager] Preferences sync error:', error);
+    });
+
+    // Phase 4: One-time background sync to catch up
     this.performInitialSync();
   }
 
@@ -726,6 +731,9 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
+      // First sync preferences to pull in history from other devices
+      await this.client.preferences.sync();
+
       // Sync all conversations from network (including Unknown so we don't miss any)
       // Unknown conversations are ones where someone else messaged us but we haven't responded yet
       await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
