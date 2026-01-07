@@ -2,7 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { clearSession } from '@/lib/auth/session';
+import { clearSessionCache } from '@/lib/storage';
+import { streamManager } from '@/lib/xmtp/StreamManager';
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
 import { NotificationBanner } from './NotificationBanner';
@@ -13,12 +17,32 @@ import { useMessageRequests } from '@/hooks/useConversations';
 
 // Global settings dropdown component
 function GlobalSettingsDropdown() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
   const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
   const [version, setVersion] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      // Stop all XMTP streams
+      streamManager.cleanup();
+      // Clear web session
+      clearSession();
+      // Clear storage (uses Electron encrypted storage or localStorage)
+      await clearSessionCache();
+      // Redirect to login
+      router.push('/');
+    } catch (error) {
+      console.error('Logout failed:', error);
+      setIsLoggingOut(false);
+    }
+  };
 
   // Fetch version from Electron
   useEffect(() => {
@@ -148,6 +172,20 @@ function GlobalSettingsDropdown() {
               </p>
             </div>
           )}
+
+          {/* Logout */}
+          <div className="border-t border-gray-100 mt-1 pt-1">
+            <button
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-red-50 transition-colors text-red-500 disabled:opacity-50"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="text-[14px]">
+                {isLoggingOut ? 'Logging out...' : 'Log Out'}
+              </span>
+            </button>
+          </div>
         </div>
       )}
     </div>
