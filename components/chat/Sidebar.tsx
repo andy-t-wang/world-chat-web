@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw } from 'lucide-react';
 import { clearSession } from '@/lib/auth/session';
 import { clearSessionCache } from '@/lib/storage';
 import { streamManager } from '@/lib/xmtp/StreamManager';
@@ -22,6 +22,8 @@ function GlobalSettingsDropdown() {
   const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
   const [version, setVersion] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+  const [isElectron, setIsElectron] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const handleLogout = async () => {
@@ -42,13 +44,37 @@ function GlobalSettingsDropdown() {
     }
   };
 
-  // Fetch version from Electron
+  // Fetch version and detect Electron
   useEffect(() => {
-    const electronAPI = (window as { electronAPI?: { getVersion?: () => Promise<string> } }).electronAPI;
+    const electronAPI = (window as { electronAPI?: { isElectron?: boolean; getVersion?: () => Promise<string> } }).electronAPI;
+    if (electronAPI?.isElectron) {
+      setIsElectron(true);
+    }
     if (electronAPI?.getVersion) {
       electronAPI.getVersion().then(setVersion).catch(() => {});
     }
   }, []);
+
+  const handleCheckForUpdates = async () => {
+    if (isCheckingUpdates) return;
+    setIsCheckingUpdates(true);
+
+    try {
+      const electronAPI = (window as { electronAPI?: { checkForUpdates?: () => Promise<void> } }).electronAPI;
+      if (electronAPI?.checkForUpdates) {
+        // Electron: trigger auto-updater check
+        await electronAPI.checkForUpdates();
+        // Give feedback that check was initiated
+        setTimeout(() => setIsCheckingUpdates(false), 2000);
+      } else {
+        // Web: hard refresh to get latest version
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Check for updates failed:', error);
+      setIsCheckingUpdates(false);
+    }
+  };
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -159,6 +185,26 @@ function GlobalSettingsDropdown() {
                   hideEmptyConversations ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
+            </div>
+          </button>
+
+          {/* Updates */}
+          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider border-t border-gray-100 mt-1 pt-2">
+            Updates
+          </div>
+          <button
+            onClick={handleCheckForUpdates}
+            disabled={isCheckingUpdates}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-5 h-5 text-[#007AFF] ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[#181818]">
+                {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
+              </p>
+              <p className="text-[12px] text-[#717680]">
+                {isElectron ? 'Download and install updates' : 'Refresh to get latest version'}
+              </p>
             </div>
           </button>
 
