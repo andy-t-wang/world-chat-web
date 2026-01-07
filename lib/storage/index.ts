@@ -111,15 +111,17 @@ export async function clearSessionCache(): Promise<void> {
 
 /**
  * Quick synchronous check if there's likely a session
- * For Electron, checks localStorage as fallback (may be stale)
+ * In Electron, returns false since we need async IPC - use getSessionCache() instead
  * Use getSessionCache() for accurate async check
  */
 export function hasSessionSync(): boolean {
   if (typeof window === 'undefined') return false;
 
+  // In Electron, we can't do sync IPC - must use async getSessionCache()
+  // Return false to force proper async session check
+  if (isElectron()) return false;
+
   try {
-    // In Electron, we can't do sync IPC, so check localStorage as hint
-    // The actual session validation happens async in restoreSession()
     const connected = localStorage.getItem(WORLD_CHAT_CONNECTED_KEY);
     if (connected === 'true') return true;
 

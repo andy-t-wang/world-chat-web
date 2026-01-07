@@ -3,7 +3,7 @@
 import { useEffect, useState, memo, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel, MemberProfilePanel } from "@/components/chat";
+import { Sidebar, MessagePanel, EmptyState, GroupDetailsPanel, MemberProfilePanel, ResizableDivider } from "@/components/chat";
 import { NewConversationModal } from "@/components/chat/NewConversationModal";
 import { selectedConversationIdAtom } from "@/stores/ui";
 import { clientStateAtom } from "@/stores/client";
@@ -13,6 +13,7 @@ import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { useDisplayName } from "@/hooks/useDisplayName";
 import { useGroupMemberVerification } from "@/hooks/useGroupMemberVerification";
 import { hasQRSession } from "@/lib/auth/session";
+import { isElectron } from "@/lib/storage";
 import { setCurrentChatName } from "@/lib/notifications";
 import { streamManager } from "@/lib/xmtp/StreamManager";
 import { Loader2, MessageCircle, AlertCircle, Monitor } from "lucide-react";
@@ -39,6 +40,28 @@ export default function ChatPage() {
     inboxId: string;
   } | null>(null);
   const restorationRef = useRef(false);
+
+  // Sidebar width (resizable)
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('sidebar-width');
+      return saved ? parseInt(saved, 10) : 320;
+    }
+    return 320;
+  });
+  const MIN_SIDEBAR_WIDTH = 260;
+  const MAX_SIDEBAR_WIDTH = 500;
+
+  const handleSidebarResize = useCallback((delta: number) => {
+    setSidebarWidth(prev => {
+      const newWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, prev + delta));
+      return newWidth;
+    });
+  }, []);
+
+  const handleSidebarResizeEnd = useCallback(() => {
+    localStorage.setItem('sidebar-width', sidebarWidth.toString());
+  }, [sidebarWidth]);
 
   const hasXmtpClient = clientState.client !== null;
 
@@ -173,7 +196,8 @@ export default function ChatPage() {
     }
 
     // Check session on each attempt (might have been cleared)
-    if (!hasQRSession()) {
+    // In Electron, skip sync check since we need async IPC - let restoreSession() handle it
+    if (!isElectron() && !hasQRSession()) {
       setRestorationAttempted(true);
       router.push("/");
       return;
@@ -187,12 +211,8 @@ export default function ChatPage() {
       const success = await restoreSession();
 
       if (!success) {
-        // Check if session was cleared (expired) vs transient error
-        if (!hasQRSession()) {
-          router.push("/");
-        } else {
-          setRestorationFailed(true);
-        }
+        // No valid session - redirect to login
+        router.push("/");
       }
     } catch (error) {
       console.error("[ChatPage] Session restoration error:", error);
@@ -202,7 +222,7 @@ export default function ChatPage() {
         error instanceof Error ? error.message : String(error);
       if (errorMessage === "TAB_LOCKED") {
         setIsLockedByOtherTab(true);
-      } else if (!hasQRSession()) {
+      } else if (!isElectron() && !hasQRSession()) {
         router.push("/");
       } else {
         setRestorationFailed(true);
@@ -356,6 +376,13 @@ export default function ChatPage() {
         <Sidebar
           onNewChat={() => setIsNewChatOpen(true)}
           className={selectedId ? "hidden md:flex" : "flex"}
+          width={sidebarWidth}
+        />
+
+        {/* Resizable Divider */}
+        <ResizableDivider
+          onResize={handleSidebarResize}
+          onResizeEnd={handleSidebarResizeEnd}
         />
 
         {/* Message Panel - full width on mobile */}

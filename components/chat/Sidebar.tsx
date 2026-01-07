@@ -6,6 +6,7 @@ import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, Mess
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
 import { NotificationBanner } from './NotificationBanner';
+import { UpdateBanner } from './UpdateBanner';
 import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
@@ -138,9 +139,10 @@ function GlobalSettingsDropdown() {
 interface SidebarProps {
   onNewChat?: () => void;
   className?: string;
+  width?: number;
 }
 
-export function Sidebar({ onNewChat, className }: SidebarProps) {
+export function Sidebar({ onNewChat, className, width }: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
@@ -172,7 +174,10 @@ export function Sidebar({ onNewChat, className }: SidebarProps) {
   // Show MessageRequestsView when toggled
   if (showRequests) {
     return (
-      <aside className={`w-full md:w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}>
+      <aside
+        className={`h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}
+        style={{ width: width || 320 }}
+      >
         {/* Electron drag region */}
         <div className="electron-drag h-8 shrink-0" />
         <MessageRequestsView onBack={() => setShowRequests(false)} />
@@ -181,7 +186,10 @@ export function Sidebar({ onNewChat, className }: SidebarProps) {
   }
 
   return (
-    <aside className={`w-full md:w-[320px] lg:w-[380px] h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}>
+    <aside
+      className={`h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}
+      style={{ width: width || 320 }}
+    >
       {/* Electron drag region */}
       <div className="electron-drag h-8 shrink-0" />
       {/* Header */}
@@ -243,6 +251,9 @@ export function Sidebar({ onNewChat, className }: SidebarProps) {
           <GlobalSettingsDropdown />
         </div>
       </div>
+
+      {/* Update Banner (Electron only) */}
+      <UpdateBanner />
     </aside>
   );
 }
