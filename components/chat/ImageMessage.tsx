@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Loader2, ImageIcon, RotateCcw, AlertTriangle } from 'lucide-react';
 import { useImageAttachment } from '@/hooks/useImageAttachment';
+import { ImageLightbox } from './ImageLightbox';
 import type { RemoteAttachmentContent } from '@/types/attachments';
 
 interface ImageMessageProps {
@@ -23,6 +24,7 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
   const { status, blobUrl, error, isLoading, canRetry, retry, mimeType } = useImageAttachment(remoteAttachment);
   const [imageError, setImageError] = useState(false);
   const [imageDimensions, setImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   // Detect if this is a video based on MIME type
   const isVideo = mimeType?.startsWith('video/');
@@ -215,22 +217,28 @@ export function ImageMessage({ remoteAttachment, isOwnMessage, compact, fullSize
 
     // Default image mode
     return (
-      <div className="overflow-hidden rounded-[16px] border border-[rgba(0,0,0,0.1)]">
-        <img
-          src={blobUrl}
-          alt={remoteAttachment.filename || 'Image'}
-          className="block max-w-[250px] max-h-[300px] object-cover cursor-pointer"
-          onLoad={(e) => {
-            const img = e.target as HTMLImageElement;
-            setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-          }}
-          onError={handleImageError}
-          onClick={() => {
-            // Open in new tab for full view
-            window.open(blobUrl, '_blank');
-          }}
-        />
-      </div>
+      <>
+        <div className="overflow-hidden rounded-[16px] border border-[rgba(0,0,0,0.1)]">
+          <img
+            src={blobUrl}
+            alt={remoteAttachment.filename || 'Image'}
+            className="block max-w-[250px] max-h-[300px] object-cover cursor-pointer"
+            onLoad={(e) => {
+              const img = e.target as HTMLImageElement;
+              setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+            }}
+            onError={handleImageError}
+            onClick={() => setLightboxOpen(true)}
+          />
+        </div>
+        {lightboxOpen && (
+          <ImageLightbox
+            src={blobUrl}
+            alt={remoteAttachment.filename || 'Image'}
+            onClose={() => setLightboxOpen(false)}
+          />
+        )}
+      </>
     );
   }
 
