@@ -394,9 +394,8 @@ class XMTPStreamManager {
 
     this.client = client;
 
-    // Log client info for debugging
-    console.log('[StreamManager] Initializing with inboxId:', client.inboxId);
-    console.log('[StreamManager] Account identifier:', client.accountIdentifier);
+    // Debug logging disabled to reduce noise
+    // console.log('[StreamManager] Initializing with inboxId:', client.inboxId);
 
     // Load persisted data from localStorage
     this.loadLastReadTimestamps();
@@ -742,38 +741,27 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
-      console.log('[StreamManager] Starting initial sync...');
-
       // Check inbox state to see linked installations
       try {
-        const inboxState = await this.client.preferences.inboxState(true);
-        console.log('[StreamManager] Inbox state:', {
-          inboxId: inboxState.inboxId,
-          installationCount: inboxState.installations?.length,
-          installations: inboxState.installations,
-        });
+        await this.client.preferences.inboxState(true);
       } catch (e) {
         console.error('[StreamManager] Failed to get inbox state:', e);
       }
 
       // First sync preferences to pull in history from other devices
-      const prefResult = await this.client.preferences.sync();
-      console.log('[StreamManager] Preferences sync result:', prefResult);
+      await this.client.preferences.sync();
 
       // Sync conversations from network first
       await this.client.conversations.sync();
-      console.log('[StreamManager] Conversations sync completed');
 
       // Sync all conversations and messages (including Unknown so we don't miss any)
       // This also uploads to history sync server for other devices
-      const syncResult = await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
-      console.log('[StreamManager] SyncAll result:', syncResult);
+      await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
 
       // Re-list to get any new conversations (include Unknown in case consent hasn't synced yet)
       const conversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
-      console.log('[StreamManager] Found', conversations.length, 'conversations after sync');
 
       const currentIds = store.get(conversationIdsAtom);
       const currentIdSet = new Set(currentIds);
@@ -1205,15 +1193,8 @@ class XMTPStreamManager {
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
-          // Log new DM details for debugging
+          // Check for duplicate DMs
           if (metadata.conversationType === 'dm') {
-            console.log('[StreamManager] New DM streamed:', {
-              convId: conv.id,
-              peerAddress: metadata.peerAddress,
-              peerInboxId: metadata.peerInboxId,
-              consentState,
-            });
-
             // Check for existing DM with same peer address
             const existingDm = this.findExistingDmByPeerAddress(metadata.peerAddress);
             if (existingDm && existingDm.convId !== conv.id) {
@@ -1373,7 +1354,6 @@ class XMTPStreamManager {
 
       // IMPORTANT: Sync this conversation to pull in messages from network/history
       try {
-        console.log('[StreamManager] Syncing conversation before loading messages:', conversationId);
         await conv.sync();
       } catch (e) {
         console.warn('[StreamManager] Failed to sync conversation:', conversationId, e);
@@ -1961,7 +1941,6 @@ class XMTPStreamManager {
           msgKind === 1;
 
         if (isMembershipChange) {
-          console.log('[StreamManager] Found membership change message:', msg);
           // Process membership change - creates synthetic status messages
           await this.processMembershipChange(
             msg as { id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string },
@@ -2624,15 +2603,11 @@ class XMTPStreamManager {
       if (!this.client) return;
 
       try {
-        console.log('[StreamManager] Periodic history sync - uploading for other devices...');
         await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
-        console.log('[StreamManager] Periodic history sync complete');
       } catch (error) {
         console.error('[StreamManager] Periodic history sync error:', error);
       }
     }, SYNC_INTERVAL_MS);
-
-    console.log('[StreamManager] Started periodic history sync (every 5 minutes)');
   }
 }
 
