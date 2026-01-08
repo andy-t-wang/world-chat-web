@@ -3,24 +3,44 @@
  * Uses Supabase Realtime for WebSocket communication between web and mobile
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// These should be set in your .env.local
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// Lazy-initialized client to avoid errors during Next.js prerendering
+let _supabase: SupabaseClient | null = null;
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    'Supabase credentials not configured. QR login will not work.\n' +
-    'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local'
-  );
+/**
+ * Get the Supabase client (lazy-initialized)
+ * This avoids errors during Next.js static generation
+ */
+export function getSupabase(): SupabaseClient {
+  if (_supabase) return _supabase;
+
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error(
+      'Supabase credentials not configured. QR login will not work.\n' +
+      'Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local'
+    );
+  }
+
+  _supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  });
+
+  return _supabase;
 }
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  realtime: {
-    params: {
-      eventsPerSecond: 10,
-    },
+// For backwards compatibility - getter that lazy-initializes
+// Only use this in runtime code, not during build
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return getSupabase()[prop as keyof SupabaseClient];
   },
 });
 
