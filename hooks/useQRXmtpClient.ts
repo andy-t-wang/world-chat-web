@@ -165,7 +165,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         }
       );
 
-      // Client restored successfully
+      console.log('[QRXmtpClient] Client restored with inboxId:', xmtpClient.inboxId);
 
       // Update cache timestamp (async, don't await)
       if (xmtpClient.inboxId) {
@@ -257,7 +257,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           ],
         });
 
-        // Client created successfully
+        console.log('[QRXmtpClient] Client created with inboxId:', xmtpClient.inboxId);
 
         // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {
