@@ -33,6 +33,8 @@ export function UpdateBanner() {
     });
 
     electronAPI.onUpdateProgress?.((prog) => {
+      console.log('[UpdateBanner] Download progress:', Math.round(prog.percent) + '%');
+      setStatus('downloading');
       setProgress(prog);
     });
 
@@ -40,17 +42,24 @@ export function UpdateBanner() {
       setStatus('ready');
     });
 
-    electronAPI.onUpdateError?.(() => {
+    electronAPI.onUpdateError?.((error) => {
+      console.error('[UpdateBanner] Update error:', error);
       setStatus('error');
       // Reset after a few seconds
       setTimeout(() => setStatus('idle'), 5000);
     });
   }, []);
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const electronAPI = (window as { electronAPI?: { downloadUpdate?: () => Promise<void> } }).electronAPI;
-    electronAPI?.downloadUpdate?.();
     setStatus('downloading');
+    try {
+      await electronAPI?.downloadUpdate?.();
+      console.log('[UpdateBanner] Download started');
+    } catch (error) {
+      console.error('[UpdateBanner] Download failed:', error);
+      setStatus('error');
+    }
   };
 
   const handleInstall = () => {
