@@ -152,6 +152,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
+          loggingLevel: 'off',
           // Explicitly set history sync URL to ensure it's enabled
           historySyncUrl: 'https://message-history.production.ephemera.network',
           codecs: [
@@ -245,6 +246,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         const xmtpClient = await Client.create(signer, {
           env: 'production',
           appVersion: 'WorldChat/1.0.0',
+          loggingLevel: 'off',
           // Explicitly set history sync URL to ensure it's enabled
           historySyncUrl: 'https://message-history.production.ephemera.network',
           codecs: [
