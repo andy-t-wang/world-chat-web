@@ -68,15 +68,15 @@ export function UpdateBanner() {
       {status === 'available' && (
         <button
           onClick={handleDownload}
-          className="flex items-center gap-2 bg-[#007AFF] hover:bg-[#0066DD] active:scale-95 text-white rounded-full py-2.5 px-5 shadow-lg transition-all"
+          className="flex items-center gap-2 bg-[#007AFF] hover:bg-[#0066DD] active:scale-95 text-white rounded-full py-2.5 px-5 shadow-lg transition-all whitespace-nowrap"
         >
           <span className="text-[14px] font-medium">Update World Chat</span>
         </button>
       )}
 
       {status === 'downloading' && (
-        <div className="flex items-center gap-2 bg-[#007AFF] text-white rounded-full py-2.5 px-5 shadow-lg">
-          <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
+        <div className="flex items-center gap-2 bg-[#007AFF] text-white rounded-full py-2.5 px-5 shadow-lg whitespace-nowrap">
+          <svg className="w-4 h-4 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
           </svg>
@@ -89,7 +89,7 @@ export function UpdateBanner() {
       {status === 'ready' && (
         <button
           onClick={handleInstall}
-          className="flex items-center gap-2 bg-[#00C230] hover:bg-[#00A828] active:scale-95 text-white rounded-full py-2.5 px-5 shadow-lg transition-all"
+          className="flex items-center gap-2 bg-[#00C230] hover:bg-[#00A828] active:scale-95 text-white rounded-full py-2.5 px-5 shadow-lg transition-all whitespace-nowrap"
         >
           <span className="text-[14px] font-medium">Restart to Update</span>
         </button>
