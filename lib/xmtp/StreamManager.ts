@@ -532,12 +532,16 @@ class XMTPStreamManager {
   }
 
   /**
-   * Get total unread count across all conversations
+   * Get total unread count across accepted conversations only
+   * (excludes message requests with unknown consent)
    */
   getTotalUnreadCount(): number {
     let total = 0;
     for (const metadata of this.conversationMetadata.values()) {
-      total += metadata.unreadCount ?? 0;
+      // Only count unread from accepted conversations, not message requests
+      if (metadata.consentState === 'allowed') {
+        total += metadata.unreadCount ?? 0;
+      }
     }
     return total;
   }
