@@ -1374,7 +1374,8 @@ class XMTPStreamManager {
       // IMPORTANT: Sync this conversation to pull in messages from network/history
       try {
         console.log('[StreamManager] Syncing conversation before loading messages:', conversationId);
-        await conv.sync();
+        const syncResult = await conv.sync();
+        console.log('[StreamManager] Conversation sync result:', conversationId, syncResult);
       } catch (e) {
         console.warn('[StreamManager] Failed to sync conversation:', conversationId, e);
       }
@@ -1393,6 +1394,8 @@ class XMTPStreamManager {
           sentBeforeNs: oldestMessageNs ?? undefined,
           direction: SortDirection.Descending,
         });
+
+        console.log('[StreamManager] Messages fetched for', conversationId, '- count:', messages.length, 'iteration:', iterations);
 
         if (messages.length === 0) {
           hasMore = false;
