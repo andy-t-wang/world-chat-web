@@ -82,7 +82,7 @@ export function ReplyBubble({
       <div className={`flex gap-2 items-stretch ${isOwnMessage ? 'flex-row' : 'flex-row-reverse'}`}>
         {/* Quoted message bubble */}
         <div className="max-w-[300px] px-3 py-[7px] bg-[#F9FAFB] rounded-[16px]">
-          <p className="text-[15px] text-[#9BA3AE] leading-[1.3] line-clamp-2">
+          <p className="text-[15px] text-[#9BA3AE] leading-[1.3] line-clamp-2 break-all">
             {quotedContent}
           </p>
         </div>
@@ -92,7 +92,7 @@ export function ReplyBubble({
 
       {/* Reply message bubble */}
       <div className={`max-w-[300px] px-3 py-[7px] ${bubbleBg} ${getReplyRadius()}`}>
-        <p className={`text-[15px] leading-[1.3] ${textColor} ${isOwnMessage ? 'opacity-90' : ''}`}>
+        <p className={`text-[15px] leading-[1.3] break-all ${textColor} ${isOwnMessage ? 'opacity-90' : ''}`}>
           {replyContent}
         </p>
       </div>

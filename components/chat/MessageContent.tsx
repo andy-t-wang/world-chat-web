@@ -62,7 +62,7 @@ export function MessageText({ text, isOwnMessage }: MessageTextProps) {
 
   return (
     <p
-      className={`text-[15px] leading-[1.35] whitespace-pre-wrap break-words ${
+      className={`text-[15px] leading-[1.35] whitespace-pre-wrap break-all ${
         isOwnMessage ? 'text-white' : 'text-[#181818]'
       }`}
     >
