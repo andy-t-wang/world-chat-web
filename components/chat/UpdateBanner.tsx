@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 type UpdateStatus = 'idle' | 'available' | 'downloading' | 'ready' | 'error';
 
@@ -10,9 +10,21 @@ interface DownloadProgress {
   total: number;
 }
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 1024 * 1024) return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
 export function UpdateBanner() {
   const [status, setStatus] = useState<UpdateStatus>('idle');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  const [speed, setSpeed] = useState<number>(0);
+  const lastProgressRef = useRef<{ transferred: number; time: number } | null>(null);
 
   useEffect(() => {
     // Only run in Electron
@@ -33,7 +45,18 @@ export function UpdateBanner() {
     });
 
     electronAPI.onUpdateProgress?.((prog) => {
-      console.log('[UpdateBanner] Download progress:', Math.round(prog.percent) + '%');
+      const now = Date.now();
+      const last = lastProgressRef.current;
+
+      if (last && now > last.time) {
+        const bytesDownloaded = prog.transferred - last.transferred;
+        const timeDiff = (now - last.time) / 1000; // seconds
+        if (timeDiff > 0) {
+          setSpeed(bytesDownloaded / timeDiff);
+        }
+      }
+
+      lastProgressRef.current = { transferred: prog.transferred, time: now };
       setStatus('downloading');
       setProgress(prog);
     });
@@ -83,15 +106,28 @@ export function UpdateBanner() {
         </button>
       )}
 
-      {status === 'downloading' && (
-        <div className="flex items-center gap-2 bg-[#007AFF] text-white rounded-full py-2.5 px-5 shadow-lg whitespace-nowrap">
-          <svg className="w-4 h-4 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span className="text-[14px] font-medium">
-            Downloading... {Math.round(progress?.percent || 0)}%
-          </span>
+      {status === 'downloading' && progress && (
+        <div className="flex flex-col items-center gap-1.5 bg-[#007AFF] text-white rounded-2xl py-3 px-5 shadow-lg">
+          <div className="flex items-center gap-2 whitespace-nowrap">
+            <svg className="w-4 h-4 animate-spin flex-shrink-0" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-[14px] font-medium">
+              Downloading... {Math.round(progress.percent)}%
+            </span>
+          </div>
+          <div className="text-[12px] opacity-80">
+            {formatBytes(progress.transferred)} / {formatBytes(progress.total)}
+            {speed > 0 && ` • ${formatSpeed(speed)}`}
+          </div>
+          {/* Progress bar */}
+          <div className="w-full h-1.5 bg-white/30 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-white rounded-full transition-all duration-300"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
         </div>
       )}
 
