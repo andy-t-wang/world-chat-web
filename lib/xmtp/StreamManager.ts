@@ -1129,57 +1129,86 @@ class XMTPStreamManager {
       }
       const ownInboxId = this.client?.inboxId;
 
-      // Find first displayable message for preview + count unread
+      // Find displayable messages for preview + count unread
+      // Track both: first message from others (for unread preview) and first message overall (fallback)
+      let firstOtherPreview = '';
+      let firstOtherActivityNs = BigInt(0);
+      let firstAnyPreview = '';
+      let firstAnyActivityNs = BigInt(0);
+
       for (const msg of messages) {
         const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
+        const isOwnMessage = msg.senderInboxId === ownInboxId;
 
         // Skip read receipts entirely
         if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
 
         // Count unread: messages from others that are newer than lastReadTs
-        if (msg.senderInboxId !== ownInboxId && msg.sentAtNs > lastReadTs) {
+        if (!isOwnMessage && msg.sentAtNs > lastReadTs) {
           unreadCount++;
         }
 
-        // Find first displayable message for preview
-        if (!lastMessagePreview) {
-          // Handle reactions specially - show "[Name] reacted [emoji]"
-          if (typeId === CONTENT_TYPE_REACTION) {
-            const reactionContent = await tryDecodeReaction(msg as unknown as {
-              content: unknown;
-              contentType?: { typeId?: string };
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              encodedContent?: any;
-            });
-            if (reactionContent) {
-              // Get reactor name (fetch if not cached)
-              let reactorName = 'Someone';
-              if (msg.senderInboxId === ownInboxId) {
-                reactorName = 'You';
-              } else if (conversationType === 'dm' && peerAddress) {
-                const record = await resolveAddress(peerAddress);
-                reactorName = record?.username || `${peerAddress.slice(0, 6)}...`;
-              } else if (memberPreviews) {
-                const member = memberPreviews.find(m => m.inboxId === msg.senderInboxId);
-                if (member?.address) {
-                  const record = await resolveAddress(member.address);
-                  reactorName = record?.username || `${member.address.slice(0, 6)}...`;
-                }
+        // Extract preview content for this message
+        let previewText = '';
+        let previewActivityNs = BigInt(0);
+
+        if (typeId === CONTENT_TYPE_REACTION) {
+          const reactionContent = await tryDecodeReaction(msg as unknown as {
+            content: unknown;
+            contentType?: { typeId?: string };
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            encodedContent?: any;
+          });
+          if (reactionContent) {
+            let reactorName = 'Someone';
+            if (isOwnMessage) {
+              reactorName = 'You';
+            } else if (conversationType === 'dm' && peerAddress) {
+              const record = await resolveAddress(peerAddress);
+              reactorName = record?.username || `${peerAddress.slice(0, 6)}...`;
+            } else if (memberPreviews) {
+              const member = memberPreviews.find(m => m.inboxId === msg.senderInboxId);
+              if (member?.address) {
+                const record = await resolveAddress(member.address);
+                reactorName = record?.username || `${member.address.slice(0, 6)}...`;
               }
-              lastMessagePreview = `${reactorName} reacted ${reactionContent.content}`;
-              lastActivityNs = msg.sentAtNs;
             }
-          } else {
-            const content = extractMessageContent(msg);
-            if (content) {
-              lastMessagePreview = content;
-              lastActivityNs = msg.sentAtNs;
-            } else if (lastActivityNs === BigInt(0)) {
-              // Still track activity time even for non-displayable messages
-              lastActivityNs = msg.sentAtNs;
-            }
+            previewText = `${reactorName} reacted ${reactionContent.content}`;
+            previewActivityNs = msg.sentAtNs;
+          }
+        } else {
+          const content = extractMessageContent(msg);
+          if (content) {
+            previewText = content;
+            previewActivityNs = msg.sentAtNs;
           }
         }
+
+        // Track first message from others (for unread preview)
+        if (previewText && !isOwnMessage && !firstOtherPreview) {
+          firstOtherPreview = previewText;
+          firstOtherActivityNs = previewActivityNs;
+        }
+
+        // Track first message overall (fallback when no unreads)
+        if (previewText && !firstAnyPreview) {
+          firstAnyPreview = previewText;
+          firstAnyActivityNs = previewActivityNs;
+        }
+
+        // Track activity time even without displayable content
+        if (previewActivityNs > lastActivityNs) {
+          lastActivityNs = previewActivityNs;
+        }
+      }
+
+      // Use message from others as preview if there are unreads, otherwise use any message
+      if (unreadCount > 0 && firstOtherPreview) {
+        lastMessagePreview = firstOtherPreview;
+        lastActivityNs = firstOtherActivityNs;
+      } else if (firstAnyPreview) {
+        lastMessagePreview = firstAnyPreview;
+        lastActivityNs = firstAnyActivityNs;
       }
     } catch (error) {
       console.error('[StreamManager] Error building metadata for', conv.id, error);
