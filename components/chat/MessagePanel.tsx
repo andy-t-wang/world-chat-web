@@ -37,7 +37,7 @@ import { ReplyPreview } from "./ReplyPreview";
 import { ReplyBubble } from "./ReplyBubble";
 import { ReactionDetailsMenu } from "./ReactionDetailsMenu";
 import { chatBackgroundStyle } from "./ChatBackground";
-import { replyingToAtom } from "@/stores/ui";
+import { replyingToAtom, messageInputDraftAtom } from "@/stores/ui";
 import {
   isTransactionReference,
   normalizeTransactionReference,
@@ -784,7 +784,7 @@ export function MessagePanel({
   onOpenPeerProfile,
   onBack,
 }: MessagePanelProps) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useAtom(messageInputDraftAtom(conversationId));
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1094,7 +1094,7 @@ export function MessagePanel({
         items.push({
           type: "date-separator",
           date: formatDateSeparator(curr.sentAtNs),
-          id: `date-${curr.dateKey}`,
+          id: `date-${curr.dateKey}-${i}`,
         });
       }
 

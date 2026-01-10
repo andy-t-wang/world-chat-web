@@ -38,7 +38,7 @@ export function MessageText({ text, isOwnMessage }: MessageTextProps) {
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`underline ${
+          className={`underline break-all ${
             isOwnMessage
               ? 'text-white hover:text-white/80'
               : 'text-[#005CFF] hover:text-[#0052E0]'
@@ -62,7 +62,7 @@ export function MessageText({ text, isOwnMessage }: MessageTextProps) {
 
   return (
     <p
-      className={`text-[15px] leading-[1.35] whitespace-pre-wrap break-all ${
+      className={`text-[15px] leading-[1.35] whitespace-pre-wrap break-words ${
         isOwnMessage ? 'text-white' : 'text-[#181818]'
       }`}
     >
