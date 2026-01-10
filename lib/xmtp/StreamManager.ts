@@ -1757,10 +1757,14 @@ class XMTPStreamManager {
           const content = extractMessageContent(msg);
 
           if (metadata) {
-            if (content) {
-              metadata.lastMessagePreview = content;
+            // Only update preview if this message is newer than current
+            // This prevents sync'd older messages from overwriting newer previews
+            if (msg.sentAtNs >= metadata.lastActivityNs) {
+              if (content) {
+                metadata.lastMessagePreview = content;
+              }
+              metadata.lastActivityNs = msg.sentAtNs;
             }
-            metadata.lastActivityNs = msg.sentAtNs;
           }
 
           // Add to conversation list if not already there
