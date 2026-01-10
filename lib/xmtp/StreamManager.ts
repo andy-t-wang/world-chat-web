@@ -1797,38 +1797,59 @@ class XMTPStreamManager {
 
                 // Resolve sender name asynchronously for better UX
                 (async () => {
-                  let senderName: string;
+                  let notificationTitle: string;
+                  let notificationBody: string = content || 'New message';
                   let avatarUrl: string | undefined = metadata.groupImageUrl;
 
                   if (metadata.conversationType === 'group') {
-                    senderName = metadata.groupName || 'Group';
+                    // For groups: title is group name, body includes sender
+                    notificationTitle = metadata.groupName || 'Group';
+
+                    // Try to find sender's address from member previews
+                    const senderMember = metadata.memberPreviews?.find(m => m.inboxId === msg.senderInboxId);
+                    let senderName = 'Someone';
+
+                    if (senderMember?.address) {
+                      try {
+                        const usernameRecord = await resolveAddress(senderMember.address);
+                        if (usernameRecord?.username) {
+                          senderName = usernameRecord.username;
+                        } else {
+                          senderName = `${senderMember.address.slice(0, 6)}...${senderMember.address.slice(-4)}`;
+                        }
+                      } catch {
+                        senderName = `${senderMember.address.slice(0, 6)}...${senderMember.address.slice(-4)}`;
+                      }
+                    }
+
+                    notificationBody = `${senderName}: ${content || 'New message'}`;
                   } else if (metadata.peerAddress) {
-                    // Try to resolve username (will fetch if not cached)
+                    // For DMs: title is sender name
                     try {
                       const usernameRecord = await resolveAddress(metadata.peerAddress);
                       if (usernameRecord?.username) {
-                        senderName = usernameRecord.username;
+                        notificationTitle = usernameRecord.username;
                         avatarUrl = getAvatarUrl(usernameRecord.username);
                       } else {
-                        senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                        notificationTitle = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
                       }
                     } catch {
-                      senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                      notificationTitle = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
                     }
                   } else {
-                    senderName = 'Someone';
+                    notificationTitle = 'Someone';
                   }
 
                   showMessageNotification({
                     conversationId,
-                    senderName,
-                    messagePreview: content || 'New message',
+                    senderName: notificationTitle,
+                    messagePreview: notificationBody,
                     avatarUrl,
                   });
                   this.updateTabTitle();
 
                   // Start flashing the tab title to get user's attention
-                  startTitleFlash(senderName, false);
+                  startTitleFlash(notificationTitle, false);
                 })();
               } else if (!isSelected) {
                 // Tab visible but different conversation - still update title
