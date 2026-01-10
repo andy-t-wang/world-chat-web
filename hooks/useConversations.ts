@@ -211,14 +211,13 @@ export function useMessageRequests() {
     return Date.now() - firstSeen < NEW_DOT_DURATION_MS;
   }, [firstSeenMap]);
 
-  // Count how many requests are currently showing the dot
+  // Count requests with unread messages (for persistent indicator)
   const newRequestCount = useMemo(() => {
-    const now = Date.now();
     return requestIds.filter(id => {
-      const firstSeen = firstSeenMap[id];
-      return firstSeen && firstSeen > 0 && now - firstSeen < NEW_DOT_DURATION_MS;
+      const meta = metadata.get(id);
+      return meta && (meta.unreadCount ?? 0) > 0;
     }).length;
-  }, [requestIds, firstSeenMap]);
+  }, [requestIds, metadata]);
 
   return {
     requestIds,
