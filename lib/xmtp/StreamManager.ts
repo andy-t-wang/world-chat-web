@@ -1427,8 +1427,8 @@ class XMTPStreamManager {
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
 
-      // Note: We rely on streams for real-time messages, not per-conversation sync
-      // conv.messages() reads from local SQLite which is populated by initial sync + streams
+      // Background sync - don't block message loading
+      conv.sync().catch(() => {});
 
       // Keep fetching until we have enough displayable messages
       const displayableIds: string[] = [];
