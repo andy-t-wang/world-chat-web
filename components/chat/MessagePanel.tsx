@@ -1409,7 +1409,6 @@ export function MessagePanel({
       return;
 
     setIsLeavingGroup(true);
-    setShowMenu(false);
 
     try {
       const conversation = await client.conversations.getConversationById(
