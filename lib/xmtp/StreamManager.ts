@@ -739,6 +739,9 @@ class XMTPStreamManager {
   /**
    * One-time initial sync - runs once after app load
    * After this, we rely entirely on streams for updates
+   *
+   * Strategy: Sync Allowed conversations first (priority), then Unknown
+   * Individual conversation sync only happens when entering that conversation
    */
   private async performInitialSync(): Promise<void> {
     if (!this.client || this.initialSyncDone) return;
@@ -748,32 +751,25 @@ class XMTPStreamManager {
     try {
       console.log('[StreamManager] Starting initial sync...');
 
-      // Check inbox state to see linked installations
-      try {
-        const inboxState = await this.client.preferences.inboxState(true);
-        console.log('[StreamManager] Inbox state:', {
-          inboxId: inboxState.inboxId,
-          installationCount: inboxState.installations?.length,
-          installations: inboxState.installations,
-        });
-      } catch (e) {
-        console.error('[StreamManager] Failed to get inbox state:', e);
-      }
+      // First sync preferences to pull in consent state from other devices
+      await this.client.preferences.sync();
+      console.log('[StreamManager] Preferences sync completed');
 
-      // First sync preferences to pull in history from other devices
-      const prefResult = await this.client.preferences.sync();
-      console.log('[StreamManager] Preferences sync result:', prefResult);
-
-      // Sync conversations from network first
+      // Sync conversation list from network
       await this.client.conversations.sync();
       console.log('[StreamManager] Conversations sync completed');
 
-      // Sync all conversations and messages (including Unknown so we don't miss any)
-      // This also uploads to history sync server for other devices
-      const syncResult = await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
-      console.log('[StreamManager] SyncAll result:', syncResult);
+      // Priority 1: Sync Allowed conversations first (these are the important ones)
+      console.log('[StreamManager] Syncing Allowed conversations...');
+      const allowedSyncResult = await this.client.conversations.syncAll([ConsentState.Allowed]);
+      console.log('[StreamManager] Allowed syncAll result:', allowedSyncResult);
 
-      // Re-list to get any new conversations (include Unknown in case consent hasn't synced yet)
+      // Priority 2: Sync Unknown conversations (message requests)
+      console.log('[StreamManager] Syncing Unknown conversations...');
+      const unknownSyncResult = await this.client.conversations.syncAll([ConsentState.Unknown]);
+      console.log('[StreamManager] Unknown syncAll result:', unknownSyncResult);
+
+      // Re-list to get any new conversations
       const conversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
@@ -783,22 +779,16 @@ class XMTPStreamManager {
       const currentIdSet = new Set(currentIds);
       const allIds = [...currentIds];
 
+      // Rebuild metadata from local DB (no per-conversation sync - too expensive)
+      // Individual conversations sync when user opens them
       for (const conv of conversations) {
         this.conversations.set(conv.id, conv);
 
-        // Sync each conversation to pull in messages from network
-        try {
-          await conv.sync();
-        } catch (e) {
-          console.warn('[StreamManager] Failed to sync conversation', conv.id, e);
-        }
-
-        // Rebuild metadata with synced data (messages should now be in local DB)
+        // Build metadata from local DB only (shouldSync=false)
         const metadata = await this.buildConversationMetadata(conv, false);
         this.conversationMetadata.set(conv.id, metadata);
 
         // Add to list if it has messages and isn't already in the list
-        // This catches conversations that were filtered out initially but now have messages
         const selectedId = store.get(selectedConversationIdAtom);
         if (!currentIdSet.has(conv.id) && (metadata.lastMessagePreview || conv.id === selectedId)) {
           allIds.push(conv.id);
@@ -823,17 +813,58 @@ class XMTPStreamManager {
 
       store.set(conversationIdsAtom, filteredIds);
       this.incrementMetadataVersion();
-
-      // Save any newly initialized lastReadTimestamps
       this.saveLastReadTimestamps();
 
-      // IMPORTANT: Refresh messages for any conversations that were already loaded
-      // Sync may have brought in messages that weren't in local cache
+      // Refresh messages for any conversations that were already opened
       await this.refreshLoadedConversations();
 
     } catch (error) {
-      // Sync errors are non-fatal - local data is showing, streams will catch updates
       console.error('[StreamManager] Initial sync error:', error);
+    }
+  }
+
+  // Track if requests have been synced
+  private requestsSynced = false;
+
+  /**
+   * Sync message requests (Unknown consent conversations)
+   * Call this when user opens the Requests tab to prioritize syncing those
+   */
+  async syncMessageRequests(): Promise<void> {
+    if (!this.client || this.requestsSynced) return;
+
+    this.requestsSynced = true;
+
+    try {
+      console.log('[StreamManager] Syncing message requests...');
+
+      // Sync Unknown conversations specifically
+      const syncResult = await this.client.conversations.syncAll([ConsentState.Unknown]);
+      console.log('[StreamManager] Message requests syncAll result:', syncResult);
+
+      // Re-list Unknown conversations
+      const unknownConversations = await this.client.conversations.list({
+        consentStates: [ConsentState.Unknown],
+      });
+
+      // Rebuild metadata for these conversations
+      for (const conv of unknownConversations) {
+        this.conversations.set(conv.id, conv);
+        const metadata = await this.buildConversationMetadata(conv, false);
+        this.conversationMetadata.set(conv.id, metadata);
+
+        // Add to list if not already there and has messages
+        const currentIds = store.get(conversationIdsAtom);
+        if (!currentIds.includes(conv.id) && metadata.lastMessagePreview) {
+          store.set(conversationIdsAtom, [...currentIds, conv.id]);
+        }
+      }
+
+      this.incrementMetadataVersion();
+      this.resortConversations();
+
+    } catch (error) {
+      console.error('[StreamManager] Message requests sync error:', error);
     }
   }
 
@@ -956,14 +987,7 @@ class XMTPStreamManager {
 
     this.incrementMetadataVersion();
 
-    // If this is actually an existing conversation (newDmWithIdentifier found it),
-    // we need to ensure messages are loaded. Clear the loaded flag so they get loaded
-    // when the user opens the conversation.
-    // This handles the case where the conversation existed but wasn't fully initialized.
-    if (this.loadedMessageConversations.has(conversationId)) {
-      // Already loaded - trigger a background refresh to pick up any new messages
-      this.syncConversationInBackground(conversationId, conversation);
-    }
+    // If already loaded, streams will handle any new messages
   }
 
   /**
@@ -1446,9 +1470,7 @@ class XMTPStreamManager {
         isLoading: false,
       });
 
-      // PHASE 2: Background sync to fetch any missing messages
-      // This is non-blocking - UI shows local content immediately
-      this.syncConversationInBackground(conversationId, conv);
+      // Streams handle new messages - no need for background sync
     } catch (error) {
       console.error('[StreamManager] Failed to load messages:', error);
       this.setPagination(conversationId, {
@@ -1456,85 +1478,6 @@ class XMTPStreamManager {
         oldestMessageNs: null,
         isLoading: false,
       });
-    }
-  }
-
-  /**
-   * Sync a conversation in the background and refresh its messages
-   * Called after showing local content to fetch any missing messages
-   */
-  private async syncConversationInBackground(conversationId: string, conv: Conversation): Promise<void> {
-    try {
-      // Sync this conversation to fetch messages from network
-      await conv.sync();
-
-      // Fetch messages again from local DB (now includes synced messages)
-      const messages = await conv.messages({
-        limit: BigInt(BACKGROUND_REFRESH_LIMIT),
-        direction: SortDirection.Descending,
-      });
-
-      // Find messages we don't have yet
-      const currentIds = this.getMessageIds(conversationId);
-      const currentIdSet = new Set(currentIds);
-      const newMessageIds: string[] = [];
-
-      for (const msg of messages) {
-        const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
-
-        // Skip read receipts
-        if (typeId === CONTENT_TYPE_READ_RECEIPT) {
-          if (msg.senderInboxId !== this.client?.inboxId) {
-            this.updateReadReceipt(conversationId, msg.sentAtNs);
-          }
-          continue;
-        }
-
-        // Process reactions
-        if (typeId === CONTENT_TYPE_REACTION) {
-          await this.processReaction(msg as unknown as DecodedMessage);
-          continue;
-        }
-
-        // Try to decode raw remote attachments
-        if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
-          await tryDecodeRawRemoteAttachment(msg);
-        }
-
-        if (!currentIdSet.has(msg.id)) {
-          messageCache.set(msg.id, msg as unknown as DecodedMessage);
-          newMessageIds.push(msg.id);
-        }
-      }
-
-      if (newMessageIds.length > 0) {
-        // After sync, re-fetch to get messages in correct sequence order from SDK
-        // The SDK orders messages by their sequence in the MLS group, which is
-        // the authoritative order - don't re-sort by sentAtNs as device clocks may differ
-        const refreshedMessages = await conv.messages({
-          limit: BigInt(BACKGROUND_REFRESH_LIMIT),
-          direction: SortDirection.Descending,
-        });
-
-        // Build the ID list in SDK order (which reflects true message sequence)
-        const orderedIds: string[] = [];
-        for (const msg of refreshedMessages) {
-          const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
-          // Skip non-displayable types
-          if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
-            continue;
-          }
-          // Ensure message is in cache
-          if (!messageCache.has(msg.id)) {
-            messageCache.set(msg.id, msg as unknown as DecodedMessage);
-          }
-          orderedIds.push(msg.id);
-        }
-
-        this.setMessageIds(conversationId, orderedIds);
-      }
-    } catch {
-      // Background sync errors are non-fatal - stream will catch new messages
     }
   }
 
