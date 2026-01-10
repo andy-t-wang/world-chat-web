@@ -1202,11 +1202,10 @@ class XMTPStreamManager {
         }
       }
 
-      // Use message from others as preview if there are unreads, otherwise use any message
-      if (unreadCount > 0 && firstOtherPreview) {
-        lastMessagePreview = firstOtherPreview;
-        lastActivityNs = firstOtherActivityNs;
-      } else if (firstAnyPreview) {
+      // Always show the most recent message as preview
+      // The unread count/badge is separate from the preview display
+      // This ensures that if you sent a message (on any device), your message shows as preview
+      if (firstAnyPreview) {
         lastMessagePreview = firstAnyPreview;
         lastActivityNs = firstAnyActivityNs;
       }

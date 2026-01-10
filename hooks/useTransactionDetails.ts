@@ -7,14 +7,14 @@ import type { TransactionDetails, TransactionReference } from '@/lib/xmtp/Transa
 const transactionCache = new Map<string, TransactionDetails>();
 const pendingRequests = new Map<string, Promise<TransactionDetails | null>>();
 
-// 5 minutes in nanoseconds
-const CONFIRM_AFTER_NS = BigInt(5 * 60 * 1000) * 1_000_000n;
+// 5 seconds in nanoseconds
+const CONFIRM_AFTER_NS = BigInt(5 * 1000) * 1_000_000n;
 
 /**
  * Hook to fetch and cache transaction details
  * @param txRef - Transaction reference from the message
  * @param sentAtNs - Message sent timestamp in nanoseconds (optional)
- *                   If provided and message is > 5 minutes old, assumes confirmed
+ *                   If provided and message is > 5 seconds old, assumes confirmed
  */
 export function useTransactionDetails(txRef: TransactionReference | null, sentAtNs?: bigint) {
   const [details, setDetails] = useState<TransactionDetails | null>(null);

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { RemoteSigner, generateSessionId } from "@/lib/signing-relay";
-import { RefreshCw, Shield, Check } from "lucide-react";
+import { RefreshCw, Check } from "lucide-react";
 
 const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
@@ -202,7 +202,7 @@ export default function Home() {
   // Show minimal loading while checking session
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
         <PulseLoader />
       </div>
     );
@@ -243,33 +243,11 @@ export default function Home() {
             transform: scale(1);
           }
         }
-        @keyframes glow-pulse {
-          0%,
-          100% {
-            opacity: 0.4;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.7;
-            transform: scale(1.02);
-          }
-        }
-        @keyframes shimmer {
-          0% {
-            background-position: -200% center;
-          }
-          100% {
-            background-position: 200% center;
-          }
-        }
         .animate-fade-in {
           animation: fade-in 0.5s ease-out forwards;
         }
         .animate-scale-in {
           animation: scale-in 0.3s ease-out forwards;
-        }
-        .animate-glow {
-          animation: glow-pulse 3s ease-in-out infinite;
         }
         .stagger-1 {
           animation-delay: 0.1s;
@@ -283,47 +261,31 @@ export default function Home() {
           animation-delay: 0.3s;
           opacity: 0;
         }
-        .stagger-4 {
-          animation-delay: 0.5s;
-          opacity: 0;
-        }
       `}</style>
 
-      <div className="min-h-screen bg-[#FAFAFA] flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        {/* Subtle radial gradient background */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(0,122,255,0.03)_0%,_transparent_50%)]" />
-
-        <div className="w-full max-w-sm flex flex-col items-center relative z-10">
-          {/* Title with staggered animation */}
-          <h1 className="text-[28px] font-semibold text-[#1D1D1F] tracking-[-0.03em] mb-3 animate-fade-in">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-sm flex flex-col items-center">
+          {/* Title */}
+          <h1 className="text-[32px] font-semibold text-[#1D1D1F] tracking-[-0.02em] mb-2 animate-fade-in">
             World Chat
           </h1>
 
-          {/* E2EE Badge - Refined pill design */}
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-[#E8F5E9] border border-[#A5D6A7]/30 mb-10 animate-fade-in stagger-1">
-            <Shield className="w-3.5 h-3.5 text-[#2E7D32]" />
-            <span className="text-[13px] font-medium text-[#2E7D32]">
-              End-to-end encrypted
-            </span>
-          </div>
+          {/* Subtitle */}
+          <p className="text-[15px] text-[#86868B] mb-10 animate-fade-in stagger-1">
+            Scan to sign in
+          </p>
 
-          {/* QR Code Card with glow effect */}
+          {/* QR Code Card */}
           <div className="relative mb-8 animate-fade-in stagger-2">
-            {/* Animated glow ring - only when showing QR */}
-            {showQR && (
-              <div className="absolute -inset-3 rounded-[32px] bg-gradient-to-r from-[#007AFF]/20 via-[#34C759]/20 to-[#007AFF]/20 blur-xl animate-glow" />
-            )}
-
-            {/* Main card */}
-            <div className="relative w-[280px] h-[280px] rounded-3xl flex items-center justify-center bg-white shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_2px_rgba(0,0,0,0.04)] border border-black/[0.04]">
+            <div className="relative w-[280px] h-[280px] rounded-2xl flex items-center justify-center bg-[#F5F5F7]">
               {showQR ? (
-                <div className="relative animate-scale-in">
+                <div className="relative animate-scale-in p-5 bg-white rounded-xl">
                   <QRCodeSVG
                     value={qrUrl}
-                    size={220}
+                    size={200}
                     level="M"
                     includeMargin={false}
-                    bgColor="transparent"
+                    bgColor="white"
                     fgColor="#1D1D1F"
                   />
                 </div>
@@ -354,17 +316,19 @@ export default function Home() {
           </div>
 
           {/* Status */}
-          <p
-            className={`text-[15px] font-medium mb-3 transition-all duration-200 animate-fade-in stagger-3 ${
-              state === "error"
-                ? "text-[#FF3B30]"
-                : state === "success"
-                ? "text-[#34C759]"
-                : "text-[#1D1D1F]"
-            }`}
-          >
-            {getStatusText()}
-          </p>
+          {state !== "waiting_for_scan" && (
+            <p
+              className={`text-[15px] font-medium mb-3 transition-all duration-200 animate-fade-in ${
+                state === "error"
+                  ? "text-[#FF3B30]"
+                  : state === "success"
+                  ? "text-[#34C759]"
+                  : "text-[#1D1D1F]"
+              }`}
+            >
+              {getStatusText()}
+            </p>
+          )}
 
           {/* Address */}
           {connectedAddress && state !== "error" && (
@@ -399,32 +363,30 @@ export default function Home() {
             </p>
           )}
 
-          {/* Footer - Trust signals */}
-          <div className="mt-16 text-center animate-fade-in stagger-4">
-            {/* Trust badges */}
-            <div className="flex items-center justify-center gap-4 mb-4">
-              <div className="flex items-center gap-1.5 text-[11px] text-[#86868B]">
-                <div className="w-1 h-1 rounded-full bg-[#34C759]" />
-                <span>Secured by XMTP</span>
-              </div>
-              <div className="flex items-center gap-1.5 text-[11px] text-[#86868B]">
-                <div className="w-1 h-1 rounded-full bg-[#007AFF]" />
-                <span>World ID Verified</span>
-              </div>
-            </div>
-
-            <p className="text-[11px] text-[#AEAEB2] leading-[1.6] max-w-[280px] mb-3">
-              Messages stored locally only. Clearing browser data deletes
-              history.
+          {/* Footer */}
+          <div className="mt-10 flex flex-col items-center gap-4 animate-fade-in stagger-3">
+            {/* Trust signals */}
+            <p className="text-[13px] text-[#86868B]">
+              End-to-end encrypted · Secured by XMTP · World ID verified
             </p>
-            <a
-              href="https://world.org/download"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block text-[12px] font-medium text-[#007AFF] hover:text-[#0066CC] transition-colors duration-200"
-            >
-              Get World App →
-            </a>
+
+            <div className="flex items-center gap-4">
+              <a
+                href="https://world.org/download"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[13px] text-[#007AFF] hover:underline"
+              >
+                Get World App
+              </a>
+              <span className="text-[#D1D1D6]">·</span>
+              <a
+                href="/download"
+                className="text-[13px] text-[#007AFF] hover:underline"
+              >
+                Download for Mac
+              </a>
+            </div>
           </div>
         </div>
       </div>
