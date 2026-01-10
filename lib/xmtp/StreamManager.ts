@@ -2458,21 +2458,25 @@ class XMTPStreamManager {
         metadata.lastMessagePreview = `${reactorName} reacted ${emoji}`;
         metadata.lastActivityNs = msg.sentAtNs;
 
-        // Handle unread count and notifications for peer reactions
+        // Handle unread count and notifications for peer reactions to YOUR messages only
         if (!isOwnReaction) {
+          // Check if the reaction is to a message you sent
+          const targetMessage = messageCache.get(targetMessageId);
+          const isReactionToOwnMessage = targetMessage?.senderInboxId === this.client?.inboxId;
+
           const selectedId = store.get(selectedConversationIdAtom);
           const isSelected = selectedId === conversationId;
           const tabVisible = isTabVisible();
 
-          // Increment unread only if not viewing this conversation
-          if (!isSelected) {
+          // Increment unread only if not viewing this conversation AND reaction is to your message
+          if (!isSelected && isReactionToOwnMessage) {
             metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
             const unreadVersion = store.get(unreadVersionAtom);
             store.set(unreadVersionAtom, unreadVersion + 1);
           }
 
-          // Show notification if tab not visible
-          if (!tabVisible) {
+          // Show notification only if reaction is to your message and tab not visible
+          if (!tabVisible && isReactionToOwnMessage) {
             this.hiddenTabMessageCount++;
 
             // Resolve sender name asynchronously for better UX
@@ -2501,13 +2505,13 @@ class XMTPStreamManager {
               showMessageNotification({
                 conversationId,
                 senderName,
-                messagePreview: `Reacted ${emoji}`,
+                messagePreview: `Reacted ${emoji} to your message`,
                 avatarUrl,
               });
               this.updateTabTitle();
               startTitleFlash(senderName, false);
             })();
-          } else if (!isSelected) {
+          } else if (!isSelected && isReactionToOwnMessage) {
             this.updateTabTitle();
           }
         }
