@@ -1,6 +1,3 @@
-"use client";
-
-import { useState, useEffect } from "react";
 import Image from "next/image";
 import { Download, Apple } from "lucide-react";
 
@@ -18,34 +15,27 @@ interface Release {
   assets: ReleaseAsset[];
 }
 
-export default function DownloadPage() {
-  const [release, setRelease] = useState<Release | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+async function getLatestRelease(): Promise<Release | null> {
+  try {
+    const res = await fetch(GITHUB_RELEASE_URL, {
+      next: { revalidate: 300 }, // Cache for 5 minutes
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
 
-  useEffect(() => {
-    fetch(GITHUB_RELEASE_URL)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch release");
-        return res.json();
-      })
-      .then((data) => {
-        setRelease(data);
-        setLoading(false);
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-      });
-  }, []);
+function formatSize(bytes: number) {
+  const mb = bytes / (1024 * 1024);
+  return `${mb.toFixed(1)} MB`;
+}
 
+export default async function DownloadPage() {
+  const release = await getLatestRelease();
   const dmgAsset = release?.assets.find((a) => a.name.endsWith(".dmg"));
   const version = release?.tag_name?.replace("v", "") || "";
-
-  const formatSize = (bytes: number) => {
-    const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(1)} MB`;
-  };
 
   return (
     <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
@@ -70,16 +60,7 @@ export default function DownloadPage() {
         )}
 
         {/* Download button */}
-        {loading ? (
-          <div className="flex items-center gap-2 text-[#86868B]">
-            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            <span>Loading...</span>
-          </div>
-        ) : error ? (
-          <p className="text-[15px] text-[#FF3B30]">
-            Failed to load download. Try again later.
-          </p>
-        ) : dmgAsset ? (
+        {dmgAsset ? (
           <a
             href={dmgAsset.browser_download_url}
             className="flex items-center gap-3 px-6 py-3 bg-[#1D1D1F] text-white rounded-xl hover:bg-[#333] transition-colors"
@@ -94,7 +75,9 @@ export default function DownloadPage() {
             <Download className="w-4 h-4 ml-2" />
           </a>
         ) : (
-          <p className="text-[15px] text-[#86868B]">No download available</p>
+          <p className="text-[15px] text-[#86868B]">
+            Download temporarily unavailable. Try again later.
+          </p>
         )}
 
         {/* Requirements */}
