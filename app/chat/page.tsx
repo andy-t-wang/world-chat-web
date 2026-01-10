@@ -436,6 +436,7 @@ export default function ChatPage() {
             ownInboxId={client?.inboxId}
             onMemberAdded={handleMemberAdded}
             onMemberRemoved={handleMemberRemoved}
+            onMemberClick={handleMemberAvatarClick}
           />
         )}
 

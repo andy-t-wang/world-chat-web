@@ -184,7 +184,7 @@ export function MemberProfilePanel({
                 </h2>
                 <button
                   onClick={handleStartEdit}
-                  className="p-1 rounded-md hover:bg-[#F5F5F5] transition-colors"
+                  className="p-1 rounded-md hover:bg-[#F5F5F5] transition-colors cursor-pointer"
                   title="Edit nickname"
                 >
                   <Pencil className="w-4 h-4 text-[#86868B]" />
@@ -222,7 +222,7 @@ export function MemberProfilePanel({
             <button
               onClick={handleMessageUser}
               disabled={isStartingDm}
-              className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-[14px] font-medium text-white hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
+              className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-[14px] font-medium text-white hover:bg-[#2D2D2F] transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isStartingDm ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

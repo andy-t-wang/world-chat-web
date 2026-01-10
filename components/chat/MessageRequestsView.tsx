@@ -234,11 +234,11 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   return (
     <div className="flex flex-col h-full bg-white">
       {/* Header */}
-      <div className="shrink-0 px-4 py-3 border-b border-gray-100">
+      <div className="shrink-0 px-4 py-2 border-b border-gray-100">
         <div className="flex items-center gap-1.5">
           <button
             onClick={onBack}
-            className="p-2 -ml-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 -ml-1.5 rounded-lg hover:bg-gray-100 transition-colors"
             aria-label="Back to chats"
           >
             <ArrowLeft className="w-5 h-5 text-[#181818]" />
@@ -250,7 +250,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       </div>
 
       {/* Search */}
-      <div className="shrink-0 px-4 py-3 border-b border-gray-100">
+      <div className="shrink-0 px-4 py-2 border-b border-gray-100">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE]" />
           <input

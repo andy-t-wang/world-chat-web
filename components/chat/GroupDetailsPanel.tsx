@@ -25,6 +25,7 @@ interface GroupDetailsPanelProps {
   ownInboxId?: string;
   onMemberAdded?: (address: string, displayName: string | null) => void;
   onMemberRemoved?: (inboxId: string, address: string, displayName: string | null) => Promise<void>;
+  onMemberClick?: (address: string, inboxId: string) => void;
 }
 
 interface MenuItemProps {
@@ -72,6 +73,7 @@ function MemberRow({
   isPending,
   isRemoving,
   onRemove,
+  onAvatarClick,
 }: {
   address: string;
   inboxId: string;
@@ -80,6 +82,7 @@ function MemberRow({
   isPending?: boolean;
   isRemoving?: boolean;
   onRemove?: (inboxId: string, address: string, displayName: string | null) => void;
+  onAvatarClick?: (address: string, inboxId: string) => void;
 }) {
   const { displayName, profilePicture } = useUsername(address);
   const shortAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -93,9 +96,21 @@ function MemberRow({
     }
   };
 
+  const handleAvatarClick = () => {
+    if (onAvatarClick && !isYou) {
+      onAvatarClick(address, inboxId);
+    }
+  };
+
   return (
     <div className={`group flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors ${isPending || isRemoving ? 'opacity-60' : ''}`}>
-      <Avatar address={address} size="md" />
+      <button
+        onClick={handleAvatarClick}
+        disabled={isYou || !onAvatarClick}
+        className={`shrink-0 ${!isYou && onAvatarClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+      >
+        <Avatar address={address} size="md" />
+      </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-[15px] text-[#1D1D1F] truncate">{name}</span>
@@ -137,6 +152,7 @@ function GroupMembersView({
   onBack,
   onAddNew,
   onRemoveMember,
+  onMemberClick,
 }: {
   memberPreviews: MemberPreview[];
   optimisticMembers: MemberPreview[];
@@ -145,6 +161,7 @@ function GroupMembersView({
   onBack: () => void;
   onAddNew: () => void;
   onRemoveMember: (inboxId: string, address: string, displayName: string | null) => void;
+  onMemberClick?: (address: string, inboxId: string) => void;
 }) {
   // Get set of real member addresses for deduplication
   const realMemberAddresses = new Set(memberPreviews.map(m => m.address.toLowerCase()));
@@ -192,6 +209,7 @@ function GroupMembersView({
             isPending={optimisticAddresses.has(member.address.toLowerCase())}
             isRemoving={removingMembers.has(member.inboxId)}
             onRemove={onRemoveMember}
+            onAvatarClick={onMemberClick}
           />
         ))}
       </div>
@@ -223,6 +241,7 @@ export function GroupDetailsPanel({
   ownInboxId,
   onMemberAdded,
   onMemberRemoved,
+  onMemberClick,
 }: GroupDetailsPanelProps) {
   const [view, setView] = useState<"details" | "members">("details");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -320,6 +339,7 @@ export function GroupDetailsPanel({
           onBack={() => setView("details")}
           onAddNew={() => setShowAddModal(true)}
           onRemoveMember={handleRemoveMember}
+          onMemberClick={onMemberClick}
         />
 
         {/* Add Member Modal */}
