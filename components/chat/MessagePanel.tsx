@@ -11,7 +11,6 @@ import {
 import { useAtomValue, useAtom } from "jotai";
 import { GroupMessageKind } from "@xmtp/browser-sdk";
 import {
-  MoreHorizontal,
   Paperclip,
   Send,
   Loader2,
@@ -806,10 +805,8 @@ export function MessagePanel({
   // Reply state
   const [replyingTo, setReplyingTo] = useAtom(replyingToAtom);
 
-  // Menu dropdown state
-  const [showMenu, setShowMenu] = useState(false);
+  // Group leave state (used by parent via callback)
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const { displayName } = useDisplayName(
     conversationType === "dm" ? peerAddress : null
@@ -1401,18 +1398,6 @@ export function MessagePanel({
     [conversationId, reactionPicker, client?.inboxId]
   );
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!showMenu) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showMenu]);
-
   // Handle leave group
   const handleLeaveGroup = useCallback(async () => {
     if (
@@ -1523,35 +1508,6 @@ export function MessagePanel({
           </div>
         </div>
         </div>
-        {/* Menu button - only show for groups */}
-        {conversationType === "group" && (
-          <div className="electron-no-drag relative z-20" ref={menuRef}>
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
-            >
-              <MoreHorizontal className="w-5 h-5 text-[#717680]" />
-            </button>
-
-            {/* Dropdown menu */}
-            {showMenu && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[160px] z-50">
-                <button
-                  onClick={handleLeaveGroup}
-                  disabled={isLeavingGroup}
-                  className="w-full px-4 py-2.5 text-left text-[15px] text-red-600 hover:bg-gray-50 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isLeavingGroup ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <LogOut className="w-4 h-4" />
-                  )}
-                  Leave group
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </header>
 
       {/* Messages Area */}
