@@ -1427,14 +1427,8 @@ class XMTPStreamManager {
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
 
-      // IMPORTANT: Sync this conversation to pull in messages from network/history
-      try {
-        console.log('[StreamManager] Syncing conversation before loading messages:', conversationId);
-        const syncResult = await conv.sync();
-        console.log('[StreamManager] Conversation sync result:', conversationId, syncResult);
-      } catch (e) {
-        console.warn('[StreamManager] Failed to sync conversation:', conversationId, e);
-      }
+      // Note: We rely on streams for real-time messages, not per-conversation sync
+      // conv.messages() reads from local SQLite which is populated by initial sync + streams
 
       // Keep fetching until we have enough displayable messages
       const displayableIds: string[] = [];
@@ -1451,7 +1445,6 @@ class XMTPStreamManager {
           direction: SortDirection.Descending,
         });
 
-        console.log('[StreamManager] Messages fetched for', conversationId, '- count:', messages.length, 'iteration:', iterations);
 
         if (messages.length === 0) {
           hasMore = false;
