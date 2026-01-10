@@ -421,32 +421,52 @@ export default function ChatPage() {
           <EmptyState className="hidden md:flex" />
         )}
 
-        {/* Group Details Panel - inline beside MessagePanel */}
+        {/* Group Details Panel - inline on large screens, overlay on small */}
         {showGroupDetails && selectedId && conversationMetadata?.conversationType === "group" && (
-          <GroupDetailsPanel
-            onClose={() => setShowGroupDetails(false)}
-            groupName={conversationMetadata.groupName || "Group Chat"}
-            memberPreviews={conversationMetadata.memberPreviews}
-            verifiedCount={verifiedCount}
-            unverifiedCount={unverifiedCount}
-            avatarUrl={conversationMetadata.groupImageUrl}
-            conversationId={selectedId}
-            onLeaveGroup={handleLeaveGroup}
-            isLeavingGroup={isLeavingGroup}
-            ownInboxId={client?.inboxId}
-            onMemberAdded={handleMemberAdded}
-            onMemberRemoved={handleMemberRemoved}
-            onMemberClick={handleMemberAvatarClick}
-          />
+          <>
+            {/* Backdrop for small screens */}
+            <div
+              className="lg:hidden fixed inset-0 bg-black/20 z-40"
+              onClick={() => setShowGroupDetails(false)}
+            />
+            {/* Panel - absolute on small screens, inline on large */}
+            <div className="lg:contents fixed lg:static right-0 top-0 bottom-0 z-50 lg:z-auto">
+              <GroupDetailsPanel
+                onClose={() => setShowGroupDetails(false)}
+                groupName={conversationMetadata.groupName || "Group Chat"}
+                memberPreviews={conversationMetadata.memberPreviews}
+                verifiedCount={verifiedCount}
+                unverifiedCount={unverifiedCount}
+                avatarUrl={conversationMetadata.groupImageUrl}
+                conversationId={selectedId}
+                onLeaveGroup={handleLeaveGroup}
+                isLeavingGroup={isLeavingGroup}
+                ownInboxId={client?.inboxId}
+                onMemberAdded={handleMemberAdded}
+                onMemberRemoved={handleMemberRemoved}
+                onMemberClick={handleMemberAvatarClick}
+              />
+            </div>
+          </>
         )}
 
-        {/* Member Profile Panel - shows when clicking on a member avatar in group */}
+        {/* Member Profile Panel - inline on large screens, overlay on small */}
         {selectedMemberProfile && (
-          <MemberProfilePanel
-            address={selectedMemberProfile.address}
-            inboxId={selectedMemberProfile.inboxId}
-            onClose={() => setSelectedMemberProfile(null)}
-          />
+          <>
+            {/* Backdrop for small screens */}
+            <div
+              className="lg:hidden fixed inset-0 bg-black/20 z-40"
+              onClick={() => setSelectedMemberProfile(null)}
+            />
+            {/* Panel - absolute on small screens, inline on large */}
+            <div className="lg:contents fixed lg:static right-0 top-0 bottom-0 z-50 lg:z-auto">
+              <MemberProfilePanel
+                address={selectedMemberProfile.address}
+                inboxId={selectedMemberProfile.inboxId}
+                onClose={() => setSelectedMemberProfile(null)}
+              />
+            </div>
+          </>
         )}
       </div>
 
