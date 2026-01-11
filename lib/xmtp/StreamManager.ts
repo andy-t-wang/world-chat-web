@@ -2472,37 +2472,57 @@ class XMTPStreamManager {
           if (!tabVisible && isReactionToOwnMessage) {
             this.hiddenTabMessageCount++;
 
-            // Resolve sender name asynchronously for better UX
+            // Resolve reactor name asynchronously
             (async () => {
-              let senderName: string;
-              let avatarUrl: string | undefined = metadata.groupImageUrl;
+              let reactorName = 'Someone';
+              let avatarUrl: string | undefined;
 
-              if (metadata.conversationType === 'group') {
-                senderName = metadata.groupName || 'Group';
+              // Find the reactor's address from member previews or peer address
+              if (metadata.conversationType === 'group' && metadata.memberPreviews) {
+                const reactorMember = metadata.memberPreviews.find(m => m.inboxId === senderInboxId);
+                if (reactorMember?.address) {
+                  try {
+                    const usernameRecord = await resolveAddress(reactorMember.address);
+                    if (usernameRecord?.username) {
+                      reactorName = usernameRecord.username;
+                      avatarUrl = getAvatarUrl(usernameRecord.username);
+                    } else {
+                      reactorName = `${reactorMember.address.slice(0, 6)}...${reactorMember.address.slice(-4)}`;
+                    }
+                  } catch {
+                    reactorName = `${reactorMember.address.slice(0, 6)}...${reactorMember.address.slice(-4)}`;
+                  }
+                }
               } else if (metadata.peerAddress) {
                 try {
                   const usernameRecord = await resolveAddress(metadata.peerAddress);
                   if (usernameRecord?.username) {
-                    senderName = usernameRecord.username;
+                    reactorName = usernameRecord.username;
                     avatarUrl = getAvatarUrl(usernameRecord.username);
                   } else {
-                    senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                    reactorName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
                   }
                 } catch {
-                  senderName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
+                  reactorName = `${metadata.peerAddress.slice(0, 6)}...${metadata.peerAddress.slice(-4)}`;
                 }
-              } else {
-                senderName = 'Someone';
               }
+
+              // For groups, show "Reactor reacted in Group"
+              const notificationTitle = metadata.conversationType === 'group'
+                ? metadata.groupName || 'Group'
+                : reactorName;
+              const notificationBody = metadata.conversationType === 'group'
+                ? `${reactorName} reacted ${emoji} to your message`
+                : `Reacted ${emoji} to your message`;
 
               showMessageNotification({
                 conversationId,
-                senderName,
-                messagePreview: `Reacted ${emoji} to your message`,
-                avatarUrl,
+                senderName: notificationTitle,
+                messagePreview: notificationBody,
+                avatarUrl: avatarUrl || metadata.groupImageUrl,
               });
               this.updateTabTitle();
-              startTitleFlash(senderName, false);
+              startTitleFlash(notificationTitle, false);
             })();
           } else if (!isSelected && isReactionToOwnMessage) {
             this.updateTabTitle();

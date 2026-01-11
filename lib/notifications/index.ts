@@ -194,9 +194,15 @@ export function showMessageNotification(options: {
     silent: true, // We play our own sound
   });
 
-  // Handle click - focus tab and select conversation
+  // Handle click - focus window and select conversation
   notification.onclick = () => {
-    window.focus();
+    // Use Electron API to focus window if available
+    const electronAPI = (window as { electronAPI?: { focusWindow?: () => Promise<void> } }).electronAPI;
+    if (electronAPI?.focusWindow) {
+      electronAPI.focusWindow();
+    } else {
+      window.focus();
+    }
     store.set(selectedConversationIdAtom, conversationId);
     notification.close();
   };
