@@ -15,10 +15,10 @@ interface ReplyBubbleProps {
   isFirstInGroup: boolean;
   /** Whether this is the last message in a group */
   isLastInGroup: boolean;
-  /** Timestamp to display */
-  timestamp?: string;
   /** Whether the conversation is verified (for bubble color) */
   isVerified?: boolean;
+  /** Reactions component to render (positioned for correct overlap) */
+  reactions?: React.ReactNode;
 }
 
 export function ReplyBubble({
@@ -28,8 +28,8 @@ export function ReplyBubble({
   isOwnMessage,
   isFirstInGroup,
   isLastInGroup,
-  timestamp,
   isVerified = false,
+  reactions,
 }: ReplyBubbleProps) {
   const { displayName } = useUsername(quotedSenderAddress);
 
@@ -97,14 +97,8 @@ export function ReplyBubble({
         </p>
       </div>
 
-      {/* Timestamp */}
-      {timestamp && isLastInGroup && (
-        <div className={`flex items-center gap-1 px-1 mt-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-          <span className="text-[11px] text-[#717680] font-medium">
-            {timestamp}
-          </span>
-        </div>
-      )}
+      {/* Reactions - positioned to overlap with reply bubble */}
+      {reactions}
     </div>
   );
 }

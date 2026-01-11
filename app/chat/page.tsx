@@ -422,15 +422,26 @@ export default function ChatPage() {
         )}
 
         {/* Group Details Panel - inline on large screens, overlay on small */}
-        {showGroupDetails && selectedId && conversationMetadata?.conversationType === "group" && (
+        {selectedId && conversationMetadata?.conversationType === "group" && (
           <>
-            {/* Backdrop for small screens */}
+            {/* Backdrop for small screens - animated opacity */}
             <div
-              className="lg:hidden fixed inset-0 bg-black/20 z-40"
+              className={`lg:hidden fixed inset-0 bg-black/20 z-40 transition-opacity duration-300 ease-out ${
+                showGroupDetails ? "opacity-100" : "opacity-0 pointer-events-none"
+              }`}
               onClick={() => setShowGroupDetails(false)}
             />
-            {/* Panel - absolute on small screens, inline on large */}
-            <div className="lg:contents fixed lg:static right-0 top-0 bottom-0 z-50 lg:z-auto">
+            {/* Panel wrapper - animated slide from right */}
+            <div
+              className={`
+                fixed lg:relative right-0 top-0 bottom-0 z-50 lg:z-auto
+                transition-all duration-300 ease-out
+                ${showGroupDetails
+                  ? "translate-x-0 w-[320px] lg:w-[320px]"
+                  : "translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden"
+                }
+              `}
+            >
               <GroupDetailsPanel
                 onClose={() => setShowGroupDetails(false)}
                 groupName={conversationMetadata.groupName || "Group Chat"}
@@ -453,13 +464,13 @@ export default function ChatPage() {
         {/* Member Profile Panel - inline on large screens, overlay on small */}
         {selectedMemberProfile && (
           <>
-            {/* Backdrop for small screens */}
+            {/* Backdrop for small screens - fade in */}
             <div
-              className="lg:hidden fixed inset-0 bg-black/20 z-40"
+              className="lg:hidden fixed inset-0 bg-black/20 z-40 animate-fade-in"
               onClick={() => setSelectedMemberProfile(null)}
             />
-            {/* Panel - absolute on small screens, inline on large */}
-            <div className="lg:contents fixed lg:static right-0 top-0 bottom-0 z-50 lg:z-auto">
+            {/* Panel wrapper - slide in from right */}
+            <div className="fixed lg:relative right-0 top-0 bottom-0 z-50 lg:z-auto w-[320px] animate-slide-in-right">
               <MemberProfilePanel
                 address={selectedMemberProfile.address}
                 inboxId={selectedMemberProfile.inboxId}

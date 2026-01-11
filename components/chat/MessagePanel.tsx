@@ -86,7 +86,7 @@ function isStatusMessage(text: string): boolean {
 function StatusMessage({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center py-2">
-      <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+      <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
         <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
           {text}
         </p>
@@ -190,7 +190,7 @@ function GroupedMembershipChangeMessage({
     <>
       {uniqueAdded.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
             <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
               {uniqueAdded.map((inboxId, i) => (
                 <span key={inboxId}>
@@ -205,7 +205,7 @@ function GroupedMembershipChangeMessage({
       )}
       {uniqueRemoved.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
             <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
               {uniqueRemoved.map((inboxId, i) => (
                 <span key={inboxId}>
@@ -251,7 +251,7 @@ function MembershipChangeMessage({
     <>
       {addedInboxIds.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
             <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
               {addedInboxIds.map((inboxId, i) => (
                 <span key={inboxId}>
@@ -266,7 +266,7 @@ function MembershipChangeMessage({
       )}
       {removedInboxIds.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg">
+          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
             <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
               {removedInboxIds.map((inboxId, i) => (
                 <span key={inboxId}>
@@ -2107,23 +2107,20 @@ export function MessagePanel({
                                 isOwnMessage={isOwnMessage}
                                 isFirstInGroup={isFirstInGroup}
                                 isLastInGroup={isLastInGroup}
-                                timestamp={
-                                  isLastInGroup
-                                    ? formatTime(msg.sentAtNs)
-                                    : undefined
-                                }
                                 isVerified={isVerified}
+                                reactions={
+                                  <MessageReactions
+                                    messageId={item.id}
+                                    conversationId={conversationId}
+                                    isOwnMessage={isOwnMessage}
+                                    memberPreviews={memberPreviews}
+                                    peerAddress={peerAddress}
+                                    ownInboxId={ownInboxId}
+                                  />
+                                }
                               />
                             </div>
                           </MessageWrapper>
-                          <MessageReactions
-                            messageId={item.id}
-                            conversationId={conversationId}
-                            isOwnMessage={isOwnMessage}
-                            memberPreviews={memberPreviews}
-                            peerAddress={peerAddress}
-                            ownInboxId={ownInboxId}
-                          />
                           {/* Link preview for reply messages */}
                           {linkPreviewEnabled && extractUrls(replyText).length > 0 && (
                             <div className="mt-2">
@@ -2132,6 +2129,16 @@ export function MessagePanel({
                                 isOwnMessage={isOwnMessage}
                               />
                             </div>
+                          )}
+                          {/* Timestamp for reply messages */}
+                          {isLastInGroup && (
+                            <span
+                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                                isOwnMessage ? "text-right pr-1" : "ml-1"
+                              }`}
+                            >
+                              {formatTime(msg.sentAtNs)}
+                            </span>
                           )}
                         </div>
                       </div>
