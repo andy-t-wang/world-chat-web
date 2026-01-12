@@ -8,6 +8,9 @@
   --bg-tertiary: #F5F5F5;
   --bg-hover: #F2F2F7;
   --bg-active: #E8E8ED;
+  --bg-selected: #007AFF;
+  --text-selected: #ffffff;
+  --text-selected-secondary: rgba(255, 255, 255, 0.9);
 
   /* Text */
   --text-primary: #181818;
@@ -38,6 +41,7 @@
   --bubble-incoming-text: #181818;
   --bubble-unverified: #717680;
   --bubble-system: #F5F5F5;
+  --bubble-pending: #0066D6;
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -71,6 +75,9 @@
   --bg-tertiary: #2D2D2F;
   --bg-hover: #343536;
   --bg-active: #3D3D3F;
+  --bg-selected: #1E3A5F;
+  --text-selected: #D7DADC;
+  --text-selected-secondary: #818384;
 
   /* Text - soft off-white (Reddit style) */
   --text-primary: #D7DADC;
@@ -101,6 +108,7 @@
   --bubble-incoming-text: #D7DADC;
   --bubble-unverified: #3D3D3F;
   --bubble-system: #1F1F20;
+  --bubble-pending: #005A9E;
 
   /* Shadows - more subtle in dark mode */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);

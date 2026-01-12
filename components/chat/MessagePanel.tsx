@@ -704,7 +704,7 @@ function PendingMessageBubble({
     pending.status === "failed"
       ? "bg-red-100"
       : isVerified
-      ? "bg-[var(--accent-blue-hover)]"
+      ? "bg-[var(--bubble-pending)]"
       : "bg-[var(--bubble-unverified)]";
 
   // Match the radius logic from sent messages
