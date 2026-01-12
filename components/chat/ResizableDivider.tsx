@@ -49,10 +49,10 @@ export function ResizableDivider({ onResize, onResizeEnd }: ResizableDividerProp
   return (
     <div
       onMouseDown={handleMouseDown}
-      className="hidden md:block w-1 hover:w-1 bg-transparent hover:bg-[#007AFF]/30 cursor-col-resize transition-colors flex-shrink-0 relative group"
+      className="hidden md:block w-px bg-[var(--border-subtle)] hover:bg-[var(--accent-blue)]/30 cursor-col-resize transition-colors flex-shrink-0 relative"
     >
-      {/* Wider hit area */}
-      <div className="absolute inset-y-0 -left-1 -right-1" />
+      {/* Wider hit area for easier grabbing */}
+      <div className="absolute inset-y-0 -left-2 -right-2" />
     </div>
   );
 }

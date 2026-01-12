@@ -36,7 +36,7 @@ export function ReplyPreview({
       }}
     >
       <div
-        className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white"
+        className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-primary)]"
         style={{
           transform: isVisible ? 'translateY(0)' : 'translateY(100%)',
           opacity: isVisible ? 1 : 0,
@@ -44,21 +44,21 @@ export function ReplyPreview({
         }}
       >
         {/* Blue accent bar on the left */}
-        <div className="w-[3px] h-10 bg-[#005CFF] rounded-full mr-3 shrink-0" />
+        <div className="w-[3px] h-10 bg-[var(--accent-blue)] rounded-full mr-3 shrink-0" />
         <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-          <span className="text-[14px] font-semibold text-[#005CFF]">
+          <span className="text-[14px] font-semibold text-[var(--accent-blue)]">
             {displayName || 'You'}
           </span>
-          <p className="text-[14px] text-[#717680] truncate">
+          <p className="text-[14px] text-[var(--text-secondary)] truncate">
             {content}
           </p>
         </div>
         <button
           onClick={onDismiss}
-          className="ml-3 p-1.5 rounded-full hover:bg-gray-100 transition-colors shrink-0 active:scale-95"
+          className="ml-3 p-1.5 rounded-full hover:bg-[var(--bg-hover)] transition-colors shrink-0 active:scale-95"
           aria-label="Cancel reply"
         >
-          <X className="w-5 h-5 text-[#9BA3AE]" />
+          <X className="w-5 h-5 text-[var(--text-tertiary)]" />
         </button>
       </div>
     </div>

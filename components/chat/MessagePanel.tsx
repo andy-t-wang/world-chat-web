@@ -36,7 +36,7 @@ import { MessageContextMenu } from "./MessageContextMenu";
 import { ReplyPreview } from "./ReplyPreview";
 import { ReplyBubble } from "./ReplyBubble";
 import { ReactionDetailsMenu } from "./ReactionDetailsMenu";
-import { chatBackgroundStyle } from "./ChatBackground";
+import { chatBackgroundStyle, chatBackgroundStyleDark } from "./ChatBackground";
 import { replyingToAtom, messageInputDraftAtom } from "@/stores/ui";
 import {
   isTransactionReference,
@@ -88,8 +88,8 @@ function isStatusMessage(text: string): boolean {
 function StatusMessage({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center py-2">
-      <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
-        <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+      <div className="bg-[var(--bg-secondary)] px-3 py-1 rounded-lg max-w-[80%]">
+        <p className="text-[13px] text-[var(--text-secondary)] leading-[1.2] text-center">
           {text}
         </p>
       </div>
@@ -192,8 +192,8 @@ function GroupedMembershipChangeMessage({
     <>
       {uniqueAdded.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
-            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+          <div className="bg-[var(--bg-secondary)] px-3 py-1 rounded-lg max-w-[80%]">
+            <p className="text-[13px] text-[var(--text-secondary)] leading-[1.2] text-center">
               {uniqueAdded.map((inboxId, i) => (
                 <span key={inboxId}>
                   {i > 0 && (i === uniqueAdded.length - 1 ? ' and ' : ', ')}
@@ -207,8 +207,8 @@ function GroupedMembershipChangeMessage({
       )}
       {uniqueRemoved.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
-            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+          <div className="bg-[var(--bg-secondary)] px-3 py-1 rounded-lg max-w-[80%]">
+            <p className="text-[13px] text-[var(--text-secondary)] leading-[1.2] text-center">
               {uniqueRemoved.map((inboxId, i) => (
                 <span key={inboxId}>
                   {i > 0 && (i === uniqueRemoved.length - 1 ? ' and ' : ', ')}
@@ -253,8 +253,8 @@ function MembershipChangeMessage({
     <>
       {addedInboxIds.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
-            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+          <div className="bg-[var(--bg-secondary)] px-3 py-1 rounded-lg max-w-[80%]">
+            <p className="text-[13px] text-[var(--text-secondary)] leading-[1.2] text-center">
               {addedInboxIds.map((inboxId, i) => (
                 <span key={inboxId}>
                   {i > 0 && (i === addedInboxIds.length - 1 ? ' and ' : ', ')}
@@ -268,8 +268,8 @@ function MembershipChangeMessage({
       )}
       {removedInboxIds.length > 0 && (
         <div className="flex items-center justify-center py-2">
-          <div className="bg-[#F9FAFB] px-3 py-1 rounded-lg max-w-[80%]">
-            <p className="text-[13px] text-[#717680] leading-[1.2] text-center">
+          <div className="bg-[var(--bg-secondary)] px-3 py-1 rounded-lg max-w-[80%]">
+            <p className="text-[13px] text-[var(--text-secondary)] leading-[1.2] text-center">
               {removedInboxIds.map((inboxId, i) => (
                 <span key={inboxId}>
                   {i > 0 && (i === removedInboxIds.length - 1 ? ' and ' : ', ')}
@@ -365,7 +365,7 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
             skinTonePosition="search"
           />
         ) : (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-8 flex items-center justify-center">
+          <div className="bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)] p-8 flex items-center justify-center">
             <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
           </div>
         )}
@@ -377,7 +377,7 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
   return (
     <div
       ref={pickerRef}
-      className="fixed z-50 bg-white rounded-full shadow-lg border border-gray-200 px-1.5 py-1 flex items-center"
+      className="fixed z-50 bg-[var(--bg-primary)] rounded-full shadow-lg border border-[var(--border-default)] px-1.5 py-1 flex items-center"
       style={{ left: position.x, top: position.y }}
     >
       {REACTION_EMOJIS.map((emoji) => (
@@ -442,14 +442,14 @@ function MessageWrapper({
         <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <button
             onClick={handleReplyClick}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
             title="Reply"
           >
             <Reply className="w-4 h-4" />
           </button>
           <button
             onClick={handleReactionClick}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
             title="Add reaction"
           >
             <SmilePlus className="w-4 h-4" />
@@ -464,14 +464,14 @@ function MessageWrapper({
         <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
           <button
             onClick={handleReactionClick}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
             title="Add reaction"
           >
             <SmilePlus className="w-4 h-4" />
           </button>
           <button
             onClick={handleReplyClick}
-            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
             title="Reply"
           >
             <Reply className="w-4 h-4" />
@@ -580,14 +580,14 @@ function MessageReactions({
           return (
             <div
               key={emoji}
-              className="inline-flex items-center h-[22px] px-1.5 bg-white border border-[#E5E5EA] rounded-full text-[15px] cursor-pointer hover:bg-[#F5F5F5] transition-colors"
+              className="inline-flex items-center h-[22px] px-1.5 bg-[var(--bg-primary)] border border-[var(--border-default)] rounded-full text-[15px] cursor-pointer hover:bg-[var(--bg-tertiary)] transition-colors"
               onContextMenu={(e) => handleContextMenu(e, emoji, reactors)}
               onClick={(e) => handleClick(e, emoji, reactors)}
               title={hasOwnReaction ? "Click to remove your reaction" : "Click to add this reaction"}
             >
               <span>{emoji}</span>
               {reactors.length > 1 && (
-                <span className="text-[11px] font-medium ml-0.5 text-[#717680]">
+                <span className="text-[11px] font-medium ml-0.5 text-[var(--text-secondary)]">
                   {reactors.length}
                 </span>
               )}
@@ -620,7 +620,7 @@ function SenderName({ address }: { address: string | undefined }) {
     (address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "Unknown");
 
   return (
-    <span className="text-[13px] text-[#86868B] mb-1 ml-1 block">{name}</span>
+    <span className="text-[13px] text-[var(--text-secondary)] mb-1 ml-1 block">{name}</span>
   );
 }
 
@@ -704,8 +704,8 @@ function PendingMessageBubble({
     pending.status === "failed"
       ? "bg-red-100"
       : isVerified
-      ? "bg-[#004ACC]"
-      : "bg-[#717680]";
+      ? "bg-[var(--accent-blue-hover)]"
+      : "bg-[var(--bubble-unverified)]";
 
   // Match the radius logic from sent messages
   const senderRadius = isFirstInGroup
@@ -729,18 +729,18 @@ function PendingMessageBubble({
       </div>
       {/* Always show timestamp row - matches sent message layout exactly */}
       <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-        <span className="text-[11px] text-[#86868B] font-medium">
+        <span className="text-[11px] text-[var(--text-quaternary)] font-medium">
           {timeString}
         </span>
         {pending.status === "sending" && (
-          <Clock className="w-3 h-3 text-[#86868B]" />
+          <Clock className="w-3 h-3 text-[var(--text-quaternary)]" />
         )}
         {pending.status === "failed" && (
           <>
             <AlertCircle className="w-3 h-3 text-red-500" />
             <button
               onClick={() => onRetry(pending.id)}
-              className="text-[11px] text-[#005CFF] hover:underline flex items-center gap-1"
+              className="text-[11px] text-[var(--accent-blue)] hover:underline flex items-center gap-1"
             >
               <RotateCcw className="w-3 h-3" />
               Retry
@@ -834,6 +834,26 @@ export function MessagePanel({
 
   // Group leave state (used by parent via callback)
   const [isLeavingGroup, setIsLeavingGroup] = useState(false);
+
+  // Dark mode detection for chat background
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Initialize with actual value if available (client-side)
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark');
+    }
+    return false;
+  });
+  useEffect(() => {
+    const checkDarkMode = () => {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    };
+    checkDarkMode();
+
+    // Watch for theme changes
+    const observer = new MutationObserver(checkDarkMode);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
 
   const { displayName } = useDisplayName(
     conversationType === "dm" ? peerAddress : null
@@ -1490,11 +1510,11 @@ export function MessagePanel({
   }, [client, conversationType, conversationId, isLeavingGroup]);
 
   return (
-    <div className="flex-1 flex flex-col bg-white relative">
+    <div className="flex-1 flex flex-col bg-[var(--bg-primary)] relative">
       {/* Invisible drag region for Electron - positioned at top, doesn't affect layout */}
       <div className="electron-drag absolute top-0 left-0 right-0 h-8 z-10 md:hidden" />
       {/* Header */}
-      <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-gray-100">
+      <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-2">
           {/* Back button - mobile only */}
           {onBack && (
@@ -1503,13 +1523,13 @@ export function MessagePanel({
               className="electron-no-drag md:hidden w-9 h-9 -ml-2 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors relative z-20"
               aria-label="Back to conversations"
             >
-              <ChevronLeft className="w-6 h-6 text-[#005CFF]" />
+              <ChevronLeft className="w-6 h-6 text-[var(--accent-blue)]" />
             </button>
           )}
           <div
             className={`electron-no-drag relative z-20 flex items-center gap-3 ${
               (conversationType === "group" && onOpenGroupDetails) || (conversationType === "dm" && onOpenPeerProfile)
-                ? "cursor-pointer hover:bg-[#F2F2F7] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
+                ? "cursor-pointer hover:bg-[var(--bg-hover)] -ml-2 pl-2 -my-1 py-1 pr-3 rounded-xl transition-colors"
                 : ""
             }`}
             onClick={() => {
@@ -1538,16 +1558,16 @@ export function MessagePanel({
           )}
           <div className="flex flex-col">
             <div className="flex items-center gap-1.5">
-              <span className="font-semibold text-[#1D1D1F]">{name}</span>
+              <span className="font-semibold text-[var(--text-primary)]">{name}</span>
               {isVerified && conversationType === "dm" && (
                 <VerificationBadge size="sm" />
               )}
             </div>
             {subtitle && (
-              <span className="text-sm text-[#86868B]">{subtitle}</span>
+              <span className="text-sm text-[var(--text-quaternary)]">{subtitle}</span>
             )}
             {!subtitle && groupSubtitle && (
-              <div className="flex items-center gap-1 text-sm text-[#86868B]">
+              <div className="flex items-center gap-1 text-sm text-[var(--text-quaternary)]">
                 {"verified" in groupSubtitle ? (
                   <>
                     <VerificationBadge size="xs" />
@@ -1572,8 +1592,8 @@ export function MessagePanel({
       <div
         ref={parentRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-auto flex flex-col scrollbar-auto-hide relative"
-        style={chatBackgroundStyle}
+        className="flex-1 overflow-auto flex flex-col scrollbar-auto-hide relative bg-[var(--chat-bg)]"
+        style={isDarkMode ? chatBackgroundStyleDark : chatBackgroundStyle}
       >
         {/* Message Request Banner - floating at top */}
         {isMessageRequest && (
@@ -1584,7 +1604,7 @@ export function MessagePanel({
         )}
         {isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
+            <Loader2 className="w-6 h-6 text-[var(--accent-blue)] animate-spin" />
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-full">
@@ -1594,7 +1614,7 @@ export function MessagePanel({
             {/* Load more indicator */}
             {isLoading && hasMore && (
               <div className="flex justify-center py-3">
-                <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
+                <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
               </div>
             )}
 
@@ -1603,17 +1623,17 @@ export function MessagePanel({
               {/* E2EE Banner for empty state (no messages yet) */}
               {displayItems.length === 0 && (
                 <div className="flex items-center justify-center py-8">
-                  <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
+                  <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-center max-w-[286px]">
                     <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                      <Lock className="w-[11px] h-[11px] text-[#181818]" />
-                      <span className="text-[13px] text-[#181818] leading-[1.3]">
+                      <Lock className="w-[11px] h-[11px] text-[var(--text-primary)]" />
+                      <span className="text-[13px] text-[var(--text-primary)] leading-[1.3]">
                         Messages are end-to-end encrypted
                       </span>
                     </div>
-                    <p className="text-[13px] text-[#181818] leading-[1.3]">
+                    <p className="text-[13px] text-[var(--text-primary)] leading-[1.3]">
                       and only visible within this chat.
                     </p>
-                    <p className="text-[13px] text-[#181818] leading-[1.2]">
+                    <p className="text-[13px] text-[var(--text-primary)] leading-[1.2]">
                       Secured by XMTP.
                     </p>
                   </div>
@@ -1645,24 +1665,24 @@ export function MessagePanel({
                     return (
                       <div key={item.id}>
                         <div className="flex items-center justify-center py-4">
-                          <span className="px-3 py-1.5 bg-white border border-[#F3F4F5] rounded-lg text-xs text-[#717680] font-medium">
+                          <span className="px-3 py-1.5 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-secondary)] font-medium">
                             {item.date}
                           </span>
                         </div>
                         {/* E2EE Banner - shown after first date separator */}
                         {isFirstDateSeparator && (
                           <div className="flex items-center justify-center pb-4">
-                            <div className="bg-[#F9FAFB] border border-[#F3F4F5] rounded-xl px-3 py-2 text-center max-w-[286px]">
+                            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-center max-w-[286px]">
                               <div className="flex items-center justify-center gap-0.5 mb-0.5">
-                                <Lock className="w-[11px] h-[11px] text-[#181818]" />
-                                <span className="text-[13px] text-[#181818] leading-[1.3]">
+                                <Lock className="w-[11px] h-[11px] text-[var(--text-primary)]" />
+                                <span className="text-[13px] text-[var(--text-primary)] leading-[1.3]">
                                   Messages are end-to-end encrypted
                                 </span>
                               </div>
-                              <p className="text-[13px] text-[#181818] leading-[1.3]">
+                              <p className="text-[13px] text-[var(--text-primary)] leading-[1.3]">
                                 and only visible within this chat.
                               </p>
-                              <p className="text-[13px] text-[#181818] leading-[1.2]">
+                              <p className="text-[13px] text-[var(--text-primary)] leading-[1.2]">
                                 Secured by XMTP.
                               </p>
                             </div>
@@ -1819,7 +1839,7 @@ export function MessagePanel({
                           />
                           {isLastInGroup && (
                             <span
-                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
                                 isOwnMessage ? "text-right pr-1" : "ml-1"
                               }`}
                             >
@@ -1886,7 +1906,7 @@ export function MessagePanel({
                           />
                           {isLastInGroup && (
                             <span
-                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
                                 isOwnMessage ? "text-right pr-1" : "ml-1"
                               }`}
                             >
@@ -1963,7 +1983,7 @@ export function MessagePanel({
                               }
                             />
                           )}
-                          <div className="bg-[#F3F4F5] border border-[rgba(0,0,0,0.1)] rounded-[16px] px-4 py-3 text-[#717680] text-sm">
+                          <div className="bg-[var(--bg-secondary)] border border-[rgba(0,0,0,0.1)] rounded-[16px] px-4 py-3 text-[var(--text-secondary)] text-sm">
                             <div className="flex items-center gap-2">
                               <AlertCircle className="w-4 h-4" />
                               <span>Image unavailable - reload required</span>
@@ -1971,7 +1991,7 @@ export function MessagePanel({
                           </div>
                           {isLastInGroup && (
                             <span
-                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
                                 isOwnMessage ? "text-right pr-1" : "ml-1"
                               }`}
                             >
@@ -2050,7 +2070,7 @@ export function MessagePanel({
                           />
                           {isLastInGroup && (
                             <span
-                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
                                 isOwnMessage ? "text-right pr-1" : "ml-1"
                               }`}
                             >
@@ -2193,7 +2213,7 @@ export function MessagePanel({
                           {/* Timestamp for reply messages */}
                           {isLastInGroup && (
                             <span
-                              className={`text-[11px] text-[#717680] font-medium mt-1 ${
+                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
                                 isOwnMessage ? "text-right pr-1" : "ml-1"
                               }`}
                             >
@@ -2260,16 +2280,16 @@ export function MessagePanel({
                           {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
                           {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                             <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                              <span className="text-[11px] text-[#86868B] font-medium">
+                              <span className="text-[11px] text-[var(--text-quaternary)] font-medium">
                                 {formatTime(msg.sentAtNs)}
                               </span>
                               {item.id === lastOwnMessageId &&
                                 (isRead ? (
-                                  <span className="text-[11px] text-[#00C230] font-medium">
+                                  <span className="text-[11px] text-[var(--accent-green)] font-medium">
                                     Read
                                   </span>
                                 ) : (
-                                  <span className="text-[11px] text-[#86868B]">
+                                  <span className="text-[11px] text-[var(--text-quaternary)]">
                                     Sent
                                   </span>
                                 ))}
@@ -2294,7 +2314,7 @@ export function MessagePanel({
                         >
                           <div className="max-w-[300px]">
                             <div
-                              className={`${isVerified ? "bg-[#007AFF] shadow-sm shadow-[#007AFF]/20" : "bg-[#717680]"} px-3 py-2 ${senderRadius}`}
+                              className={`${isVerified ? "bg-[var(--bubble-outgoing)] shadow-sm shadow-[var(--accent-blue)]/20" : "bg-[var(--bubble-unverified)]"} px-3 py-2 ${senderRadius}`}
                               onContextMenu={(e) =>
                                 handleMessageContextMenu(e, item.id, text, "")
                               }
@@ -2323,17 +2343,17 @@ export function MessagePanel({
                         {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
                         {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                            <span className="text-[11px] text-[#86868B] font-medium">
+                            <span className="text-[11px] text-[var(--text-quaternary)] font-medium">
                               {formatTime(msg.sentAtNs)}
                             </span>
                             {/* Only show Sent/Read on the very last own message */}
                             {item.id === lastOwnMessageId &&
                               (isRead ? (
-                                <span className="text-[11px] text-[#00C230] font-medium">
+                                <span className="text-[11px] text-[var(--accent-green)] font-medium">
                                   Read
                                 </span>
                               ) : (
-                                <span className="text-[11px] text-[#86868B]">
+                                <span className="text-[11px] text-[var(--text-quaternary)]">
                                   Sent
                                 </span>
                               ))}
@@ -2423,7 +2443,7 @@ export function MessagePanel({
                             </div>
                           </MessageWrapper>
                           {isLastInGroup && (
-                            <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
+                            <span className="text-[11px] text-[var(--text-secondary)] font-medium mt-1 ml-1">
                               {formatTime(msg.sentAtNs)}
                             </span>
                           )}
@@ -2467,7 +2487,7 @@ export function MessagePanel({
                         >
                           <div className="max-w-[300px]">
                             <div
-                              className={`bg-white px-3 py-2 ${recipientRadius}`}
+                              className={`bg-[var(--bubble-incoming)] px-3 py-2 ${recipientRadius}`}
                               onContextMenu={(e) =>
                                 handleMessageContextMenu(
                                   e,
@@ -2499,7 +2519,7 @@ export function MessagePanel({
                           </div>
                         )}
                         {isLastInGroup && (
-                          <span className="text-[11px] text-[#717680] font-medium mt-1 ml-1">
+                          <span className="text-[11px] text-[var(--text-secondary)] font-medium mt-1 ml-1">
                             {formatTime(msg.sentAtNs)}
                           </span>
                         )}
@@ -2524,22 +2544,22 @@ export function MessagePanel({
 
       {/* Input Area */}
       {isMessageRequest ? (
-        <div className="shrink-0 px-4 py-3 border-t border-[#E5E5EA] bg-[#FAFAFA]">
+        <div className="shrink-0 px-4 py-3 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
           <div className="flex items-center justify-center gap-2 py-1">
-            <Lock className="w-4 h-4 text-[#86868B]" />
-            <span className="text-[14px] text-[#86868B]">Accept the request above to send a message</span>
+            <Lock className="w-4 h-4 text-[var(--text-quaternary)]" />
+            <span className="text-[14px] text-[var(--text-quaternary)]">Accept the request above to send a message</span>
           </div>
         </div>
       ) : (
-        <div className="shrink-0 px-4 py-2 border-t border-[#E5E5EA] bg-white">
+        <div className="shrink-0 px-4 py-2 border-t border-[var(--border-default)] bg-[var(--bg-primary)]">
           <div className="flex items-center gap-2">
             <button
               onClick={() =>
                 alert("Coming soon! Ping Takis to work on this 📎")
               }
-              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[#F2F2F7] transition-colors shrink-0 self-stretch"
+              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[var(--bg-hover)] transition-colors shrink-0 self-stretch"
             >
-              <Paperclip className="w-5 h-5 text-[#86868B]" />
+              <Paperclip className="w-5 h-5 text-[var(--text-quaternary)]" />
             </button>
             <textarea
               ref={textareaRef}
@@ -2553,13 +2573,13 @@ export function MessagePanel({
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               rows={1}
-              className="flex-1 min-w-0 px-4 py-2.5 bg-[#F2F2F7] border border-[#E5E5EA] rounded-2xl text-[#1D1D1F] placeholder-[#86868B] outline-none resize-none leading-[1.4] transition-all scrollbar-hide"
+              className="flex-1 min-w-0 px-4 py-2.5 bg-[var(--bg-hover)] border border-[var(--border-default)] rounded-2xl text-[var(--text-primary)] placeholder-[var(--text-quaternary)] outline-none resize-none leading-[1.4] transition-all scrollbar-hide"
               style={{ minHeight: '44px', maxHeight: '128px' }}
             />
             <button
               onClick={handleSend}
               disabled={!message.trim() || isSending}
-              className="w-11 h-11 flex items-center justify-center rounded-xl bg-[#007AFF] hover:bg-[#0066CC] disabled:bg-[#E5E5EA] disabled:cursor-not-allowed transition-colors shrink-0 self-stretch active:scale-95"
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-[var(--bubble-outgoing)] hover:bg-[var(--accent-blue-hover)] disabled:bg-[var(--border-default)] disabled:cursor-not-allowed transition-colors shrink-0 self-stretch active:scale-95"
             >
               {isSending ? (
                 <Loader2 className="w-5 h-5 text-white animate-spin" />

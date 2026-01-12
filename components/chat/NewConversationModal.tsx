@@ -188,31 +188,31 @@ export function NewConversationModal({
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="relative bg-[var(--bg-primary)] rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-[#181818]">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             New Conversation
           </h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
           >
-            <X className="w-5 h-5 text-[#717680]" />
+            <X className="w-5 h-5 text-[var(--text-secondary)]" />
           </button>
         </div>
 
         {/* Search Input */}
         <div className="p-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#9BA3AE]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-tertiary)]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Search username or enter address (0x...)"
-              className="w-full pl-10 pr-4 py-3 bg-[#F5F5F5] rounded-xl text-[#181818] placeholder-[#9BA3AE] outline-none focus:ring-2 focus:ring-[#005CFF]/20"
+              className="w-full pl-10 pr-4 py-3 bg-[var(--bg-tertiary)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-tertiary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20"
               autoFocus
               autoComplete="off"
               autoCorrect="off"
@@ -220,7 +220,7 @@ export function NewConversationModal({
               spellCheck={false}
             />
             {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#005CFF] animate-spin" />
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--accent-blue)] animate-spin" />
             )}
           </div>
         </div>
@@ -251,11 +251,11 @@ export function NewConversationModal({
                       canReceive && handleCreateConversation(result.address)
                     }
                     disabled={!canReceive || isCreating}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 disabled:hover:bg-white disabled:cursor-not-allowed transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] disabled:hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed transition-colors"
                   >
                     <Avatar address={result.address} size="sm" />
                     <div className="flex-1 text-left min-w-0">
-                      <p className="font-medium text-[#181818] truncate">
+                      <p className="font-medium text-[var(--text-primary)] truncate">
                         {result.username ||
                           `${result.address.slice(
                             0,
@@ -263,7 +263,7 @@ export function NewConversationModal({
                           )}...${result.address.slice(-4)}`}
                       </p>
                       {result.username && (
-                        <p className="text-sm text-[#717680] truncate font-mono">
+                        <p className="text-sm text-[var(--text-secondary)] truncate font-mono">
                           {result.address.slice(0, 6)}...
                           {result.address.slice(-4)}
                         </p>
@@ -271,13 +271,13 @@ export function NewConversationModal({
                     </div>
                     <div className="shrink-0">
                       {isSelected && isCreating ? (
-                        <Loader2 className="w-5 h-5 text-[#005CFF] animate-spin" />
+                        <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
                       ) : isChecking ? (
-                        <Loader2 className="w-5 h-5 text-[#9BA3AE] animate-spin" />
+                        <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
                       ) : canReceive ? (
                         <CheckCircle className="w-5 h-5 text-green-500" />
                       ) : messageStatus === false ? (
-                        <span className="text-xs text-[#9BA3AE]">
+                        <span className="text-xs text-[var(--text-tertiary)]">
                           Cannot message
                         </span>
                       ) : null}
@@ -288,9 +288,9 @@ export function NewConversationModal({
             </div>
           ) : searchQuery && !isSearching ? (
             <div className="p-8 text-center">
-              <UserPlus className="w-10 h-10 text-[#9BA3AE] mx-auto mb-3" />
-              <p className="text-[#717680]">No users found</p>
-              <p className="text-sm text-[#9BA3AE] mt-1">
+              <UserPlus className="w-10 h-10 text-[var(--text-tertiary)] mx-auto mb-3" />
+              <p className="text-[var(--text-secondary)]">No users found</p>
+              <p className="text-sm text-[var(--text-tertiary)] mt-1">
                 Try a different username or enter an address
               </p>
             </div>
@@ -298,8 +298,8 @@ export function NewConversationModal({
         </div>
 
         {/* Footer hint */}
-        <div className="p-4 border-t border-gray-100 bg-gray-50">
-          <p className="text-xs text-[#9BA3AE] text-center">
+        <div className="p-4 border-t border-[var(--border-subtle)] bg-[var(--bg-secondary)]">
+          <p className="text-xs text-[var(--text-tertiary)] text-center">
             Only DM creation is supported for now.
           </p>
         </div>

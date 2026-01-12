@@ -13,7 +13,7 @@ function ReactorName({ inboxId, address, isYou }: ReactorNameProps) {
   const { displayName } = useUsername(address);
 
   if (isYou) {
-    return <span className="text-[#005CFF]">You</span>;
+    return <span className="text-[var(--accent-blue)]">You</span>;
   }
 
   if (displayName) {
@@ -73,13 +73,13 @@ export function ReactionDetailsMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-white rounded-xl shadow-lg border border-gray-100 py-2 min-w-[160px] max-w-[240px]"
+      className="fixed z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-2 min-w-[160px] max-w-[240px]"
       style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
     >
       {/* Header with emoji */}
-      <div className="px-3 pb-2 mb-1 border-b border-gray-100">
+      <div className="px-3 pb-2 mb-1 border-b border-[var(--border-subtle)]">
         <span className="text-xl">{emoji}</span>
-        <span className="text-[13px] text-[#717680] ml-2">
+        <span className="text-[13px] text-[var(--text-secondary)] ml-2">
           {reactors.length} {reactors.length === 1 ? 'reaction' : 'reactions'}
         </span>
       </div>
@@ -89,7 +89,7 @@ export function ReactionDetailsMenu({
         {reactors.map((reactor, index) => (
           <div
             key={`${reactor.inboxId}-${index}`}
-            className="px-3 py-1.5 text-[14px] text-[#181818]"
+            className="px-3 py-1.5 text-[14px] text-[var(--text-primary)]"
           >
             <ReactorName inboxId={reactor.inboxId} address={reactor.address} isYou={reactor.isYou} />
           </div>

@@ -1,28 +1,141 @@
 @import "tailwindcss";
 
+/* Light mode (default) */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Backgrounds */
+  --bg-primary: #ffffff;
+  --bg-secondary: #F9FAFB;
+  --bg-tertiary: #F5F5F5;
+  --bg-hover: #F2F2F7;
+  --bg-active: #E8E8ED;
+
+  /* Text */
+  --text-primary: #181818;
+  --text-secondary: #717680;
+  --text-tertiary: #9BA3AE;
+  --text-quaternary: #86868B;
+  --text-inverse: #ffffff;
+
+  /* Borders */
+  --border-default: #E5E5EA;
+  --border-subtle: #F3F4F5;
+  --border-input: #D1D5DB;
+
+  /* Accents */
+  --accent-blue: #007AFF;
+  --accent-blue-hover: #0066D6;
+  --accent-blue-light: #E8F4FF;
+  --accent-green: #00C230;
+  --accent-green-light: #E8F9EC;
+  --accent-red: #FF3B30;
+  --accent-red-light: #FFE5E5;
+  --accent-orange: #FF9500;
+
+  /* Message Bubbles */
+  --bubble-outgoing: #007AFF;
+  --bubble-outgoing-text: #ffffff;
+  --bubble-incoming: #ffffff;
+  --bubble-incoming-text: #181818;
+  --bubble-unverified: #717680;
+  --bubble-system: #F5F5F5;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.15);
+
+  /* Overlays */
+  --overlay-backdrop: rgba(0, 0, 0, 0.5);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0, 0, 0, 0.2);
+  --scrollbar-track: transparent;
+
+  /* Toggle */
+  --toggle-bg-off: #D6D9DD;
+  --toggle-bg-on: #00C230;
+
+  /* Avatar fallback colors */
+  --avatar-bg: #E8E8ED;
+
+  /* Chat background pattern */
+  --chat-bg: #E8E5DE;
+  --chat-pattern-opacity: 0.03;
 }
 
+/* Dark mode - Reddit/WhatsApp inspired colors */
+.dark {
+  /* Backgrounds - neutral dark grays */
+  --bg-primary: #1A1A1B;
+  --bg-secondary: #272729;
+  --bg-tertiary: #2D2D2F;
+  --bg-hover: #343536;
+  --bg-active: #3D3D3F;
+
+  /* Text - soft off-white (Reddit style) */
+  --text-primary: #D7DADC;
+  --text-secondary: #818384;
+  --text-tertiary: #6B6C6D;
+  --text-quaternary: #818384;
+  --text-inverse: #1A1A1B;
+
+  /* Borders */
+  --border-default: #343536;
+  --border-subtle: #272729;
+  --border-input: #3D3D3F;
+
+  /* Accents - blue for dark mode */
+  --accent-blue: #4FBCFF;
+  --accent-blue-hover: #6CC8FF;
+  --accent-blue-light: #1A3A4A;
+  --accent-green: #46D160;
+  --accent-green-light: #1A3A2A;
+  --accent-red: #FF585B;
+  --accent-red-light: #3A1C1C;
+  --accent-orange: #FF9F0A;
+
+  /* Message Bubbles */
+  --bubble-outgoing: #0079D3;
+  --bubble-outgoing-text: #FFFFFF;
+  --bubble-incoming: #272729;
+  --bubble-incoming-text: #D7DADC;
+  --bubble-unverified: #3D3D3F;
+  --bubble-system: #1F1F20;
+
+  /* Shadows - more subtle in dark mode */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5);
+
+  /* Overlays */
+  --overlay-backdrop: rgba(0, 0, 0, 0.7);
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --scrollbar-track: transparent;
+
+  /* Toggle */
+  --toggle-bg-off: #3D3D3F;
+  --toggle-bg-on: #46D160;
+
+  /* Avatar fallback colors */
+  --avatar-bg: #343536;
+
+  /* Chat background pattern */
+  --chat-bg: #141415;
+  --chat-pattern-opacity: 0.05;
+}
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--bg-primary);
+  color: var(--text-primary);
   font-family: Arial, Helvetica, sans-serif;
 }
 
@@ -36,7 +149,7 @@ body {
 .scrollbar-auto-hide:hover,
 .scrollbar-auto-hide:focus,
 .scrollbar-auto-hide:active {
-  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* Webkit browsers (Chrome, Safari, Edge) */
@@ -57,16 +170,16 @@ body {
 .scrollbar-auto-hide:hover::-webkit-scrollbar-thumb,
 .scrollbar-auto-hide:focus::-webkit-scrollbar-thumb,
 .scrollbar-auto-hide:active::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--scrollbar-thumb);
 }
 
 /* For elements that need scrollbar visible while scrolling */
 .scrollbar-auto-hide.is-scrolling::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--scrollbar-thumb);
 }
 
 .scrollbar-auto-hide.is-scrolling {
-  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* Completely hide scrollbar while maintaining scroll functionality */

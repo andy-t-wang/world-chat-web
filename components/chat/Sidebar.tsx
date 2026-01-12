@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw, Sun, Moon, Monitor } from 'lucide-react';
 import { clearSession } from '@/lib/auth/session';
 import { clearSessionCache } from '@/lib/storage';
 import { streamManager } from '@/lib/xmtp/StreamManager';
@@ -10,7 +10,7 @@ import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
 import { NotificationBanner } from './NotificationBanner';
 import { UpdateBanner } from './UpdateBanner';
-import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom } from '@/stores/settings';
+import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom, themePreferenceAtom, type ThemePreference } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
 
@@ -20,6 +20,7 @@ function GlobalSettingsDropdown() {
   const [linkPreviewEnabled, setLinkPreviewEnabled] = useAtom(linkPreviewEnabledAtom);
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
   const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
+  const [themePreference, setThemePreference] = useAtom(themePreferenceAtom);
   const [version, setVersion] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
@@ -92,39 +93,81 @@ function GlobalSettingsDropdown() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+        className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
         title="Settings"
       >
-        <Settings className="w-5 h-5 text-[#181818]" />
+        <Settings className="w-5 h-5 text-[var(--text-primary)]" />
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 bottom-full mb-1 w-64 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-50">
-          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider">
+        <div className="absolute right-0 bottom-full mb-1 w-64 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)] py-2 z-50">
+          {/* Appearance */}
+          <div className="px-3 py-1.5 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+            Appearance
+          </div>
+          <div className="px-3 py-2">
+            <div className="flex items-center gap-1 p-1 bg-[var(--bg-tertiary)] rounded-lg">
+              <button
+                onClick={() => setThemePreference('light')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[13px] font-medium transition-all ${
+                  themePreference === 'light'
+                    ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Sun className="w-3.5 h-3.5" />
+                Light
+              </button>
+              <button
+                onClick={() => setThemePreference('system')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[13px] font-medium transition-all ${
+                  themePreference === 'system'
+                    ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                System
+              </button>
+              <button
+                onClick={() => setThemePreference('dark')}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-md text-[13px] font-medium transition-all ${
+                  themePreference === 'dark'
+                    ? 'bg-[var(--bg-primary)] text-[var(--text-primary)] shadow-sm'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                <Moon className="w-3.5 h-3.5" />
+                Dark
+              </button>
+            </div>
+          </div>
+
+          <div className="px-3 py-1.5 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider border-t border-[var(--border-subtle)] mt-1 pt-2">
             Privacy
           </div>
           <button
             onClick={() => setLinkPreviewEnabled(!linkPreviewEnabled)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {linkPreviewEnabled ? (
-              <Link2 className="w-5 h-5 text-[#00C230]" />
+              <Link2 className="w-5 h-5 text-[var(--accent-green)]" />
             ) : (
-              <Link2Off className="w-5 h-5 text-[#9BA3AE]" />
+              <Link2Off className="w-5 h-5 text-[var(--text-tertiary)]" />
             )}
             <div className="flex-1 text-left">
-              <p className="text-[14px] text-[#181818]">Link Previews</p>
-              <p className="text-[12px] text-[#717680]">
+              <p className="text-[14px] text-[var(--text-primary)]">Link Previews</p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
                 {linkPreviewEnabled ? 'URLs will be fetched for previews' : 'URLs won\'t be fetched'}
               </p>
             </div>
             <div
               className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
-                linkPreviewEnabled ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+                linkPreviewEnabled ? 'bg-[var(--toggle-bg-on)]' : 'bg-[var(--toggle-bg-off)]'
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                className={`w-5 h-5 rounded-full bg-[var(--bg-primary)] shadow transition-transform ${
                   linkPreviewEnabled ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
@@ -132,56 +175,56 @@ function GlobalSettingsDropdown() {
           </button>
           <button
             onClick={() => setSoundMuted(!soundMuted)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {soundMuted ? (
-              <VolumeX className="w-5 h-5 text-[#9BA3AE]" />
+              <VolumeX className="w-5 h-5 text-[var(--text-tertiary)]" />
             ) : (
-              <Volume2 className="w-5 h-5 text-[#00C230]" />
+              <Volume2 className="w-5 h-5 text-[var(--accent-green)]" />
             )}
             <div className="flex-1 text-left">
-              <p className="text-[14px] text-[#181818]">Notification Sounds</p>
-              <p className="text-[12px] text-[#717680]">
+              <p className="text-[14px] text-[var(--text-primary)]">Notification Sounds</p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
                 {soundMuted ? 'Sounds are muted' : 'Play sound on new messages'}
               </p>
             </div>
             <div
               className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
-                !soundMuted ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+                !soundMuted ? 'bg-[var(--toggle-bg-on)]' : 'bg-[var(--toggle-bg-off)]'
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                className={`w-5 h-5 rounded-full bg-[var(--bg-primary)] shadow transition-transform ${
                   !soundMuted ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </div>
           </button>
-          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider border-t border-gray-100 mt-1 pt-2">
+          <div className="px-3 py-1.5 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider border-t border-[var(--border-subtle)] mt-1 pt-2">
             Display
           </div>
           <button
             onClick={() => setHideEmptyConversations(!hideEmptyConversations)}
-            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors"
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {hideEmptyConversations ? (
-              <MessageSquareOff className="w-5 h-5 text-[#00C230]" />
+              <MessageSquareOff className="w-5 h-5 text-[var(--accent-green)]" />
             ) : (
-              <MessageSquare className="w-5 h-5 text-[#9BA3AE]" />
+              <MessageSquare className="w-5 h-5 text-[var(--text-tertiary)]" />
             )}
             <div className="flex-1 text-left">
-              <p className="text-[14px] text-[#181818]">Hide Empty Chats</p>
-              <p className="text-[12px] text-[#717680]">
+              <p className="text-[14px] text-[var(--text-primary)]">Hide Empty Chats</p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
                 {hideEmptyConversations ? 'Chats with no messages hidden' : 'Showing all chats'}
               </p>
             </div>
             <div
               className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
-                hideEmptyConversations ? 'bg-[#00C230]' : 'bg-[#D6D9DD]'
+                hideEmptyConversations ? 'bg-[var(--toggle-bg-on)]' : 'bg-[var(--toggle-bg-off)]'
               }`}
             >
               <div
-                className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${
+                className={`w-5 h-5 rounded-full bg-[var(--bg-primary)] shadow transition-transform ${
                   hideEmptyConversations ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
@@ -189,20 +232,20 @@ function GlobalSettingsDropdown() {
           </button>
 
           {/* Updates */}
-          <div className="px-3 py-1.5 text-xs font-medium text-[#9BA3AE] uppercase tracking-wider border-t border-gray-100 mt-1 pt-2">
+          <div className="px-3 py-1.5 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider border-t border-[var(--border-subtle)] mt-1 pt-2">
             Updates
           </div>
           <button
             onClick={handleCheckForUpdates}
             disabled={isCheckingUpdates}
-            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 transition-colors disabled:opacity-50"
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
           >
-            <RefreshCw className={`w-5 h-5 text-[#007AFF] ${isCheckingUpdates ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-5 h-5 text-[var(--accent-blue)] ${isCheckingUpdates ? 'animate-spin' : ''}`} />
             <div className="flex-1 text-left">
-              <p className="text-[14px] text-[#181818]">
+              <p className="text-[14px] text-[var(--text-primary)]">
                 {isCheckingUpdates ? 'Checking...' : 'Check for Updates'}
               </p>
-              <p className="text-[12px] text-[#717680]">
+              <p className="text-[12px] text-[var(--text-secondary)]">
                 {isElectron ? 'Download and install updates' : 'Refresh to get latest version'}
               </p>
             </div>
@@ -210,15 +253,15 @@ function GlobalSettingsDropdown() {
 
           {/* Version */}
           {version && (
-            <div className="px-3 py-2 border-t border-gray-100 mt-1">
-              <p className="text-[11px] text-[#9BA3AE] text-center">
+            <div className="px-3 py-2 border-t border-[var(--border-subtle)] mt-1">
+              <p className="text-[11px] text-[var(--text-tertiary)] text-center">
                 World Chat v{version}
               </p>
             </div>
           )}
 
           {/* Logout */}
-          <div className="border-t border-gray-100 mt-1 pt-1">
+          <div className="border-t border-[var(--border-subtle)] mt-1 pt-1">
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
@@ -275,7 +318,7 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
   if (showRequests) {
     return (
       <aside
-        className={`h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}
+        className={`h-full bg-[var(--bg-primary)] border-r border-[var(--border-default)] flex flex-col shrink-0 ${className || ''}`}
         style={{ width: width || 320 }}
       >
         {/* Electron drag region */}
@@ -287,27 +330,27 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
 
   return (
     <aside
-      className={`h-full bg-white border-r border-gray-200 flex flex-col shrink-0 ${className || ''}`}
+      className={`h-full bg-[var(--bg-primary)] border-r border-[var(--border-default)] flex flex-col shrink-0 ${className || ''}`}
       style={{ width: width || 320 }}
     >
       {/* Electron drag region */}
       <div className="electron-drag h-8 shrink-0" />
       {/* Header */}
-      <header className="shrink-0 px-4 pb-3 border-b border-gray-100">
+      <header className="shrink-0 px-4 pb-3 border-b border-[var(--border-subtle)]">
         <div className="flex items-center justify-between mb-3">
-          <h1 className="text-xl font-semibold text-[#181818]">Chats</h1>
+          <h1 className="text-xl font-semibold text-[var(--text-primary)]">Chats</h1>
           <button
             onClick={onNewChat}
-            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+            className="w-9 h-9 flex items-center justify-center rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
             aria-label="New chat"
           >
-            <SquarePen className="w-5 h-5 text-[#181818]" />
+            <SquarePen className="w-5 h-5 text-[var(--text-primary)]" />
           </button>
         </div>
 
         {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
           <input
             type="text"
             placeholder="Search"
@@ -315,16 +358,16 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="
               w-full h-10 pl-9 pr-9
-              bg-[#F5F5F5] rounded-lg
-              text-sm text-[#181818] placeholder-[#9BA3AE]
-              outline-none focus:ring-2 focus:ring-[#005CFF]/20
+              bg-[var(--bg-tertiary)] rounded-lg
+              text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]
+              outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20
               transition-shadow
             "
           />
           {searchQuery && (
             <button
               onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE] hover:text-[#717680]"
+              className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
             >
               <X className="w-4 h-4" />
             </button>
@@ -349,7 +392,7 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
         <UpdateBanner />
 
         {/* Pinned Settings Footer */}
-        <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-white via-white to-transparent pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)] to-transparent pointer-events-none" />
         <div className="absolute bottom-0 left-0 right-0 px-4 py-3 pointer-events-auto flex justify-end">
           <GlobalSettingsDropdown />
         </div>

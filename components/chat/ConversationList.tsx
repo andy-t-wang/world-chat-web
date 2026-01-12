@@ -163,8 +163,8 @@ export function ConversationList({
   if (isLoading && conversationIds.length === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center">
-        <Loader2 className="w-6 h-6 text-[#005CFF] animate-spin" />
-        <p className="text-sm text-[#717680] mt-2">Loading conversations...</p>
+        <Loader2 className="w-6 h-6 text-[var(--accent-blue)] animate-spin" />
+        <p className="text-sm text-[var(--text-secondary)] mt-2">Loading conversations...</p>
       </div>
     );
   }
@@ -173,8 +173,8 @@ export function ConversationList({
   if (!isLoading && conversationIds.length === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center px-6 text-center">
-        <p className="text-[#717680]">No conversations yet</p>
-        <p className="text-sm text-[#9BA3AE] mt-1">Start a new conversation to begin chatting</p>
+        <p className="text-[var(--text-secondary)]">No conversations yet</p>
+        <p className="text-sm text-[var(--text-tertiary)] mt-1">Start a new conversation to begin chatting</p>
       </div>
     );
   }
@@ -183,9 +183,9 @@ export function ConversationList({
   if (searchQuery && filteredIds.length === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center px-6 text-center">
-        <SearchX className="w-10 h-10 text-[#9BA3AE] mb-3" />
-        <p className="text-[#717680]">No results found</p>
-        <p className="text-sm text-[#9BA3AE] mt-1">Try a different search term</p>
+        <SearchX className="w-10 h-10 text-[var(--text-tertiary)] mb-3" />
+        <p className="text-[var(--text-secondary)]">No results found</p>
+        <p className="text-sm text-[var(--text-tertiary)] mt-1">Try a different search term</p>
       </div>
     );
   }
@@ -194,7 +194,7 @@ export function ConversationList({
     <div className="flex flex-col h-full">
       {/* Chat Requests Banner */}
       {requestCount > 0 && (
-        <div className="shrink-0 border-b border-gray-100">
+        <div className="shrink-0 border-b border-[var(--border-subtle)]">
           <ChatRequestsBanner count={requestCount} newCount={newRequestCount} onClick={onRequestsClick} />
         </div>
       )}
@@ -229,10 +229,10 @@ export function ConversationList({
                   }}
                   className="flex items-center px-4"
                 >
-                  <div className="w-10 h-10 rounded-full bg-gray-100 animate-pulse" />
+                  <div className="w-10 h-10 rounded-full bg-[var(--bg-hover)] animate-pulse" />
                   <div className="ml-3 flex-1">
-                    <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
-                    <div className="h-3 w-32 bg-gray-100 rounded animate-pulse mt-1" />
+                    <div className="h-4 w-24 bg-[var(--bg-hover)] rounded animate-pulse" />
+                    <div className="h-3 w-32 bg-[var(--bg-hover)] rounded animate-pulse mt-1" />
                   </div>
                 </div>
               );

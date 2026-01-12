@@ -194,36 +194,36 @@ export function AddMemberModal({
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
+      <div className="relative bg-[var(--bg-primary)] rounded-2xl shadow-xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[#E5E5EA]">
-          <h2 className="text-[17px] font-semibold text-[#1D1D1F]">Add Member</h2>
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
+          <h2 className="text-[17px] font-semibold text-[var(--text-primary)]">Add Member</h2>
           <button
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] transition-colors"
           >
-            <X className="w-5 h-5 text-[#86868B]" />
+            <X className="w-5 h-5 text-[var(--text-quaternary)]" />
           </button>
         </div>
 
         {/* Search Input */}
         <div className="p-4">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#86868B]" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--text-quaternary)]" />
             <input
               ref={inputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search username or enter address"
-              className="w-full pl-10 pr-4 py-3 bg-[#F2F2F7] rounded-xl text-[#1D1D1F] placeholder-[#86868B] outline-none focus:ring-2 focus:ring-[#007AFF]/20"
+              className="w-full pl-10 pr-4 py-3 bg-[var(--bg-tertiary)] rounded-xl text-[var(--text-primary)] placeholder-[var(--text-quaternary)] outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20"
               autoComplete="off"
               autoCorrect="off"
               autoCapitalize="off"
               spellCheck={false}
             />
             {isSearching && (
-              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#007AFF] animate-spin" />
+              <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[var(--accent-blue)] animate-spin" />
             )}
           </div>
         </div>
@@ -253,30 +253,30 @@ export function AddMemberModal({
                     key={result.address}
                     onClick={() => canReceive && !isExisting && handleAddMember(result.address, result.username || null)}
                     disabled={!canReceive || isAdding || isExisting}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] disabled:hover:bg-white disabled:cursor-not-allowed transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] disabled:hover:bg-[var(--bg-primary)] disabled:cursor-not-allowed transition-colors"
                   >
                     <Avatar address={result.address} size="md" />
                     <div className="flex-1 text-left min-w-0">
-                      <p className="font-medium text-[15px] text-[#1D1D1F] truncate">
+                      <p className="font-medium text-[15px] text-[var(--text-primary)] truncate">
                         {result.username || `${result.address.slice(0, 6)}...${result.address.slice(-4)}`}
                       </p>
                       {result.username && (
-                        <p className="text-[13px] text-[#86868B] truncate font-mono">
+                        <p className="text-[13px] text-[var(--text-quaternary)] truncate font-mono">
                           {result.address.slice(0, 6)}...{result.address.slice(-4)}
                         </p>
                       )}
                     </div>
                     <div className="shrink-0">
                       {isExisting ? (
-                        <span className="text-[13px] text-[#86868B]">Already member</span>
+                        <span className="text-[13px] text-[var(--text-quaternary)]">Already member</span>
                       ) : isSelected && isAdding ? (
-                        <Loader2 className="w-5 h-5 text-[#007AFF] animate-spin" />
+                        <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
                       ) : isChecking ? (
-                        <Loader2 className="w-5 h-5 text-[#86868B] animate-spin" />
+                        <Loader2 className="w-5 h-5 text-[var(--text-quaternary)] animate-spin" />
                       ) : canReceive ? (
-                        <CheckCircle className="w-5 h-5 text-[#34C759]" />
+                        <CheckCircle className="w-5 h-5 text-[var(--accent-green)]" />
                       ) : messageStatus === false ? (
-                        <span className="text-[13px] text-[#86868B]">Not on XMTP</span>
+                        <span className="text-[13px] text-[var(--text-quaternary)]">Not on XMTP</span>
                       ) : null}
                     </div>
                   </button>
@@ -285,9 +285,9 @@ export function AddMemberModal({
             </div>
           ) : searchQuery && !isSearching ? (
             <div className="p-8 text-center">
-              <UserPlus className="w-10 h-10 text-[#86868B] mx-auto mb-3" />
-              <p className="text-[#1D1D1F] font-medium">No users found</p>
-              <p className="text-[13px] text-[#86868B] mt-1">
+              <UserPlus className="w-10 h-10 text-[var(--text-quaternary)] mx-auto mb-3" />
+              <p className="text-[var(--text-primary)] font-medium">No users found</p>
+              <p className="text-[13px] text-[var(--text-quaternary)] mt-1">
                 Try a different username or enter an address
               </p>
             </div>

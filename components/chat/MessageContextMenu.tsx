@@ -49,7 +49,7 @@ export function MessageContextMenu({
   return (
     <div
       ref={menuRef}
-      className="fixed z-50 bg-white rounded-xl shadow-lg border border-gray-100 py-1 min-w-[140px]"
+      className="fixed z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-1 min-w-[140px]"
       style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
     >
       <button
@@ -57,9 +57,9 @@ export function MessageContextMenu({
           onReply();
           onClose();
         }}
-        className="w-full px-4 py-2.5 text-left text-[15px] text-[#181818] hover:bg-gray-50 transition-colors flex items-center gap-3"
+        className="w-full px-4 py-2.5 text-left text-[15px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-3"
       >
-        <Reply className="w-4 h-4 text-[#717680]" />
+        <Reply className="w-4 h-4 text-[var(--text-secondary)]" />
         Reply
       </button>
       <button
@@ -67,9 +67,9 @@ export function MessageContextMenu({
           onCopy();
           onClose();
         }}
-        className="w-full px-4 py-2.5 text-left text-[15px] text-[#181818] hover:bg-gray-50 transition-colors flex items-center gap-3"
+        className="w-full px-4 py-2.5 text-left text-[15px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-3"
       >
-        <Copy className="w-4 h-4 text-[#717680]" />
+        <Copy className="w-4 h-4 text-[var(--text-secondary)]" />
         Copy
       </button>
     </div>

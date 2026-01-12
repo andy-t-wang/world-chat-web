@@ -27,7 +27,7 @@ function PulseLoader() {
       {[0, 1, 2].map((i) => (
         <div
           key={i}
-          className="w-2 h-2 rounded-full bg-[#86868B]"
+          className="w-2 h-2 rounded-full bg-[var(--text-quaternary)]"
           style={{
             animation: "pulse-fade 1.4s ease-in-out infinite",
             animationDelay: `${i * 0.16}s`,
@@ -202,7 +202,7 @@ export default function Home() {
   // Show minimal loading while checking session
   if (!isReady) {
     return (
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center p-6">
         <PulseLoader />
       </div>
     );
@@ -263,21 +263,21 @@ export default function Home() {
         }
       `}</style>
 
-      <div className="min-h-screen bg-white flex flex-col items-center justify-center p-6">
+      <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center p-6">
         <div className="w-full max-w-sm flex flex-col items-center">
           {/* Title */}
-          <h1 className="text-[32px] font-semibold text-[#1D1D1F] tracking-[-0.02em] mb-2 animate-fade-in">
+          <h1 className="text-[32px] font-semibold text-[var(--text-primary)] tracking-[-0.02em] mb-2 animate-fade-in">
             World Chat
           </h1>
 
           {/* Subtitle */}
-          <p className="text-[15px] text-[#86868B] mb-10 animate-fade-in stagger-1">
+          <p className="text-[15px] text-[var(--text-quaternary)] mb-10 animate-fade-in stagger-1">
             Scan to sign in
           </p>
 
           {/* QR Code Card */}
           <div className="relative mb-8 animate-fade-in stagger-2">
-            <div className="relative w-[280px] h-[280px] rounded-2xl flex items-center justify-center bg-[#F5F5F7]">
+            <div className="relative w-[280px] h-[280px] rounded-2xl flex items-center justify-center bg-[var(--bg-tertiary)]">
               {showQR ? (
                 <div className="relative animate-scale-in p-5 bg-white rounded-xl">
                   <QRCodeSVG
@@ -323,7 +323,7 @@ export default function Home() {
                   ? "text-[#FF3B30]"
                   : state === "success"
                   ? "text-[#34C759]"
-                  : "text-[#1D1D1F]"
+                  : "text-[var(--text-primary)]"
               }`}
             >
               {getStatusText()}
@@ -332,7 +332,7 @@ export default function Home() {
 
           {/* Address */}
           {connectedAddress && state !== "error" && (
-            <p className="text-[13px] text-[#86868B] font-mono mb-4 animate-fade-in">
+            <p className="text-[13px] text-[var(--text-quaternary)] font-mono mb-4 animate-fade-in">
               {connectedAddress.slice(0, 6)}...{connectedAddress.slice(-4)}
             </p>
           )}
@@ -341,7 +341,7 @@ export default function Home() {
           {state === "error" && (
             <button
               onClick={handleRetry}
-              className="flex items-center gap-2 px-5 py-2.5 text-[15px] font-medium text-[#007AFF] hover:bg-[#007AFF]/5 active:bg-[#007AFF]/10 rounded-full transition-all duration-200"
+              className="flex items-center gap-2 px-5 py-2.5 text-[15px] font-medium text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/5 active:bg-[var(--accent-blue)]/10 rounded-full transition-all duration-200"
             >
               <RefreshCw className="w-4 h-4" />
               Try again
@@ -350,7 +350,7 @@ export default function Home() {
 
           {/* Loading hint */}
           {isLoading && state !== "initializing" && (
-            <p className="text-[13px] text-[#86868B] animate-fade-in">
+            <p className="text-[13px] text-[var(--text-quaternary)] animate-fade-in">
               Keep World App open
             </p>
           )}
@@ -366,7 +366,7 @@ export default function Home() {
           {/* Footer */}
           <div className="mt-10 flex flex-col items-center gap-4 animate-fade-in stagger-3">
             {/* Trust signals */}
-            <p className="text-[13px] text-[#86868B]">
+            <p className="text-[13px] text-[var(--text-quaternary)]">
               End-to-end encrypted · Secured by XMTP · World ID verified
             </p>
 
@@ -375,14 +375,14 @@ export default function Home() {
                 href="https://world.org/download"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[13px] text-[#007AFF] hover:underline"
+                className="text-[13px] text-[var(--accent-blue)] hover:underline"
               >
                 Get World App
               </a>
-              <span className="text-[#D1D1D6]">·</span>
+              <span className="text-[var(--text-tertiary)]">·</span>
               <a
                 href="/download"
-                className="text-[13px] text-[#007AFF] hover:underline"
+                className="text-[13px] text-[var(--accent-blue)] hover:underline"
               >
                 Download for Mac
               </a>

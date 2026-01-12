@@ -65,26 +65,26 @@ export function NotificationBanner() {
   }
 
   return (
-    <div className="mx-3 mb-3 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="mx-3 mb-3 bg-[var(--bg-primary)] rounded-xl border border-[var(--border-default)] shadow-sm overflow-hidden">
       <div className="p-3">
         <div className="flex items-start gap-2.5">
-          <div className="w-5 h-5 rounded-full bg-[#FF3B30] flex items-center justify-center shrink-0 mt-0.5">
+          <div className="w-5 h-5 rounded-full bg-[var(--accent-red)] flex items-center justify-center shrink-0 mt-0.5">
             <span className="text-white text-xs font-bold">!</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[14px] font-medium text-[#181818]">
+            <p className="text-[14px] font-medium text-[var(--text-primary)]">
               Allow Notifications
             </p>
-            <p className="text-[12px] text-[#717680] mt-0.5">
+            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
               Don&apos;t miss important messages from your family and friends.
             </p>
           </div>
         </div>
       </div>
-      <div className="border-t border-gray-100">
+      <div className="border-t border-[var(--border-subtle)]">
         <button
           onClick={handleAllow}
-          className="w-full px-3 py-2.5 text-[14px] text-[#005CFF] font-medium hover:bg-gray-50 transition-colors text-left"
+          className="w-full px-3 py-2.5 text-[14px] text-[var(--accent-blue)] font-medium hover:bg-[var(--bg-hover)] transition-colors text-left"
         >
           {permission === 'default' ? 'Allow Notifications' : 'Allow in System Settings'}
         </button>

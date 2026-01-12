@@ -44,21 +44,21 @@ function MenuItem({ icon, label, value, onClick, variant = "default", isLoading 
       disabled={isLoading}
       className={`w-full flex items-center gap-3 px-4 py-3 transition-colors disabled:opacity-50 ${
         variant === "danger"
-          ? "text-red-600 hover:bg-red-50"
-          : "text-[#1D1D1F] hover:bg-[#F2F2F7]"
+          ? "text-[var(--accent-red)] hover:bg-[var(--accent-red-light)]"
+          : "text-[var(--text-primary)] hover:bg-[var(--bg-hover)]"
       }`}
     >
       <span className={`w-5 h-5 flex items-center justify-center ${
-        variant === "danger" ? "text-red-600" : "text-[#86868B]"
+        variant === "danger" ? "text-[var(--accent-red)]" : "text-[var(--text-quaternary)]"
       }`}>
         {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : icon}
       </span>
       <span className="flex-1 text-left text-[15px]">{label}</span>
       {value && (
-        <span className="text-[15px] text-[#86868B] mr-1">{value}</span>
+        <span className="text-[15px] text-[var(--text-quaternary)] mr-1">{value}</span>
       )}
       {variant !== "danger" && !isLoading && (
-        <ChevronRight className="w-4 h-4 text-[#C7C7CC]" />
+        <ChevronRight className="w-4 h-4 text-[var(--text-tertiary)]" />
       )}
     </button>
   );
@@ -103,7 +103,7 @@ function MemberRow({
   };
 
   return (
-    <div className={`group flex items-center gap-3 px-4 py-3 hover:bg-[#F2F2F7] transition-colors ${isPending || isRemoving ? 'opacity-60' : ''}`}>
+    <div className={`group flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors ${isPending || isRemoving ? 'opacity-60' : ''}`}>
       <button
         onClick={handleAvatarClick}
         disabled={isYou || !onAvatarClick}
@@ -113,23 +113,23 @@ function MemberRow({
       </button>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          <span className="font-medium text-[15px] text-[#1D1D1F] truncate">{name}</span>
+          <span className="font-medium text-[15px] text-[var(--text-primary)] truncate">{name}</span>
           {isVerified && <VerificationBadge size="xs" />}
-          {isPending && <Loader2 className="w-3 h-3 animate-spin text-[#86868B]" />}
-          {isRemoving && <Loader2 className="w-3 h-3 animate-spin text-red-500" />}
+          {isPending && <Loader2 className="w-3 h-3 animate-spin text-[var(--text-quaternary)]" />}
+          {isRemoving && <Loader2 className="w-3 h-3 animate-spin text-[var(--accent-red)]" />}
         </div>
         {!isYou && (
-          <span className="text-[13px] text-[#86868B] truncate block">{username}</span>
+          <span className="text-[13px] text-[var(--text-quaternary)] truncate block">{username}</span>
         )}
       </div>
       {isAdmin && (
-        <span className="text-[13px] text-[#86868B]">Admin</span>
+        <span className="text-[13px] text-[var(--text-quaternary)]">Admin</span>
       )}
       {!isYou && !isPending && onRemove && (
         <button
           onClick={handleRemove}
           disabled={isRemoving}
-          className="w-8 h-8 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-red-50 text-[#86868B] hover:text-red-500 transition-all disabled:opacity-50"
+          className="w-8 h-8 flex items-center justify-center rounded-full opacity-0 group-hover:opacity-100 hover:bg-[var(--accent-red-light)] text-[var(--text-quaternary)] hover:text-[var(--accent-red)] transition-all disabled:opacity-50"
           title="Remove from group"
         >
           {isRemoving ? (
@@ -187,14 +187,14 @@ function GroupMembersView({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="shrink-0 h-16 px-4 flex items-center gap-3 border-b border-[#E5E5EA]">
+      <div className="shrink-0 h-16 px-4 flex items-center gap-3 border-b border-[var(--border-subtle)]">
         <button
           onClick={onBack}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] transition-colors"
         >
-          <ArrowLeft className="w-5 h-5 text-[#1D1D1F]" />
+          <ArrowLeft className="w-5 h-5 text-[var(--text-primary)]" />
         </button>
-        <span className="text-[17px] font-semibold text-[#1D1D1F]">Group members</span>
+        <span className="text-[17px] font-semibold text-[var(--text-primary)]">Group members</span>
       </div>
 
       {/* Members list */}
@@ -215,10 +215,10 @@ function GroupMembersView({
       </div>
 
       {/* Add new button at bottom */}
-      <div className="shrink-0 p-4 border-t border-[#E5E5EA]">
+      <div className="shrink-0 p-4 border-t border-[var(--border-subtle)]">
         <button
           onClick={onAddNew}
-          className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-[15px] font-medium text-white hover:bg-[#2D2D2F] transition-colors"
+          className="w-full h-12 flex items-center justify-center gap-2 rounded-full bg-[var(--text-primary)] text-[15px] font-medium text-[var(--text-inverse)] hover:opacity-90 transition-colors"
         >
           <UserPlus className="w-5 h-5" />
           Add new
@@ -330,7 +330,7 @@ export function GroupDetailsPanel({
   // Members view
   if (view === "members") {
     return (
-      <div className="w-[320px] shrink-0 h-full bg-white border-l border-[#E5E5EA] flex flex-col">
+      <div className="w-[320px] shrink-0 h-full bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] flex flex-col">
         <GroupMembersView
           memberPreviews={memberPreviews}
           optimisticMembers={optimisticMembers}
@@ -356,15 +356,15 @@ export function GroupDetailsPanel({
 
   // Details view
   return (
-    <div className="w-[320px] shrink-0 h-full bg-white border-l border-[#E5E5EA] flex flex-col">
+    <div className="w-[320px] shrink-0 h-full bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] flex flex-col">
       {/* Header */}
-      <div className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[#E5E5EA]">
-        <span className="text-[17px] font-semibold text-[#1D1D1F]">Group Info</span>
+      <div className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
+        <span className="text-[17px] font-semibold text-[var(--text-primary)]">Group Info</span>
         <button
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] transition-colors"
         >
-          <X className="w-5 h-5 text-[#86868B]" />
+          <X className="w-5 h-5 text-[var(--text-quaternary)]" />
         </button>
       </div>
 
@@ -382,14 +382,14 @@ export function GroupDetailsPanel({
           />
 
           {/* Group name */}
-          <h2 className="mt-4 text-[22px] font-semibold text-[#1D1D1F] text-center">
+          <h2 className="mt-4 text-[22px] font-semibold text-[var(--text-primary)] text-center">
             {groupName || "Group Chat"}
           </h2>
 
           {/* Member count with verification badge */}
           <div className="flex items-center gap-1.5 mt-1">
             {verifiedCount > 0 && <VerificationBadge size="sm" />}
-            <span className="text-[15px] text-[#86868B]">{memberCountText}</span>
+            <span className="text-[15px] text-[var(--text-quaternary)]">{memberCountText}</span>
           </div>
         </div>
 

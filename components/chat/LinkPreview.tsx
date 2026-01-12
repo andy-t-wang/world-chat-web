@@ -38,10 +38,10 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
   if (isLoading || !metadata) {
     const domain = metadata?.domain ?? 'Loading...';
     return (
-      <div className="bg-[#F2F2F7] rounded-2xl overflow-hidden w-[340px]">
+      <div className="bg-[var(--bg-tertiary)] rounded-2xl overflow-hidden w-[340px]">
         <div className="flex flex-col gap-2 items-center justify-center px-8 py-10">
-          <Loader2 className="w-5 h-5 text-[#8E8E93] animate-spin" />
-          <span className="text-[11px] text-[#8E8E93] truncate max-w-full">
+          <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
+          <span className="text-[11px] text-[var(--text-tertiary)] truncate max-w-full">
             {domain}
           </span>
         </div>
@@ -62,26 +62,26 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
     return (
       <div
         onClick={handleClick}
-        className="cursor-pointer overflow-hidden rounded-2xl bg-[#F7F9FA] border border-[#E1E8ED] w-[340px] hover:bg-[#EDF0F3] transition-colors group"
+        className="cursor-pointer overflow-hidden rounded-2xl bg-[var(--bg-secondary)] border border-[var(--border-subtle)] w-[340px] hover:bg-[var(--bg-tertiary)] transition-colors group"
       >
         {/* Header with X logo and author */}
         <div className="px-4 pt-3 pb-2 flex items-center gap-2">
           <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
-            <XLogo className="w-4 h-4 text-black" />
+            <XLogo className="w-4 h-4 text-[var(--text-primary)]" />
           </div>
           {author ? (
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="text-[14px] font-semibold text-[#0F1419] truncate">
+              <span className="text-[14px] font-semibold text-[var(--text-primary)] truncate">
                 {author}
               </span>
               {authorUsername && (
-                <span className="text-[14px] text-[#536471] truncate">
+                <span className="text-[14px] text-[var(--text-secondary)] truncate">
                   @{authorUsername}
                 </span>
               )}
             </div>
           ) : (
-            <span className="text-[14px] font-medium text-[#536471]">
+            <span className="text-[14px] font-medium text-[var(--text-secondary)]">
               X (formerly Twitter)
             </span>
           )}
@@ -90,7 +90,7 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
         {/* Tweet text */}
         {title && (
           <div className="px-4 pb-3">
-            <p className="text-[15px] text-[#0F1419] leading-[1.4] line-clamp-4 whitespace-pre-wrap">
+            <p className="text-[15px] text-[var(--text-primary)] leading-[1.4] line-clamp-4 whitespace-pre-wrap">
               {title}
             </p>
           </div>
@@ -98,10 +98,10 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
 
         {/* Footer */}
         <div className="px-4 pb-3 flex items-center gap-1.5">
-          <span className="text-[13px] text-[#1D9BF0]">
+          <span className="text-[13px] text-[var(--accent-blue)]">
             View on X
           </span>
-          <ExternalLink className="w-3.5 h-3.5 text-[#1D9BF0] opacity-0 group-hover:opacity-100 transition-opacity" />
+          <ExternalLink className="w-3.5 h-3.5 text-[var(--accent-blue)] opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
       </div>
     );
@@ -111,14 +111,14 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
   return (
     <div
       onClick={handleClick}
-      className="cursor-pointer overflow-hidden rounded-2xl w-[340px] bg-[#F2F2F7] hover:bg-[#E5E5EA] transition-colors"
+      className="cursor-pointer overflow-hidden rounded-2xl w-[340px] bg-[var(--bg-tertiary)] hover:bg-[var(--bg-hover)] transition-colors"
     >
       {/* Large image */}
       {hasImage && (
-        <div className="relative h-[180px] bg-[#E5E5EA]">
+        <div className="relative h-[180px] bg-[var(--bg-hover)]">
           {!imageLoaded && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="w-5 h-5 text-[#8E8E93] animate-spin" />
+              <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
             </div>
           )}
           <img
@@ -135,28 +135,28 @@ export function LinkPreview({ metadata, isLoading, isOwnMessage }: LinkPreviewPr
       <div className="px-3 py-2.5">
         {/* Domain - small gray text at top if no image */}
         {!hasImage && (
-          <p className="text-[11px] text-[#8E8E93] mb-1 truncate">
+          <p className="text-[11px] text-[var(--text-tertiary)] mb-1 truncate">
             {domain}
           </p>
         )}
 
         {/* Title */}
         {title && (
-          <p className="text-[13px] font-semibold text-[#1C1C1E] leading-[1.3] line-clamp-2">
+          <p className="text-[13px] font-semibold text-[var(--text-primary)] leading-[1.3] line-clamp-2">
             {title}
           </p>
         )}
 
         {/* Description - show when no image for richer preview */}
         {!hasImage && description && (
-          <p className="text-[12px] text-[#8E8E93] leading-[1.4] line-clamp-3 mt-1">
+          <p className="text-[12px] text-[var(--text-tertiary)] leading-[1.4] line-clamp-3 mt-1">
             {description}
           </p>
         )}
 
         {/* Domain - small gray text at bottom if has image */}
         {hasImage && (
-          <p className="text-[11px] text-[#8E8E93] mt-0.5 truncate">
+          <p className="text-[11px] text-[var(--text-tertiary)] mt-0.5 truncate">
             {domain}
           </p>
         )}

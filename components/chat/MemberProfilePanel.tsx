@@ -124,17 +124,17 @@ export function MemberProfilePanel({
   ]);
 
   return (
-    <div className="w-[320px] shrink-0 h-full bg-white border-l border-[#E5E5EA] flex flex-col">
+    <div className="w-[320px] shrink-0 h-full bg-[var(--bg-primary)] border-l border-[var(--border-subtle)] flex flex-col">
       {/* Header */}
-      <div className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[#E5E5EA]">
-        <span className="text-[17px] font-semibold text-[#1D1D1F]">
+      <div className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
+        <span className="text-[17px] font-semibold text-[var(--text-primary)]">
           Profile
         </span>
         <button
           onClick={onClose}
-          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] transition-colors"
+          className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] transition-colors"
         >
-          <X className="w-5 h-5 text-[#86868B]" />
+          <X className="w-5 h-5 text-[var(--text-quaternary)]" />
         </button>
       </div>
 
@@ -154,7 +154,7 @@ export function MemberProfilePanel({
                 onChange={(e) => setNicknameInput(e.target.value)}
                 placeholder="Enter nickname"
                 autoFocus
-                className="w-full px-3 py-2 text-center text-[17px] bg-[#F5F5F5] rounded-lg border-none outline-none focus:ring-2 focus:ring-[#005CFF]/30"
+                className="w-full px-3 py-2 text-center text-[17px] bg-[var(--bg-tertiary)] rounded-lg border-none outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/30"
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleSaveNickname();
                   if (e.key === "Escape") handleCancelEdit();
@@ -163,13 +163,13 @@ export function MemberProfilePanel({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleSaveNickname}
-                  className="px-3 py-1.5 text-[13px] font-medium text-white bg-[#1D1D1F] rounded-lg hover:bg-[#2D2D2F] transition-colors"
+                  className="px-3 py-1.5 text-[13px] font-medium text-[var(--text-inverse)] bg-[var(--text-primary)] rounded-lg hover:opacity-90 transition-colors"
                 >
                   Save
                 </button>
                 <button
                   onClick={handleCancelEdit}
-                  className="px-3 py-1.5 text-[13px] font-medium text-[#717680] hover:bg-[#F5F5F5] rounded-lg transition-colors"
+                  className="px-3 py-1.5 text-[13px] font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] rounded-lg transition-colors"
                 >
                   Cancel
                 </button>
@@ -179,28 +179,28 @@ export function MemberProfilePanel({
             <>
               {/* Display name with edit button */}
               <div className="flex items-center gap-1.5 mt-4">
-                <h2 className="text-[22px] font-semibold text-[#1D1D1F] text-center">
+                <h2 className="text-[22px] font-semibold text-[var(--text-primary)] text-center">
                   {name}
                 </h2>
                 <button
                   onClick={handleStartEdit}
-                  className="p-1 rounded-md hover:bg-[#F5F5F5] transition-colors cursor-pointer"
+                  className="p-1 rounded-md hover:bg-[var(--bg-tertiary)] transition-colors cursor-pointer"
                   title="Edit nickname"
                 >
-                  <Pencil className="w-4 h-4 text-[#86868B]" />
+                  <Pencil className="w-4 h-4 text-[var(--text-quaternary)]" />
                 </button>
               </div>
 
               {/* World username - show below if we have a custom nickname */}
               {hasCustomNickname && worldName && (
-                <span className="text-[15px] text-[#86868B] mt-0.5">
+                <span className="text-[15px] text-[var(--text-quaternary)] mt-0.5">
                   @{worldName.toLowerCase().replace(/\s+/g, "")}
                 </span>
               )}
 
               {/* Username - show if no custom nickname but has a world username */}
               {!hasCustomNickname && worldName && worldName !== shortAddress && (
-                <span className="text-[15px] text-[#86868B] mt-0.5">
+                <span className="text-[15px] text-[var(--text-quaternary)] mt-0.5">
                   @{worldName.toLowerCase().replace(/\s+/g, "")}
                 </span>
               )}
@@ -209,7 +209,7 @@ export function MemberProfilePanel({
               {isVerified && (
                 <div className="flex items-center gap-1.5 mt-2">
                   <VerificationBadge size="sm" />
-                  <span className="text-[14px] text-[#717680]">Verified human</span>
+                  <span className="text-[14px] text-[var(--text-secondary)]">Verified human</span>
                 </div>
               )}
             </>
@@ -222,7 +222,7 @@ export function MemberProfilePanel({
             <button
               onClick={handleMessageUser}
               disabled={isStartingDm}
-              className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[#1D1D1F] text-[14px] font-medium text-white hover:bg-[#2D2D2F] transition-colors disabled:opacity-50 cursor-pointer"
+              className="w-full h-10 flex items-center justify-center gap-2 rounded-full bg-[var(--text-primary)] text-[14px] font-medium text-[var(--text-inverse)] hover:opacity-90 transition-colors disabled:opacity-50 cursor-pointer"
             >
               {isStartingDm ? (
                 <Loader2 className="w-4 h-4 animate-spin" />

@@ -132,8 +132,8 @@ export function ConversationItem(props: ConversationItemProps) {
         w-full flex items-center gap-3 px-4 py-3
         transition-colors duration-150 text-left
         ${isSelected
-          ? 'bg-[#007AFF]'
-          : 'hover:bg-[#F2F2F7] active:bg-[#E5E5EA]'
+          ? 'bg-[var(--accent-blue)]'
+          : 'hover:bg-[var(--bg-hover)] active:bg-[var(--bg-active)]'
         }
       `}
     >
@@ -161,8 +161,8 @@ export function ConversationItem(props: ConversationItemProps) {
               isSelected
                 ? 'text-white font-medium'
                 : unreadCount > 0
-                  ? 'text-[#1D1D1F] font-semibold'
-                  : 'text-[#1D1D1F] font-medium'
+                  ? 'text-[var(--text-primary)] font-semibold'
+                  : 'text-[var(--text-primary)] font-medium'
             }`}>
               {name}
             </span>
@@ -175,8 +175,8 @@ export function ConversationItem(props: ConversationItemProps) {
             isSelected
               ? 'text-white/90'
               : unreadCount > 0
-                ? 'text-[#1D1D1F] font-semibold'
-                : 'text-[#86868B]'
+                ? 'text-[var(--text-primary)] font-semibold'
+                : 'text-[var(--text-quaternary)]'
           }`}>
             {props.lastMessage ? formatPreview(props) : (subtitle || formatPreview(props))}
           </div>
@@ -186,7 +186,7 @@ export function ConversationItem(props: ConversationItemProps) {
         <div className="flex flex-col items-end gap-1 shrink-0">
           {/* Timestamp */}
           {timestamp && (
-            <span className={`text-[13px] leading-[1.3] ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`}>
+            <span className={`text-[13px] leading-[1.3] ${isSelected ? 'text-white/90' : 'text-[var(--text-tertiary)]'}`}>
               {timestamp}
             </span>
           )}
@@ -194,19 +194,19 @@ export function ConversationItem(props: ConversationItemProps) {
           {/* Indicators */}
           <div className="flex items-center gap-1.5">
             {isMuted && (
-              <BellOff className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
+              <BellOff className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[var(--text-tertiary)]'}`} />
             )}
             {isPinned && (
-              <Pin className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[#9BA3AE]'}`} />
+              <Pin className={`w-4 h-4 ${isSelected ? 'text-white/90' : 'text-[var(--text-tertiary)]'}`} />
             )}
             {isNewRequest && (
               <span className={`w-2.5 h-2.5 rounded-full ${
-                isSelected ? 'bg-white' : 'bg-[#005CFF]'
+                isSelected ? 'bg-white' : 'bg-[var(--accent-blue)]'
               }`} />
             )}
             {unreadCount > 0 && !isNewRequest && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
-                isSelected ? 'bg-white text-[#1D1D1F]' : 'bg-[#1D1D1F] text-white'
+                isSelected ? 'bg-white text-[var(--text-primary)]' : 'bg-[#1D1D1F] text-white'
               }`}>
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>

@@ -2556,8 +2556,12 @@ class XMTPStreamManager {
     }
   }
 
+  // Track pending reactions to prevent double-clicks
+  private pendingReactions = new Set<string>();
+
   /**
    * Send a reaction to a message
+   * Uses optimistic updates for instant feedback
    */
   async sendReaction(
     conversationId: string,
@@ -2566,9 +2570,59 @@ class XMTPStreamManager {
     action: 'added' | 'removed' = 'added'
   ): Promise<void> {
     const conv = this.conversations.get(conversationId);
-    if (!conv) return;
+    if (!conv || !this.client?.inboxId) return;
+
+    // Create a unique key for this reaction to prevent double-clicks
+    const reactionKey = `${targetMessageId}:${emoji}:${this.client.inboxId}`;
+
+    // If already pending, ignore the request
+    if (this.pendingReactions.has(reactionKey)) {
+      return;
+    }
+
+    // Mark as pending
+    this.pendingReactions.add(reactionKey);
+
+    // Store previous state for rollback on error
+    const currentReactions = store.get(reactionsAtom);
+    const previousReactions = currentReactions.get(targetMessageId) ?? [];
+    const inboxId = this.client.inboxId;
 
     try {
+      // OPTIMISTIC UPDATE: Update UI immediately before network call
+      const messageReactions = [...previousReactions];
+
+      if (action === 'added') {
+        // Add reaction optimistically
+        const exists = messageReactions.some(
+          r => r.emoji === emoji && r.senderInboxId === inboxId
+        );
+        if (!exists) {
+          const newReaction: StoredReaction = {
+            emoji,
+            senderInboxId: inboxId,
+            messageId: `pending-${Date.now()}`,
+          };
+          const newMap = new Map(currentReactions);
+          newMap.set(targetMessageId, [...messageReactions, newReaction]);
+          store.set(reactionsAtom, newMap);
+          store.set(reactionsVersionAtom, store.get(reactionsVersionAtom) + 1);
+        }
+      } else {
+        // Remove reaction optimistically
+        const filtered = messageReactions.filter(
+          r => !(r.emoji === emoji && r.senderInboxId === inboxId)
+        );
+        const newMap = new Map(currentReactions);
+        if (filtered.length > 0) {
+          newMap.set(targetMessageId, filtered);
+        } else {
+          newMap.delete(targetMessageId);
+        }
+        store.set(reactionsAtom, newMap);
+        store.set(reactionsVersionAtom, store.get(reactionsVersionAtom) + 1);
+      }
+
       // Import the reaction content type
       const { ContentTypeReaction } = await import('@xmtp/content-type-reaction');
 
@@ -2579,31 +2633,24 @@ class XMTPStreamManager {
         schema: 'custom',
       };
 
+      // Send to network
       await conv.send(reactionContent, ContentTypeReaction);
-
-      // Optimistically update the UI
-      if (action === 'added' && this.client?.inboxId) {
-        const currentReactions = store.get(reactionsAtom);
-        const messageReactions = currentReactions.get(targetMessageId) ?? [];
-        const exists = messageReactions.some(
-          r => r.emoji === emoji && r.senderInboxId === this.client!.inboxId
-        );
-        if (!exists) {
-          const newReaction: StoredReaction = {
-            emoji,
-            senderInboxId: this.client.inboxId,
-            messageId: `pending-${Date.now()}`,
-          };
-          const newMap = new Map(currentReactions);
-          newMap.set(targetMessageId, [...messageReactions, newReaction]);
-          store.set(reactionsAtom, newMap);
-
-          const version = store.get(reactionsVersionAtom);
-          store.set(reactionsVersionAtom, version + 1);
-        }
-      }
     } catch (error) {
+      // ROLLBACK: Restore previous state on error
+      const rollbackMap = new Map(store.get(reactionsAtom));
+      if (previousReactions.length > 0) {
+        rollbackMap.set(targetMessageId, previousReactions);
+      } else {
+        rollbackMap.delete(targetMessageId);
+      }
+      store.set(reactionsAtom, rollbackMap);
+      store.set(reactionsVersionAtom, store.get(reactionsVersionAtom) + 1);
+
+      console.error('Failed to send reaction:', error);
       throw error;
+    } finally {
+      // Clear pending state
+      this.pendingReactions.delete(reactionKey);
     }
   }
 

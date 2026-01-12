@@ -245,47 +245,47 @@ export default function ChatPage() {
     return (
       <div className="flex w-full h-screen overflow-hidden">
         {/* Skeleton Sidebar - full width on mobile */}
-        <div className="w-full md:w-[320px] lg:w-[380px] border-r border-[#E5E5EA] bg-white flex flex-col flex-shrink-0">
+        <div className="w-full md:w-[320px] lg:w-[380px] border-r border-[var(--border-default)] bg-[var(--bg-primary)] flex flex-col flex-shrink-0">
           {/* Electron drag region */}
           <div className="electron-drag h-8 shrink-0" />
           {/* Header skeleton */}
-          <div className="px-4 py-3 border-b border-[#E5E5EA]">
-            <div className="h-8 w-32 bg-[#F2F2F7] rounded-lg animate-pulse" />
+          <div className="px-4 py-3 border-b border-[var(--border-default)]">
+            <div className="h-8 w-32 bg-[var(--bg-hover)] rounded-lg animate-pulse" />
           </div>
           {/* Search skeleton */}
           <div className="px-3 py-2">
-            <div className="h-9 bg-[#F2F2F7] rounded-lg animate-pulse" />
+            <div className="h-9 bg-[var(--bg-hover)] rounded-lg animate-pulse" />
           </div>
           {/* Conversation list skeleton */}
           <div className="flex-1 px-2 py-1 space-y-1">
             {[...Array(6)].map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl">
-                <div className="w-[52px] h-[52px] rounded-full bg-[#F2F2F7] animate-pulse flex-shrink-0" />
+                <div className="w-[52px] h-[52px] rounded-full bg-[var(--bg-hover)] animate-pulse flex-shrink-0" />
                 <div className="flex-1 min-w-0 space-y-2">
-                  <div className="h-4 w-24 bg-[#F2F2F7] rounded animate-pulse" />
-                  <div className="h-3 w-40 bg-[#F2F2F7] rounded animate-pulse" />
+                  <div className="h-4 w-24 bg-[var(--bg-hover)] rounded animate-pulse" />
+                  <div className="h-3 w-40 bg-[var(--bg-hover)] rounded animate-pulse" />
                 </div>
               </div>
             ))}
           </div>
         </div>
         {/* Skeleton Message Panel - hidden on mobile */}
-        <div className="hidden md:flex flex-1 flex-col bg-[#F5F5F5]">
+        <div className="hidden md:flex flex-1 flex-col bg-[var(--bg-tertiary)]">
           {/* Header skeleton */}
-          <div className="h-16 border-b border-[#E5E5EA] bg-white px-4 flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#F2F2F7] animate-pulse" />
-            <div className="h-5 w-32 bg-[#F2F2F7] rounded animate-pulse" />
+          <div className="h-16 border-b border-[var(--border-default)] bg-[var(--bg-primary)] px-4 flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-[var(--bg-hover)] animate-pulse" />
+            <div className="h-5 w-32 bg-[var(--bg-hover)] rounded animate-pulse" />
           </div>
           {/* Messages area skeleton */}
           <div className="flex-1 flex items-center justify-center">
             <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-6 h-6 text-[#86868B] animate-spin" />
-              <span className="text-[13px] text-[#86868B]">Loading messages...</span>
+              <Loader2 className="w-6 h-6 text-[var(--text-quaternary)] animate-spin" />
+              <span className="text-[13px] text-[var(--text-quaternary)]">Loading messages...</span>
             </div>
           </div>
           {/* Input skeleton */}
-          <div className="h-16 border-t border-[#E5E5EA] bg-white px-4 flex items-center">
-            <div className="flex-1 h-10 bg-[#F2F2F7] rounded-full animate-pulse" />
+          <div className="h-16 border-t border-[var(--border-default)] bg-[var(--bg-primary)] px-4 flex items-center">
+            <div className="flex-1 h-10 bg-[var(--bg-hover)] rounded-full animate-pulse" />
           </div>
         </div>
       </div>
@@ -297,13 +297,13 @@ export default function ChatPage() {
     return (
       <div className="flex w-full h-full items-center justify-center">
         <div className="flex flex-col items-center gap-4 max-w-md text-center px-6">
-          <div className="w-16 h-16 rounded-2xl bg-[#005CFF]/10 flex items-center justify-center">
-            <Monitor className="w-8 h-8 text-[#005CFF]" />
+          <div className="w-16 h-16 rounded-2xl bg-[var(--accent-blue)]/10 flex items-center justify-center">
+            <Monitor className="w-8 h-8 text-[var(--accent-blue)]" />
           </div>
-          <h2 className="text-lg font-semibold text-[#181818]">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             Chat Open in Another Tab
           </h2>
-          <p className="text-[#717680]">
+          <p className="text-[var(--text-secondary)]">
             World Chat is already open in another browser tab. Please close the
             other tab or use it instead.
           </p>
@@ -313,7 +313,7 @@ export default function ChatPage() {
               setIsLockedByOtherTab(false);
               attemptRestore();
             }}
-            className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+            className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors"
           >
             Try Again
           </button>
@@ -330,10 +330,10 @@ export default function ChatPage() {
           <div className="w-16 h-16 rounded-2xl bg-red-100 flex items-center justify-center">
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
-          <h2 className="text-lg font-semibold text-[#181818]">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             Connection Failed
           </h2>
-          <p className="text-[#717680]">
+          <p className="text-[var(--text-secondary)]">
             {clientState.error?.message ||
               "Failed to restore session. Please try again."}
           </p>
@@ -344,13 +344,13 @@ export default function ChatPage() {
                 setRestorationFailed(false);
                 attemptRestore();
               }}
-              className="px-4 py-2 bg-[#005CFF] text-white rounded-lg hover:bg-[#0052E0] transition-colors"
+              className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors"
             >
               Try Again
             </button>
             <button
               onClick={() => router.push("/")}
-              className="px-4 py-2 bg-gray-100 text-[#181818] rounded-lg hover:bg-gray-200 transition-colors"
+              className="px-4 py-2 bg-[var(--bg-tertiary)] text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
             >
               Login Again
             </button>
@@ -364,7 +364,7 @@ export default function ChatPage() {
   if (!hasXmtpClient) {
     return (
       <div className="flex w-full h-full items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#005CFF] animate-spin" />
+        <Loader2 className="w-8 h-8 text-[var(--accent-blue)] animate-spin" />
       </div>
     );
   }

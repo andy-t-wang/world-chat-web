@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { JotaiProvider } from "@/components/providers";
+import { JotaiProvider, ThemeProvider, themeScript } from "@/components/providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,12 +31,17 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <JotaiProvider>
-          {children}
+          <ThemeProvider>
+            {children}
+          </ThemeProvider>
         </JotaiProvider>
       </body>
     </html>

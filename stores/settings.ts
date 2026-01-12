@@ -13,6 +13,10 @@ export const hideEmptyConversationsAtom = atomWithStorage('hide-empty-conversati
 // Settings panel open state
 export const settingsPanelOpenAtom = atom(false);
 
+// Theme setting - 'system' follows OS preference, 'light' or 'dark' for manual override
+export type ThemePreference = 'system' | 'light' | 'dark';
+export const themePreferenceAtom = atomWithStorage<ThemePreference>('theme', 'system');
+
 // Timestamps when message requests were first seen - persisted to localStorage
 // Used to show a "new" dot for 5 seconds after a request appears
 export const requestFirstSeenAtom = atomWithStorage<Record<string, number>>('request-first-seen', {});

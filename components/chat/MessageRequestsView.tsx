@@ -232,40 +232,40 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
   });
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-[var(--bg-primary)]">
       {/* Header */}
-      <div className="shrink-0 px-4 py-2 border-b border-gray-100">
+      <div className="shrink-0 px-4 py-2 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-1.5">
           <button
             onClick={onBack}
-            className="p-1.5 -ml-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-1.5 -ml-1.5 rounded-lg hover:bg-[var(--bg-hover)] transition-colors"
             aria-label="Back to chats"
           >
-            <ArrowLeft className="w-5 h-5 text-[#181818]" />
+            <ArrowLeft className="w-5 h-5 text-[var(--text-primary)]" />
           </button>
-          <h1 className="text-lg font-semibold text-[#181818]">
+          <h1 className="text-lg font-semibold text-[var(--text-primary)]">
             Message Requests
           </h1>
         </div>
       </div>
 
       {/* Search */}
-      <div className="shrink-0 px-4 py-2 border-b border-gray-100">
+      <div className="shrink-0 px-4 py-2 border-b border-[var(--border-subtle)]">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BA3AE]" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
           <input
             type="text"
             placeholder="Search requests..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 bg-[#F5F5F5] rounded-lg text-sm text-[#181818] placeholder:text-[#9BA3AE] focus:outline-none focus:ring-2 focus:ring-[#005CFF]/20"
+            className="w-full pl-9 pr-4 py-2.5 bg-[var(--bg-tertiary)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]/20"
           />
         </div>
       </div>
 
       {/* Selection Bar - shows when in select mode or as a button to enter select mode */}
       {filteredIds.length > 0 && (
-        <div className="shrink-0 px-4 py-2 border-b border-gray-100">
+        <div className="shrink-0 px-4 py-2 border-b border-[var(--border-subtle)]">
           {isSelectMode ? (
             <div className="flex flex-col gap-2">
               {/* First row: Select all and Cancel */}
@@ -275,15 +275,15 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                     type="checkbox"
                     checked={allSelected}
                     onChange={toggleSelectAll}
-                    className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20"
+                    className="w-4 h-4 rounded border-[var(--border-default)] text-[var(--accent-blue)] focus:ring-[var(--accent-blue)]/20"
                   />
-                  <span className="text-sm text-[#717680]">
+                  <span className="text-sm text-[var(--text-secondary)]">
                     {allSelected ? "Deselect all" : "Select all"}
                   </span>
                 </label>
                 <button
                   onClick={exitSelectMode}
-                  className="px-3 py-1.5 rounded-lg text-sm text-[#717680] hover:bg-[#F5F5F5] transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] transition-colors"
                 >
                   Cancel
                 </button>
@@ -291,7 +291,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
 
               {/* Second row: Selection count and action buttons */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-[#717680]">
+                <span className="text-sm text-[var(--text-secondary)]">
                   {hasSelection
                     ? `${selectedIds.size} selected`
                     : "None selected"}
@@ -300,7 +300,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                   <button
                     onClick={acceptSelected}
                     disabled={isProcessing || !hasSelection}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#1D1D1F] text-white text-sm font-medium hover:bg-[#2D2D2F] transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--text-primary)] text-white text-sm font-medium hover:bg-[var(--bg-active)] transition-colors disabled:opacity-50"
                   >
                     {isProcessing ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -312,7 +312,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                   <button
                     onClick={rejectSelected}
                     disabled={isProcessing || !hasSelection}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E5EA] bg-white text-[#1D1D1F] text-sm font-medium hover:bg-[#F5F5F5] transition-colors disabled:opacity-50"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-primary)] text-[var(--text-primary)] text-sm font-medium hover:bg-[var(--bg-tertiary)] transition-colors disabled:opacity-50"
                   >
                     {isProcessing ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -326,13 +326,13 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
             </div>
           ) : (
             <div className="flex items-center justify-between">
-              <span className="text-sm text-[#717680]">
+              <span className="text-sm text-[var(--text-secondary)]">
                 {filteredIds.length}{" "}
                 {filteredIds.length === 1 ? "request" : "requests"}
               </span>
               <button
                 onClick={() => setIsSelectMode(true)}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-[#005CFF] hover:bg-[#005CFF]/10 transition-colors"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10 transition-colors"
               >
                 Select
               </button>
@@ -344,8 +344,8 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       {/* Empty state - no requests */}
       {requestCount === 0 && (
         <div className="flex flex-col flex-1 justify-center px-6">
-          <p className="text-[#717680]">No message requests</p>
-          <p className="text-sm text-[#9BA3AE] mt-1">
+          <p className="text-[var(--text-secondary)]">No message requests</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
             When someone new messages you, they&apos;ll appear here
           </p>
         </div>
@@ -354,9 +354,9 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       {/* No search results */}
       {requestCount > 0 && searchQuery && filteredIds.length === 0 && (
         <div className="flex flex-col flex-1 justify-center px-6">
-          <SearchX className="w-10 h-10 text-[#9BA3AE] mb-3" />
-          <p className="text-[#717680]">No results found</p>
-          <p className="text-sm text-[#9BA3AE] mt-1">
+          <SearchX className="w-10 h-10 text-[var(--text-tertiary)] mb-3" />
+          <p className="text-[var(--text-secondary)]">No results found</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
             Try a different search term
           </p>
         </div>
@@ -392,10 +392,10 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                     }}
                     className="flex items-center px-4"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gray-100 animate-pulse" />
+                    <div className="w-10 h-10 rounded-full bg-[var(--bg-hover)] animate-pulse" />
                     <div className="ml-3 flex-1">
-                      <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
-                      <div className="h-3 w-32 bg-gray-100 rounded animate-pulse mt-1" />
+                      <div className="h-4 w-24 bg-[var(--bg-hover)] rounded animate-pulse" />
+                      <div className="h-3 w-32 bg-[var(--bg-hover)] rounded animate-pulse mt-1" />
                     </div>
                   </div>
                 );
@@ -425,7 +425,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
                         checked={isChecked}
                         onClick={(e) => toggleSelect(id, rowIndex, e.shiftKey)}
                         onChange={() => {}} // Controlled by onClick for shift-click support
-                        className="w-4 h-4 rounded border-gray-300 text-[#005CFF] focus:ring-[#005CFF]/20 cursor-pointer"
+                        className="w-4 h-4 rounded border-[var(--border-default)] text-[var(--accent-blue)] focus:ring-[var(--accent-blue)]/20 cursor-pointer"
                       />
                     </div>
                   )}

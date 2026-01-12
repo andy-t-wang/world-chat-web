@@ -61,10 +61,10 @@ export function MessageRequestBanner({
 
   return (
     <div className="sticky top-4 z-10 flex justify-center pointer-events-none">
-      <div className="bg-white rounded-2xl shadow-lg border border-[#E5E5EA] px-4 py-3 pointer-events-auto max-w-[320px]">
+      <div className="bg-[var(--bg-primary)] rounded-2xl shadow-lg border border-[var(--border-default)] px-4 py-3 pointer-events-auto max-w-[320px]">
         {/* Disclaimer text */}
-        <p className="text-[13px] text-[#717680] text-center mb-3 leading-snug">
-          <span className="font-medium text-[#1D1D1F]">{name}</span> wants to message you. If you don&apos;t recognize them, you can decline or block the chat.
+        <p className="text-[13px] text-[var(--text-secondary)] text-center mb-3 leading-snug">
+          <span className="font-medium text-[var(--text-primary)]">{name}</span> wants to message you. If you don&apos;t recognize them, you can decline or block the chat.
         </p>
 
         <div className="flex items-center gap-1">
@@ -72,12 +72,12 @@ export function MessageRequestBanner({
           <button
             onClick={handleDelete}
             disabled={isLoading}
-            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[#F5F5F5] text-[#1D1D1F] text-[14px] font-medium hover:bg-[#EBEBEB] transition-colors disabled:opacity-50"
+            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-[14px] font-medium hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
           >
             {isDeleting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <X className="w-4 h-4 text-red-500" />
+              <X className="w-4 h-4 text-[var(--accent-red)]" />
             )}
             <span>Reject</span>
           </button>
@@ -86,12 +86,12 @@ export function MessageRequestBanner({
           <button
             onClick={handleAccept}
             disabled={isLoading}
-            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[#F5F5F5] text-[#1D1D1F] text-[14px] font-medium hover:bg-[#EBEBEB] transition-colors disabled:opacity-50"
+            className="flex-1 h-10 px-4 flex items-center justify-center gap-2 rounded-xl bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-[14px] font-medium hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
           >
             {isAccepting ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
-              <Check className="w-4 h-4 text-[#00C230]" />
+              <Check className="w-4 h-4 text-[var(--accent-green)]" />
             )}
             <span>Accept</span>
           </button>

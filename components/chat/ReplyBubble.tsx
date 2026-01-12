@@ -64,16 +64,16 @@ export function ReplyBubble({
 
   // Bubble background color
   const bubbleBg = isOwnMessage
-    ? (isVerified ? 'bg-[#005CFF]' : 'bg-[#717680]')
-    : 'bg-white';
+    ? (isVerified ? 'bg-[var(--bubble-outgoing)]' : 'bg-[var(--bubble-unverified)]')
+    : 'bg-[var(--bubble-incoming)]';
 
-  const textColor = isOwnMessage ? 'text-white' : 'text-[#181818]';
+  const textColor = isOwnMessage ? 'text-white' : 'text-[var(--bubble-incoming-text)]';
 
   return (
     <div className={`flex flex-col gap-[2px] ${isOwnMessage ? 'items-end' : 'items-start'}`}>
       {/* Replied to label */}
       <div className={`flex items-center gap-1 px-1 ${isOwnMessage ? 'justify-end' : 'justify-start'}`}>
-        <span className="text-[13px] text-[#9BA3AE]">
+        <span className="text-[13px] text-[var(--text-tertiary)]">
           Replied to {displayName}
         </span>
       </div>
@@ -81,13 +81,13 @@ export function ReplyBubble({
       {/* Quoted message with connector bar */}
       <div className={`flex gap-2 items-stretch ${isOwnMessage ? 'flex-row' : 'flex-row-reverse'}`}>
         {/* Quoted message bubble */}
-        <div className="max-w-[300px] px-3 py-[7px] bg-[#F9FAFB] rounded-[16px]">
-          <p className="text-[15px] text-[#9BA3AE] leading-[1.3] line-clamp-2 break-words">
+        <div className="max-w-[300px] px-3 py-[7px] bg-[var(--bg-secondary)] rounded-[16px]">
+          <p className="text-[15px] text-[var(--text-tertiary)] leading-[1.3] line-clamp-2 break-words">
             {quotedContent}
           </p>
         </div>
         {/* Vertical connector bar */}
-        <div className="w-1 bg-[#F3F4F5] rounded-full self-stretch" />
+        <div className="w-1 bg-[var(--border-subtle)] rounded-full self-stretch" />
       </div>
 
       {/* Reply message bubble */}
