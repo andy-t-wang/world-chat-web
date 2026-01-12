@@ -413,7 +413,7 @@ class XMTPStreamManager {
     }, 5000);
 
     // Phase 1: Load from local cache (instant)
-    await this.loadConversationsFromCache();
+    const hasCachedConversations = await this.loadConversationsFromCache();
 
     // Phase 2: Start streams for real-time updates
     this.startConversationStream();
@@ -424,8 +424,15 @@ class XMTPStreamManager {
       console.error('[StreamManager] Preferences sync error:', error);
     });
 
-    // Phase 4: One-time background sync to catch up
-    this.performInitialSync();
+    // Phase 4: One-time initial sync to catch up
+    // For fresh installs (no cached conversations), await the sync so user sees their chats
+    // For returning users, run in background to not block UI
+    if (hasCachedConversations) {
+      this.performInitialSync();
+    } else {
+      console.log('[StreamManager] Fresh install detected, awaiting initial sync...');
+      await this.performInitialSync();
+    }
 
     // Phase 5: Periodic sync to upload history for other devices
     // This ensures we respond to history sync requests from new installations
@@ -605,9 +612,10 @@ class XMTPStreamManager {
    * Uses two-phase loading for faster initial render:
    * Phase 1: Show conversation list immediately with minimal metadata
    * Phase 2: Build full metadata in parallel in background
+   * @returns true if conversations were found in cache, false if empty (fresh install)
    */
-  private async loadConversationsFromCache(): Promise<void> {
-    if (!this.client || this.conversationsLoaded) return;
+  private async loadConversationsFromCache(): Promise<boolean> {
+    if (!this.client || this.conversationsLoaded) return true;
 
     this.conversationsLoaded = true;
     store.set(isLoadingConversationsAtom, true);
@@ -648,9 +656,15 @@ class XMTPStreamManager {
         ids.push(conv.id);
       }
 
+      // If no conversations found locally (fresh install), keep loading state
+      // and let performInitialSync handle it
+      const hasCachedConversations = ids.length > 0;
+
       // Show list immediately (fast first render)
       store.set(conversationIdsAtom, ids);
-      store.set(isLoadingConversationsAtom, false);
+      if (hasCachedConversations) {
+        store.set(isLoadingConversationsAtom, false);
+      }
       this.incrementMetadataVersion();
 
       // PHASE 2: Build full metadata in parallel (background)
@@ -729,10 +743,12 @@ class XMTPStreamManager {
       // Save any newly initialized lastReadTimestamps
       this.saveLastReadTimestamps();
 
+      return hasCachedConversations;
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
       store.set(conversationsErrorAtom, error instanceof Error ? error : new Error('Failed to load'));
       store.set(isLoadingConversationsAtom, false);
+      return false;
     }
   }
 
@@ -812,14 +828,17 @@ class XMTPStreamManager {
       });
 
       store.set(conversationIdsAtom, filteredIds);
+      store.set(isLoadingConversationsAtom, false);
       this.incrementMetadataVersion();
       this.saveLastReadTimestamps();
 
       // Refresh messages for any conversations that were already opened
       await this.refreshLoadedConversations();
 
+      console.log('[StreamManager] Initial sync complete, found', filteredIds.length, 'conversations');
     } catch (error) {
       console.error('[StreamManager] Initial sync error:', error);
+      store.set(isLoadingConversationsAtom, false);
     }
   }
 
