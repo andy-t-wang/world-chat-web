@@ -11,6 +11,10 @@ import { soundMutedAtom } from '@/stores/settings';
 let permissionRequested = false;
 let audioContext: AudioContext | null = null;
 
+// Sound throttling - prevent multiple sounds stacking when many messages arrive at once
+let lastSoundTime = 0;
+const SOUND_THROTTLE_MS = 1000; // Only play sound once per second max
+
 // Title state
 let baseTitle = 'World Chat';
 let currentChatName: string | null = null;
@@ -296,9 +300,11 @@ export function startTitleFlash(senderName: string, isCurrentChat: boolean = fal
 
   pendingNotification = { senderName, isCurrentChat };
 
-  // Play notification sound (unless muted)
+  // Play notification sound (unless muted) - throttled to prevent stacking
   const isMuted = store.get(soundMutedAtom);
-  if (!isMuted) {
+  const now = Date.now();
+  if (!isMuted && now - lastSoundTime >= SOUND_THROTTLE_MS) {
+    lastSoundTime = now;
     playNotificationSound();
   }
 
