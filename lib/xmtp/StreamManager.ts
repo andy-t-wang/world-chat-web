@@ -743,6 +743,12 @@ class XMTPStreamManager {
       // Save any newly initialized lastReadTimestamps
       this.saveLastReadTimestamps();
 
+      // Schedule another metadata version bump to ensure React components
+      // that mounted during the load will re-render with fresh data
+      setTimeout(() => {
+        this.incrementMetadataVersion();
+      }, 100);
+
       return hasCachedConversations;
     } catch (error) {
       console.error('[StreamManager] Failed to load conversations:', error);
@@ -836,6 +842,12 @@ class XMTPStreamManager {
       await this.refreshLoadedConversations();
 
       console.log('[StreamManager] Initial sync complete, found', filteredIds.length, 'conversations');
+
+      // Schedule another metadata version bump to ensure React components
+      // that mounted after the sync started will re-render with fresh data
+      setTimeout(() => {
+        this.incrementMetadataVersion();
+      }, 100);
     } catch (error) {
       console.error('[StreamManager] Initial sync error:', error);
       store.set(isLoadingConversationsAtom, false);
