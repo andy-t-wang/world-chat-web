@@ -400,7 +400,7 @@ export default function ChatPage() {
               isVerified={isGroupVerified}
               verifiedCount={verifiedCount}
               unverifiedCount={unverifiedCount}
-              onOpenGroupDetails={() => setShowGroupDetails(true)}
+              onOpenGroupDetails={() => setShowGroupDetails(prev => !prev)}
               onMemberAvatarClick={handleMemberAvatarClick}
               onBack={handleBack}
             />
@@ -431,13 +431,13 @@ export default function ChatPage() {
               }`}
               onClick={() => setShowGroupDetails(false)}
             />
-            {/* Panel wrapper - animated slide from right */}
+            {/* Panel wrapper - animated slide from right on mobile, instant on desktop */}
             <div
               className={`
                 fixed lg:relative right-0 top-0 bottom-0 z-50 lg:z-auto
-                transition-all duration-300 ease-out
+                transition-transform duration-300 ease-out lg:transition-none
                 ${showGroupDetails
-                  ? "translate-x-0 w-[320px] lg:w-[320px]"
+                  ? "translate-x-0 w-[320px]"
                   : "translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden"
                 }
               `}
