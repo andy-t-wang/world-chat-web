@@ -21,6 +21,7 @@ import {
   Clock,
   SmilePlus,
   ChevronLeft,
+  Reply,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
@@ -55,6 +56,7 @@ import { xmtpClientAtom } from "@/stores/client";
 import {
   readReceiptVersionAtom,
   reactionsVersionAtom,
+  messageCache,
 } from "@/stores/messages";
 import { linkPreviewEnabledAtom } from "@/stores/settings";
 import { streamManager } from "@/lib/xmtp/StreamManager";
@@ -401,12 +403,13 @@ function ReactionPicker({ position, onSelect, onClose }: ReactionPickerProps) {
   );
 }
 
-// Wrapper component that shows reaction button on hover (like Messenger)
+// Wrapper component that shows reaction and reply buttons on hover (like Messenger)
 interface MessageWrapperProps {
   children: React.ReactNode;
   isOwnMessage: boolean;
   messageId: string;
   onReactionClick: (messageId: string, position: { x: number; y: number }) => void;
+  onReplyClick?: (messageId: string) => void;
 }
 
 function MessageWrapper({
@@ -414,6 +417,7 @@ function MessageWrapper({
   isOwnMessage,
   messageId,
   onReactionClick,
+  onReplyClick,
 }: MessageWrapperProps) {
   const handleReactionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -426,30 +430,53 @@ function MessageWrapper({
     });
   };
 
+  const handleReplyClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onReplyClick?.(messageId);
+  };
+
   return (
-    <div className="group/msg relative flex items-center gap-1">
-      {/* Reaction button - left side for outgoing messages */}
+    <div className="group/msg relative flex items-center gap-0.5">
+      {/* Action buttons - left side for outgoing messages */}
       {isOwnMessage && (
-        <button
-          onClick={handleReactionClick}
-          className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 group-hover/msg:opacity-100 hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-all shrink-0"
-          title="Add reaction"
-        >
-          <SmilePlus className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <button
+            onClick={handleReplyClick}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            title="Reply"
+          >
+            <Reply className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleReactionClick}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            title="Add reaction"
+          >
+            <SmilePlus className="w-4 h-4" />
+          </button>
+        </div>
       )}
 
       {children}
 
-      {/* Reaction button - right side for incoming messages */}
+      {/* Action buttons - right side for incoming messages */}
       {!isOwnMessage && (
-        <button
-          onClick={handleReactionClick}
-          className="w-7 h-7 flex items-center justify-center rounded-full opacity-0 group-hover/msg:opacity-100 hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-all shrink-0"
-          title="Add reaction"
-        >
-          <SmilePlus className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          <button
+            onClick={handleReactionClick}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            title="Add reaction"
+          >
+            <SmilePlus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleReplyClick}
+            className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#F2F2F7] text-[#86868B] hover:text-[#1D1D1F] transition-colors shrink-0"
+            title="Reply"
+          >
+            <Reply className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );
@@ -1357,6 +1384,38 @@ export function MessagePanel({
     setTimeout(() => textareaRef.current?.focus(), 0);
   }, [contextMenu, setReplyingTo]);
 
+  // Handle quick reply from hover button
+  const handleQuickReply = useCallback(
+    (messageId: string) => {
+      const msg = messageCache.get(messageId);
+      if (!msg) return;
+
+      // Get message content and sender
+      const content = getMessageText(msg) ?? "";
+      const senderInboxId = msg.senderInboxId;
+
+      // Find sender address from member previews or use peer address for DMs
+      let senderAddress = "";
+      if (conversationType === "dm") {
+        // In DM, sender is either us or the peer
+        senderAddress = senderInboxId === client?.inboxId ? "" : (peerAddress ?? "");
+      } else {
+        // In group, find the member
+        const member = memberPreviews?.find((m) => m.inboxId === senderInboxId);
+        senderAddress = member?.address ?? "";
+      }
+
+      setReplyingTo({
+        messageId,
+        content,
+        senderAddress,
+      });
+      // Focus the textarea
+      setTimeout(() => textareaRef.current?.focus(), 0);
+    },
+    [conversationType, peerAddress, memberPreviews, client?.inboxId, setReplyingTo, getMessageText]
+  );
+
   // Handle copy from context menu
   const handleCopy = useCallback(() => {
     if (!contextMenu) return;
@@ -2089,6 +2148,7 @@ export function MessagePanel({
                             isOwnMessage={isOwnMessage}
                             messageId={item.id}
                             onReactionClick={handleReactionButtonClick}
+                            onReplyClick={handleQuickReply}
                           >
                             <div
                               onContextMenu={(e) =>
@@ -2176,6 +2236,7 @@ export function MessagePanel({
                             isOwnMessage={true}
                             messageId={item.id}
                             onReactionClick={handleReactionButtonClick}
+                            onReplyClick={handleQuickReply}
                           >
                             <div
                               onContextMenu={(e) =>
@@ -2229,6 +2290,7 @@ export function MessagePanel({
                           isOwnMessage={true}
                           messageId={item.id}
                           onReactionClick={handleReactionButtonClick}
+                          onReplyClick={handleQuickReply}
                         >
                           <div className="max-w-[300px]">
                             <div
@@ -2334,6 +2396,7 @@ export function MessagePanel({
                             isOwnMessage={false}
                             messageId={item.id}
                             onReactionClick={handleReactionButtonClick}
+                            onReplyClick={handleQuickReply}
                           >
                             <div
                               onContextMenu={(e) =>
@@ -2400,6 +2463,7 @@ export function MessagePanel({
                           isOwnMessage={false}
                           messageId={item.id}
                           onReactionClick={handleReactionButtonClick}
+                          onReplyClick={handleQuickReply}
                         >
                           <div className="max-w-[300px]">
                             <div
