@@ -777,6 +777,11 @@ class XMTPStreamManager {
       await this.client.preferences.sync();
       console.log('[StreamManager] Preferences sync completed');
 
+      // Send sync request to other installations to get message history
+      console.log('[StreamManager] Sending sync request to other devices...');
+      await this.client.sendSyncRequest();
+      console.log('[StreamManager] Sync request sent');
+
       // Sync conversation list from network
       await this.client.conversations.sync();
       console.log('[StreamManager] Conversations sync completed');
