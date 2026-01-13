@@ -161,7 +161,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         {
           env: "production",
           appVersion: "WorldChat/1.0.0",
-          loggingLevel: "off",
+          loggingLevel: "info",
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
           disableDeviceSync: false,
@@ -267,7 +267,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         const xmtpClient = await Client.create(signer, {
           env: "production",
           appVersion: "WorldChat/1.0.0",
-          loggingLevel: "off",
+          loggingLevel: "info",
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
           disableDeviceSync: false,
