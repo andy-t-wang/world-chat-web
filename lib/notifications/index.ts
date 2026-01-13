@@ -301,9 +301,11 @@ export function startTitleFlash(senderName: string, isCurrentChat: boolean = fal
   pendingNotification = { senderName, isCurrentChat };
 
   // Play notification sound (unless muted) - throttled to prevent stacking
+  // Additional focus check as final safeguard - don't play if user is actively using the app
   const isMuted = store.get(soundMutedAtom);
+  const hasFocus = typeof document !== 'undefined' && document.hasFocus();
   const now = Date.now();
-  if (!isMuted && now - lastSoundTime >= SOUND_THROTTLE_MS) {
+  if (!isMuted && !hasFocus && now - lastSoundTime >= SOUND_THROTTLE_MS) {
     lastSoundTime = now;
     playNotificationSound();
   }
