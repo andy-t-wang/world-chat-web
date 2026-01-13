@@ -164,6 +164,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           loggingLevel: "off",
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
+          disableDeviceSync: false,
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -269,6 +270,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           loggingLevel: "off",
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
+          disableDeviceSync: false,
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
