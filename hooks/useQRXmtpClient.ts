@@ -1,19 +1,25 @@
-'use client';
+"use client";
 
-import { useCallback, useRef, useEffect } from 'react';
-import { useSetAtom, useAtom } from 'jotai';
-import type { Client } from '@xmtp/browser-sdk';
-import { toBytes } from 'viem';
-import { clientLifecycleAtom, clientStateAtom } from '@/stores/client';
-import { streamManager } from '@/lib/xmtp/StreamManager';
-import { RemoteSigner } from '@/lib/signing-relay';
-import { clearSession } from '@/lib/auth/session';
-import { isLockedByAnotherTab, acquireTabLock, releaseTabLock } from '@/lib/tab-lock';
-import { getSessionCache, setSessionCache, isElectron } from '@/lib/storage';
+import { useCallback, useRef, useEffect } from "react";
+import { useSetAtom, useAtom } from "jotai";
+import type { Client } from "@xmtp/browser-sdk";
+import { toBytes } from "viem";
+import { clientLifecycleAtom, clientStateAtom } from "@/stores/client";
+import { streamManager } from "@/lib/xmtp/StreamManager";
+import { RemoteSigner } from "@/lib/signing-relay";
+import { clearSession } from "@/lib/auth/session";
+import {
+  isLockedByAnotherTab,
+  acquireTabLock,
+  releaseTabLock,
+} from "@/lib/tab-lock";
+import { getSessionCache, setSessionCache, isElectron } from "@/lib/storage";
 
 // Module cache for faster subsequent loads
 let cachedModules: Awaited<ReturnType<typeof loadAllModules>> | null = null;
-let moduleLoadPromise: Promise<Awaited<ReturnType<typeof loadAllModules>>> | null = null;
+let moduleLoadPromise: Promise<
+  Awaited<ReturnType<typeof loadAllModules>>
+> | null = null;
 
 /**
  * Load all XMTP modules in parallel (cached)
@@ -27,12 +33,12 @@ async function loadAllModules() {
     remoteAttachmentModule,
     transactionRefModule,
   ] = await Promise.all([
-    import('@xmtp/browser-sdk'),
-    import('@xmtp/content-type-reaction'),
-    import('@xmtp/content-type-reply'),
-    import('@xmtp/content-type-read-receipt'),
-    import('@xmtp/content-type-remote-attachment'),
-    import('@/lib/xmtp/TransactionReferenceCodec'),
+    import("@xmtp/browser-sdk"),
+    import("@xmtp/content-type-reaction"),
+    import("@xmtp/content-type-reply"),
+    import("@xmtp/content-type-read-receipt"),
+    import("@xmtp/content-type-remote-attachment"),
+    import("@/lib/xmtp/TransactionReferenceCodec"),
   ]);
 
   return {
@@ -53,7 +59,7 @@ async function getModules() {
   if (cachedModules) return cachedModules;
 
   if (!moduleLoadPromise) {
-    moduleLoadPromise = loadAllModules().then(modules => {
+    moduleLoadPromise = loadAllModules().then((modules) => {
       cachedModules = modules;
       return modules;
     });
@@ -66,7 +72,7 @@ async function getModules() {
  * Pre-load modules in background (call early to warm cache)
  */
 export function preloadXmtpModules() {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   // Start loading modules in background
   getModules().catch(() => {
     // Ignore errors - will retry when actually needed
@@ -74,9 +80,10 @@ export function preloadXmtpModules() {
 }
 
 // Auto-preload on module import (starts loading immediately when this file is imported)
-if (typeof window !== 'undefined') {
+if (typeof window !== "undefined") {
   // Use requestIdleCallback to load during idle time, fallback to setTimeout
-  const schedulePreload = window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 1));
+  const schedulePreload =
+    window.requestIdleCallback || ((cb: () => void) => setTimeout(cb, 1));
   schedulePreload(() => preloadXmtpModules());
 }
 
@@ -85,7 +92,9 @@ interface UseQRXmtpClientResult {
   isInitializing: boolean;
   isReady: boolean;
   error: Error | null;
-  initializeWithRemoteSigner: (signer: ReturnType<RemoteSigner['getSigner']>) => Promise<void>;
+  initializeWithRemoteSigner: (
+    signer: ReturnType<RemoteSigner["getSigner"]>
+  ) => Promise<void>;
   restoreSession: () => Promise<boolean>;
 }
 
@@ -119,16 +128,16 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
 
     // Check if another tab has the XMTP client
     if (isLockedByAnotherTab()) {
-      throw new Error('TAB_LOCKED');
+      throw new Error("TAB_LOCKED");
     }
 
     // Try to acquire the lock
     if (!acquireTabLock()) {
-      throw new Error('TAB_LOCKED');
+      throw new Error("TAB_LOCKED");
     }
 
     restoringRef.current = true;
-    dispatch({ type: 'INIT_START' });
+    dispatch({ type: "INIT_START" });
 
     try {
       // Use cached modules for faster load
@@ -147,14 +156,12 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       const xmtpClient = await Client.build(
         {
           identifier: cachedSession.address.toLowerCase(),
-          identifierKind: 'Ethereum' as const,
+          identifierKind: "Ethereum" as const,
         },
         {
-          env: 'production',
-          appVersion: 'WorldChat/1.0.0',
-          loggingLevel: 'off',
-          // Explicitly set history sync URL to ensure it's enabled
-          historySyncUrl: 'https://message-history.production.ephemera.network',
+          env: "production",
+          appVersion: "WorldChat/1.0.0",
+          loggingLevel: "off",
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -166,43 +173,54 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         }
       );
 
-      console.log('[QRXmtpClient] Client restored with inboxId:', xmtpClient.inboxId);
+      console.log(
+        "[QRXmtpClient] Client restored with inboxId:",
+        xmtpClient.inboxId
+      );
 
       // Update cache timestamp (async, don't await)
       if (xmtpClient.inboxId) {
         setSessionCache(cachedSession.address, xmtpClient.inboxId);
       }
 
-      dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
+      dispatch({ type: "INIT_SUCCESS", client: xmtpClient });
 
       // Initialize StreamManager in background (don't block UI)
       streamManager.initialize(xmtpClient).catch((error) => {
-        console.error('[QRXmtpClient] StreamManager initialization error:', error);
+        console.error(
+          "[QRXmtpClient] StreamManager initialization error:",
+          error
+        );
       });
 
       return true;
     } catch (error) {
-      console.error('[QRXmtpClient] Failed to restore session:', error);
+      console.error("[QRXmtpClient] Failed to restore session:", error);
 
       // Release the tab lock on failure
       releaseTabLock();
 
       // Clear session if the XMTP installation is not found (needs re-registration)
       // For other errors (network, etc.), keep session so user can retry
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      const isSessionExpired = errorMessage.includes('not registered') ||
-                               errorMessage.includes('installation') ||
-                               errorMessage.includes('Session expired') ||
-                               errorMessage.includes('scan QR') ||
-                               errorMessage.includes('signature');
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const isSessionExpired =
+        errorMessage.includes("not registered") ||
+        errorMessage.includes("installation") ||
+        errorMessage.includes("Session expired") ||
+        errorMessage.includes("scan QR") ||
+        errorMessage.includes("signature");
 
       if (isSessionExpired) {
         clearSession();
       }
 
       dispatch({
-        type: 'INIT_ERROR',
-        error: error instanceof Error ? error : new Error('Failed to restore session'),
+        type: "INIT_ERROR",
+        error:
+          error instanceof Error
+            ? error
+            : new Error("Failed to restore session"),
       });
       return false;
     } finally {
@@ -211,23 +229,23 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
   }, [client, dispatch]);
 
   const initializeWithRemoteSigner = useCallback(
-    async (signer: ReturnType<RemoteSigner['getSigner']>) => {
+    async (signer: ReturnType<RemoteSigner["getSigner"]>) => {
       if (initializingRef.current) {
         return;
       }
 
       // Check if another tab has the XMTP client
       if (isLockedByAnotherTab()) {
-        throw new Error('TAB_LOCKED');
+        throw new Error("TAB_LOCKED");
       }
 
       // Try to acquire the lock
       if (!acquireTabLock()) {
-        throw new Error('TAB_LOCKED');
+        throw new Error("TAB_LOCKED");
       }
 
       initializingRef.current = true;
-      dispatch({ type: 'INIT_START' });
+      dispatch({ type: "INIT_START" });
 
       const address = signer.getIdentifier().identifier;
 
@@ -244,11 +262,10 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         } = await getModules();
 
         const xmtpClient = await Client.create(signer, {
-          env: 'production',
-          appVersion: 'WorldChat/1.0.0',
-          loggingLevel: 'off',
+          env: "production",
+          appVersion: "WorldChat/1.0.0",
+          loggingLevel: "off",
           // Explicitly set history sync URL to ensure it's enabled
-          historySyncUrl: 'https://message-history.production.ephemera.network',
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -259,26 +276,38 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           ],
         });
 
-        console.log('[QRXmtpClient] Client created with inboxId:', xmtpClient.inboxId);
+        console.log(
+          "[QRXmtpClient] Client created with inboxId:",
+          xmtpClient.inboxId
+        );
 
         // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {
           setSessionCache(address, xmtpClient.inboxId);
         }
 
-        dispatch({ type: 'INIT_SUCCESS', client: xmtpClient });
+        dispatch({ type: "INIT_SUCCESS", client: xmtpClient });
 
         // Initialize StreamManager in background (don't block UI)
         streamManager.initialize(xmtpClient).catch((error) => {
-          console.error('[QRXmtpClient] StreamManager initialization error:', error);
+          console.error(
+            "[QRXmtpClient] StreamManager initialization error:",
+            error
+          );
         });
       } catch (error) {
-        console.error('Failed to initialize XMTP client with remote signer:', error);
+        console.error(
+          "Failed to initialize XMTP client with remote signer:",
+          error
+        );
         // Release the tab lock on failure
         releaseTabLock();
         dispatch({
-          type: 'INIT_ERROR',
-          error: error instanceof Error ? error : new Error('Failed to initialize XMTP'),
+          type: "INIT_ERROR",
+          error:
+            error instanceof Error
+              ? error
+              : new Error("Failed to initialize XMTP"),
         });
         throw error;
       } finally {
@@ -291,7 +320,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
   return {
     client,
     isInitializing: clientState.isInitializing,
-    isReady: client !== null && !clientState.isInitializing && !clientState.error,
+    isReady:
+      client !== null && !clientState.isInitializing && !clientState.error,
     error: clientState.error,
     initializeWithRemoteSigner,
     restoreSession,
