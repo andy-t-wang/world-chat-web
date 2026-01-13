@@ -162,6 +162,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           env: "production",
           appVersion: "WorldChat/1.0.0",
           loggingLevel: "off",
+          // Explicitly set history sync URL for cross-device message sync
+          historySyncUrl: "https://message-history.ephemera.network",
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
@@ -265,7 +267,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           env: "production",
           appVersion: "WorldChat/1.0.0",
           loggingLevel: "off",
-          // Explicitly set history sync URL to ensure it's enabled
+          // Explicitly set history sync URL for cross-device message sync
+          historySyncUrl: "https://message-history.ephemera.network",
           codecs: [
             new ReactionCodec(),
             new ReplyCodec(),
