@@ -2175,11 +2175,12 @@ export function MessagePanel({
                     );
                   }
 
-                  // Skip if text is null (non-displayable content types)
-                  if (text === null) return null;
-
                   // Check if this is a reply message
                   const isReply = typeId === "reply";
+
+                  // Skip if text is null (non-displayable content types)
+                  // Replies are handled specially below and may have EncodedContent
+                  if (text === null && !isReply) return null;
                   if (isReply) {
                     // Extract reply content structure
                     // SDK v6.1.0 Reply format: { content: string | EncodedContent, reference?: string, referenceId?: string, inReplyTo?: DecodedMessage }
@@ -2200,8 +2201,18 @@ export function MessagePanel({
                     if (typeof replyContent?.content === "string") {
                       replyText = replyContent.content;
                     } else if (replyContent?.content && typeof replyContent.content === "object") {
-                      // EncodedContent format - content is nested
-                      replyText = (replyContent.content as { content?: string }).content ?? "";
+                      // EncodedContent format - content can be Uint8Array or nested string
+                      const encodedContent = replyContent.content as { content?: Uint8Array | string };
+                      if (encodedContent.content instanceof Uint8Array) {
+                        // Decode the Uint8Array to get the text
+                        try {
+                          replyText = new TextDecoder().decode(encodedContent.content);
+                        } catch {
+                          replyText = "";
+                        }
+                      } else if (typeof encodedContent.content === "string") {
+                        replyText = encodedContent.content;
+                      }
                     }
 
                     // Get referenced message ID - try both formats
@@ -2351,6 +2362,10 @@ export function MessagePanel({
                       </div>
                     );
                   }
+
+                  // For non-reply messages, text should never be null at this point
+                  // (we returned early if text was null and it wasn't a reply)
+                  if (text === null) return null;
 
                   // Outgoing message (sender)
                   if (isOwnMessage) {

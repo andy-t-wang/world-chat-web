@@ -1,15 +1,15 @@
 'use client';
 
-import { useRef, useMemo, useEffect, useState } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useAtomValue, useSetAtom } from 'jotai';
+import { useAtomValue, useSetAtom, useAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
 import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
-import { hideEmptyConversationsAtom } from '@/stores/settings';
+import { hideEmptyConversationsAtom, pinnedConversationIdsAtom } from '@/stores/settings';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
-import { Loader2, SearchX } from 'lucide-react';
+import { Loader2, SearchX, Pin, PinOff } from 'lucide-react';
 import { getCachedUsername } from '@/lib/username/service';
 
 interface ConversationListProps {
@@ -31,9 +31,54 @@ export function ConversationList({
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
   const hideEmptyConversations = useAtomValue(hideEmptyConversationsAtom);
+  const [pinnedIds, setPinnedIds] = useAtom(pinnedConversationIdsAtom);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    conversationId: string;
+  } | null>(null);
 
   // Use conversations hook - it handles all loading and provides metadata
   const { conversationIds, metadata, isLoading } = useConversations();
+
+  // Memoize pinned set for O(1) lookups
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('click', handleClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
+
+  // Pin/unpin handlers
+  const togglePin = useCallback((conversationId: string) => {
+    setPinnedIds(prev => {
+      if (prev.includes(conversationId)) {
+        return prev.filter(id => id !== conversationId);
+      }
+      return [...prev, conversationId];
+    });
+    setContextMenu(null);
+  }, [setPinnedIds]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent, conversationId: string) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      conversationId,
+    });
+  }, []);
 
   // Track username cache for search
   const [usernameCacheVersion, setUsernameCacheVersion] = useState(0);
@@ -50,12 +95,13 @@ export function ConversationList({
 
   // Filter conversations based on search query, consent state, and empty state
   // Main list only shows Allowed conversations (Unknown go to requests)
+  // Pinned conversations are sorted to the top
   const filteredIds = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const _version = usernameCacheVersion; // Dependency to trigger re-filter
 
     // First filter out Unknown consent (message requests) and optionally empty conversations
-    const allowedIds = conversationIds.filter((id) => {
+    let allowedIds = conversationIds.filter((id) => {
       const data = metadata.get(id);
       // Only show allowed conversations in main list
       if (!data || data.consentState === 'unknown') return false;
@@ -69,34 +115,44 @@ export function ConversationList({
       return true;
     });
 
-    if (!searchQuery.trim()) return allowedIds;
+    // Apply search filter if present
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
 
-    const query = searchQuery.toLowerCase().trim();
+      allowedIds = allowedIds.filter((id) => {
+        const data = metadata.get(id);
+        if (!data) return false;
 
-    return allowedIds.filter((id) => {
-      const data = metadata.get(id);
-      if (!data) return false;
+        // For groups, search by group name
+        if (data.conversationType === 'group') {
+          const groupName = data.groupName?.toLowerCase() ?? '';
+          return groupName.includes(query);
+        }
 
-      // For groups, search by group name
-      if (data.conversationType === 'group') {
-        const groupName = data.groupName?.toLowerCase() ?? '';
-        return groupName.includes(query);
-      }
+        // For DMs, search by username (from cache) or address
+        if (data.peerAddress) {
+          const address = data.peerAddress.toLowerCase();
+          // Check if address matches
+          if (address.includes(query)) return true;
 
-      // For DMs, search by username (from cache) or address
-      if (data.peerAddress) {
-        const address = data.peerAddress.toLowerCase();
-        // Check if address matches
-        if (address.includes(query)) return true;
+          // Check if cached username matches
+          const cached = getCachedUsername(data.peerAddress);
+          if (cached?.username?.toLowerCase().includes(query)) return true;
+        }
 
-        // Check if cached username matches
-        const cached = getCachedUsername(data.peerAddress);
-        if (cached?.username?.toLowerCase().includes(query)) return true;
-      }
+        return false;
+      });
+    }
 
-      return false;
-    });
-  }, [conversationIds, metadata, searchQuery, usernameCacheVersion, hideEmptyConversations]);
+    // Sort: pinned first (in pin order), then others by last activity
+    const pinned = allowedIds.filter(id => pinnedIds.includes(id));
+    const unpinned = allowedIds.filter(id => !pinnedIds.includes(id));
+
+    // Sort pinned by their order in pinnedIds
+    pinned.sort((a, b) => pinnedIds.indexOf(a) - pinnedIds.indexOf(b));
+
+    return [...pinned, ...unpinned];
+  }, [conversationIds, metadata, searchQuery, usernameCacheVersion, hideEmptyConversations, pinnedIds]);
 
   // Format timestamp for display using user's locale
   const formatTimestamp = (ns: bigint): string => {
@@ -133,6 +189,7 @@ export function ConversationList({
       timestamp: formatTimestamp(data.lastActivityNs),
       unreadCount: data.unreadCount ?? 0,
       hasDisappearingMessages: data.disappearingMessagesEnabled ?? false,
+      isPinned: pinnedSet.has(id),
     };
 
     // Add type-specific props
@@ -250,6 +307,7 @@ export function ConversationList({
                   height: virtualRow.size,
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
+                onContextMenu={(e) => handleContextMenu(e, id)}
               >
                 <ConversationItem
                   {...props}
@@ -261,6 +319,35 @@ export function ConversationList({
           })}
         </div>
       </div>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-1 min-w-[160px]"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => togglePin(contextMenu.conversationId)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[15px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            {pinnedSet.has(contextMenu.conversationId) ? (
+              <>
+                <PinOff className="w-5 h-5 text-[var(--text-quaternary)]" />
+                Unpin
+              </>
+            ) : (
+              <>
+                <Pin className="w-5 h-5 text-[var(--text-quaternary)]" />
+                Pin
+              </>
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

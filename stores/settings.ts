@@ -20,3 +20,6 @@ export const themePreferenceAtom = atomWithStorage<ThemePreference>('theme', 'sy
 // Timestamps when message requests were first seen - persisted to localStorage
 // Used to show a "new" dot for 5 seconds after a request appears
 export const requestFirstSeenAtom = atomWithStorage<Record<string, number>>('request-first-seen', {});
+
+// Pinned conversation IDs - persisted to localStorage
+export const pinnedConversationIdsAtom = atomWithStorage<string[]>('pinned-conversations', []);
