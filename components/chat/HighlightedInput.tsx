@@ -127,7 +127,7 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
         parts.push(
           <span
             key={`ticker-${match.index}`}
-            className="text-[var(--accent-blue)] cursor-pointer hover:underline"
+            className="text-[var(--accent-blue)] cursor-pointer hover:underline pointer-events-auto"
             onClick={(e) => handleTickerClick(e, symbol, type)}
           >
             {match[0]}
@@ -153,28 +153,7 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
 
     return (
       <div ref={containerRef} className="relative flex-1 min-w-0">
-        {/* Highlighted overlay - rendered behind textarea */}
-        <div
-          ref={overlayRef}
-          className="absolute inset-0 px-4 py-2.5 bg-[var(--bg-hover)] border border-transparent rounded-2xl text-[var(--text-primary)] leading-[1.4] overflow-hidden pointer-events-none whitespace-pre-wrap break-words"
-          style={{ minHeight: '44px', maxHeight: '128px' }}
-          aria-hidden="true"
-        >
-          {hasTickers ? (
-            <span className="pointer-events-auto">
-              {renderHighlightedText()}
-            </span>
-          ) : (
-            // Show placeholder when empty
-            !value && (
-              <span className="text-[var(--text-quaternary)]">
-                {placeholder}
-              </span>
-            )
-          )}
-        </div>
-
-        {/* Actual textarea - text is transparent when we have tickers */}
+        {/* Actual textarea - at the bottom layer for typing */}
         <textarea
           ref={textareaRef}
           value={value}
@@ -187,13 +166,25 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
           placeholder={hasTickers ? '' : placeholder}
           rows={1}
           disabled={disabled}
-          className={`relative w-full px-4 py-2.5 bg-transparent border border-[var(--border-default)] rounded-2xl outline-none resize-none leading-[1.4] transition-all scrollbar-hide ${
+          className={`relative w-full px-4 py-2.5 bg-[var(--bg-hover)] border border-[var(--border-default)] rounded-2xl outline-none resize-none leading-[1.4] transition-all scrollbar-hide ${
             hasTickers
               ? 'text-transparent caret-[var(--text-primary)]'
               : 'text-[var(--text-primary)] placeholder-[var(--text-quaternary)]'
           }`}
           style={{ minHeight: '44px', maxHeight: '128px' }}
         />
+
+        {/* Highlighted overlay - on top for display and ticker clicks */}
+        {hasTickers && (
+          <div
+            ref={overlayRef}
+            className="absolute inset-0 px-4 py-2.5 border border-transparent rounded-2xl text-[var(--text-primary)] leading-[1.4] overflow-hidden pointer-events-none whitespace-pre-wrap break-words"
+            style={{ minHeight: '44px', maxHeight: '128px' }}
+            aria-hidden="true"
+          >
+            {renderHighlightedText()}
+          </div>
+        )}
 
         {/* Ticker preview popup */}
         {tickerPopup && (
