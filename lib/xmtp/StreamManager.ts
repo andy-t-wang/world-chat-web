@@ -387,9 +387,9 @@ class XMTPStreamManager {
   private conversationsLoaded = false;
   private loadedMessageConversations = new Set<string>();
 
-  // Track conversations with sync issues (e.g., forked groups with epoch mismatch)
-  // These will show an error state instead of hanging indefinitely
-  private problematicConversations = new Set<string>();
+  // Track conversations currently syncing (for groups that need to catch up on epochs)
+  // Maps conversationId -> sync Promise so we can await completion
+  private syncingConversations = new Map<string, Promise<void>>();
 
   // Store conversation metadata (not in atoms to avoid re-renders)
   private conversationMetadata = new Map<string, ConversationMetadata>();
@@ -1061,21 +1061,16 @@ class XMTPStreamManager {
       return;
     }
 
-    // Skip if this is a problematic conversation
-    if (this.problematicConversations.has(conversationId)) {
-      console.warn(`[StreamManager] Skipping metadata refresh for problematic conversation: ${conversationId}`);
+    // Skip if this conversation is currently syncing
+    if (this.syncingConversations.has(conversationId)) {
+      console.warn(`[StreamManager] Skipping metadata refresh - conversation ${conversationId} is syncing`);
       return;
     }
 
     try {
       // Sync the conversation to get latest member list
-      // Use timeout to prevent hanging on forked groups
       if ('sync' in conversation) {
-        await withTimeout(
-          (conversation as unknown as { sync: () => Promise<unknown> }).sync(),
-          XMTP_OPERATION_TIMEOUT_MS,
-          'refreshMetadata.sync'
-        );
+        await (conversation as unknown as { sync: () => Promise<unknown> }).sync();
       }
 
       // Rebuild metadata
@@ -1088,18 +1083,17 @@ class XMTPStreamManager {
   }
 
   /**
-   * Check if a conversation is marked as problematic (has sync issues)
+   * Check if a conversation is currently syncing
    */
-  isConversationProblematic(conversationId: string): boolean {
-    return this.problematicConversations.has(conversationId);
+  isConversationSyncing(conversationId: string): boolean {
+    return this.syncingConversations.has(conversationId);
   }
 
   /**
-   * Retry loading a problematic conversation
-   * Clears the problematic flag and attempts to load again
+   * Retry loading a conversation (clears state and tries again)
    */
-  async retryProblematicConversation(conversationId: string): Promise<void> {
-    this.problematicConversations.delete(conversationId);
+  async retryConversation(conversationId: string): Promise<void> {
+    this.syncingConversations.delete(conversationId);
     this.loadedMessageConversations.delete(conversationId);
     await this.loadMessagesForConversation(conversationId);
   }
@@ -1529,33 +1523,36 @@ class XMTPStreamManager {
   /**
    * Load messages for a conversation (called when user opens a conversation)
    *
-   * Strategy: Keep fetching until we have MIN_DISPLAYABLE_MESSAGES displayable messages
-   * This ensures we don't show too few messages when many are read receipts
+   * Strategy:
+   * 1. Try to load from local cache first (quick attempt)
+   * 2. If that fails (epoch mismatch), start sync in background
+   * 3. Show "syncing" state while sync runs
+   * 4. When sync completes, reload messages
+   * 5. Sync continues even if user switches conversations
    */
   async loadMessagesForConversation(conversationId: string): Promise<void> {
     if (!this.client) return;
 
-    // Check if this conversation has sync issues (forked group, epoch mismatch, etc.)
-    // These will show an error state instead of hanging indefinitely
-    if (this.problematicConversations.has(conversationId)) {
-      console.warn(`[StreamManager] Skipping problematic conversation: ${conversationId}`);
+    // Check if this conversation is already syncing in background
+    const existingSync = this.syncingConversations.get(conversationId);
+    if (existingSync) {
+      console.log(`[StreamManager] Conversation ${conversationId} is already syncing, waiting...`);
+      // Show syncing state
       this.setPagination(conversationId, {
-        hasMore: false,
+        hasMore: true,
         oldestMessageNs: null,
         isLoading: false,
-        error: 'This conversation has sync issues. Try leaving and rejoining the group.',
+        isSyncing: true,
       });
       return;
     }
 
     // Check if already loaded
     if (this.loadedMessageConversations.has(conversationId)) {
-      // Safety check: if marked as loaded but no messages, allow reload
       const currentIds = this.getMessageIds(conversationId);
       if (currentIds.length > 0) {
         return; // Already loaded with messages
       }
-      // Clear flag to allow reload
       this.loadedMessageConversations.delete(conversationId);
     }
 
@@ -1570,27 +1567,42 @@ class XMTPStreamManager {
         return;
       }
 
-      // Store conversation for later use
       this.conversations.set(conversationId, conv);
 
-      // Background sync with timeout - don't let it hang forever
-      withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'conv.sync').catch((err) => {
-        // If sync times out, this might be a forked group - mark as problematic
-        if (err?.message?.includes('timed out')) {
-          console.warn(`[StreamManager] Sync timeout for ${conversationId}, may be a forked group`);
-        }
+      // Try to load messages - this will fail quickly if epoch mismatch
+      const loaded = await this.tryLoadMessages(conversationId, conv);
+
+      if (!loaded) {
+        // Messages couldn't load - need to sync first
+        console.log(`[StreamManager] Starting background sync for ${conversationId}`);
+        this.startBackgroundSync(conversationId, conv);
+      }
+    } catch (error) {
+      console.error('[StreamManager] Failed to load messages:', error);
+      this.setPagination(conversationId, {
+        hasMore: false,
+        oldestMessageNs: null,
+        isLoading: false,
+        error: 'Failed to load messages',
       });
+    }
+  }
 
-      // Keep fetching until we have enough displayable messages
-      const displayableIds: string[] = [];
-      let oldestMessageNs: bigint | null = null;
-      let hasMore = true;
-      let iterations = 0;
+  /**
+   * Try to load messages from local cache (quick attempt)
+   * Returns true if successful, false if sync needed
+   */
+  private async tryLoadMessages(conversationId: string, conv: Conversation): Promise<boolean> {
+    const displayableIds: string[] = [];
+    let oldestMessageNs: bigint | null = null;
+    let hasMore = true;
+    let iterations = 0;
 
+    try {
       while (displayableIds.length < MIN_DISPLAYABLE_MESSAGES && hasMore && iterations < MAX_FETCH_ITERATIONS) {
         iterations++;
 
-        // Wrap messages() call with timeout to prevent infinite hang on epoch mismatch
+        // Quick timeout - if messages don't load fast, we need to sync
         const messagesPromise = conv.messages({
           limit: BigInt(BATCH_SIZE),
           sentBeforeNs: oldestMessageNs ?? undefined,
@@ -1598,56 +1610,45 @@ class XMTPStreamManager {
         });
         const messages = await withTimeout(messagesPromise, XMTP_OPERATION_TIMEOUT_MS, 'conv.messages');
 
-
         if (messages.length === 0) {
           hasMore = false;
           break;
         }
 
-        // Process messages
         for (const msg of messages) {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
-          // Handle read receipts (but don't display)
           if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
-              // Peer read receipt - update to show "Read" on our sent messages
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             } else {
-              // Own read receipt from another device - sync our read state
               this.syncOwnReadReceipt(conversationId, msg.sentAtNs);
             }
             continue;
           }
 
-          // Process reactions (but don't display as messages)
           if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
-          // Try to decode raw remote attachments (messages synced before codec was registered)
           if (typeId === CONTENT_TYPE_REMOTE_ATTACHMENT) {
             await tryDecodeRawRemoteAttachment(msg);
           }
 
-          // This is a displayable message
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
           displayableIds.push(msg.id);
 
-          // Extract inline reactions from SDK v6.1.0 (message.reactions)
           const msgWithReactions = msg as unknown as { reactions?: DecodedMessage<Reaction>[] };
           if (msgWithReactions.reactions && msgWithReactions.reactions.length > 0) {
             this.storeInlineReactions(msg.id, msgWithReactions.reactions);
           }
         }
 
-        // Update oldest for next iteration
         oldestMessageNs = messages[messages.length - 1].sentAtNs;
         hasMore = messages.length === BATCH_SIZE;
       }
 
-      // Trigger reactions update if any were extracted
       const version = store.get(reactionsVersionAtom);
       store.set(reactionsVersionAtom, version + 1);
 
@@ -1658,32 +1659,79 @@ class XMTPStreamManager {
         isLoading: false,
       });
 
-      // Streams handle new messages - no need for background sync
+      return true;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[StreamManager] Failed to load messages:', error);
+      const needsSync = errorMessage.includes('timed out') || errorMessage.includes('epoch');
 
-      // Check if this is a timeout or epoch-related error - mark conversation as problematic
-      const isEpochError = errorMessage.includes('epoch') || errorMessage.includes('forked');
-      const isTimeout = errorMessage.includes('timed out');
-
-      if (isEpochError || isTimeout) {
-        console.warn(`[StreamManager] Marking ${conversationId} as problematic due to: ${errorMessage}`);
-        this.problematicConversations.add(conversationId);
-        this.setPagination(conversationId, {
-          hasMore: false,
-          oldestMessageNs: null,
-          isLoading: false,
-          error: 'This group has sync issues. Try leaving and rejoining.',
-        });
-      } else {
-        this.setPagination(conversationId, {
-          hasMore: false,
-          oldestMessageNs: null,
-          isLoading: false,
-        });
+      if (needsSync) {
+        console.log(`[StreamManager] Messages load failed, sync needed: ${errorMessage}`);
+        return false;
       }
+
+      // Other error - show error state
+      this.setPagination(conversationId, {
+        hasMore: false,
+        oldestMessageNs: null,
+        isLoading: false,
+        error: errorMessage,
+      });
+      return true; // Don't retry sync for non-epoch errors
     }
+  }
+
+  /**
+   * Start syncing a conversation in background
+   * Continues even if user switches conversations
+   */
+  private startBackgroundSync(conversationId: string, conv: Conversation): void {
+    // Show syncing state immediately
+    this.setPagination(conversationId, {
+      hasMore: true,
+      oldestMessageNs: null,
+      isLoading: false,
+      isSyncing: true,
+    });
+
+    // Start sync and track the promise
+    const syncPromise = (async () => {
+      try {
+        console.log(`[StreamManager] Syncing conversation ${conversationId}...`);
+
+        // Let sync run without timeout - it needs to catch up on epochs
+        await conv.sync();
+
+        console.log(`[StreamManager] Sync complete for ${conversationId}, reloading messages`);
+
+        // Sync complete - try loading messages again
+        this.loadedMessageConversations.delete(conversationId);
+        const loaded = await this.tryLoadMessages(conversationId, conv);
+
+        if (!loaded) {
+          // Still can't load after sync - show error
+          this.setPagination(conversationId, {
+            hasMore: false,
+            oldestMessageNs: null,
+            isLoading: false,
+            isSyncing: false,
+            error: 'Failed to load messages after sync',
+          });
+        }
+      } catch (error) {
+        console.error(`[StreamManager] Sync failed for ${conversationId}:`, error);
+        this.setPagination(conversationId, {
+          hasMore: false,
+          oldestMessageNs: null,
+          isLoading: false,
+          isSyncing: false,
+          error: 'Sync failed. Try leaving and rejoining the group.',
+        });
+      } finally {
+        this.syncingConversations.delete(conversationId);
+      }
+    })();
+
+    this.syncingConversations.set(conversationId, syncPromise);
   }
 
   /**
@@ -2134,26 +2182,21 @@ class XMTPStreamManager {
     const conv = this.conversations.get(conversationId);
     if (!conv) return;
 
-    // Skip if this is a problematic conversation
-    if (this.problematicConversations.has(conversationId)) {
-      console.warn(`[StreamManager] Skipping sync for problematic conversation: ${conversationId}`);
+    // Skip if this conversation is currently syncing
+    if (this.syncingConversations.has(conversationId)) {
+      console.warn(`[StreamManager] Skipping sync - conversation ${conversationId} is already syncing`);
       return;
     }
 
     try {
       // Sync the conversation to get latest messages from network
-      // Use timeout to prevent hanging on forked groups
-      await withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'syncAndRefresh.sync');
+      await conv.sync();
 
       // Fetch recent messages including membership changes
-      const messages = await withTimeout(
-        conv.messages({
-          limit: BigInt(20),
-          direction: SortDirection.Descending,
-        }),
-        XMTP_OPERATION_TIMEOUT_MS,
-        'syncAndRefresh.messages'
-      );
+      const messages = await conv.messages({
+        limit: BigInt(20),
+        direction: SortDirection.Descending,
+      });
 
       const currentIds = this.getMessageIds(conversationId);
       const currentIdSet = new Set(currentIds);

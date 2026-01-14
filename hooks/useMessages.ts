@@ -204,13 +204,13 @@ export function useMessages(conversationId: string | null) {
     return messageCache.get(messageId) ?? null;
   }, []);
 
-  // Retry loading a problematic conversation
+  // Retry loading a conversation
   const retryConversation = useCallback(async () => {
     if (!conversationId) return;
     loadingConversations.delete(conversationId);
     loadedConversations.delete(conversationId);
     setIsInitialLoading(true);
-    await streamManager.retryProblematicConversation(conversationId);
+    await streamManager.retryConversation(conversationId);
     setIsInitialLoading(false);
   }, [conversationId]);
 
@@ -220,13 +220,15 @@ export function useMessages(conversationId: string | null) {
     isLoading: pagination.isLoading,
     isInitialLoading,
     hasMore: pagination.hasMore,
-    /** Error message if the conversation has sync issues (e.g., forked group) */
+    /** Whether the conversation is syncing (catching up on epochs) */
+    isSyncing: pagination.isSyncing ?? false,
+    /** Error message if sync fails */
     error: pagination.error,
     loadMore,
     sendMessage,
     retryMessage,
     getMessage,
-    /** Retry loading a problematic conversation */
+    /** Retry loading the conversation */
     retryConversation,
   };
 }

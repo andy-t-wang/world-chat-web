@@ -1002,6 +1002,7 @@ export function MessagePanel({
     isLoading,
     isInitialLoading,
     hasMore,
+    isSyncing,
     error: conversationError,
     loadMore,
     sendMessage,
@@ -1765,6 +1766,18 @@ export function MessagePanel({
               >
                 Try Again
               </button>
+            </div>
+          </div>
+        ) : isSyncing ? (
+          <div className="flex items-center justify-center h-full p-4">
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-center max-w-[320px]">
+              <Loader2 className="w-8 h-8 text-[var(--accent-blue)] animate-spin mx-auto mb-3" />
+              <div className="text-[15px] text-[var(--text-primary)] mb-1 font-medium">
+                Syncing group...
+              </div>
+              <p className="text-[13px] text-[var(--text-secondary)]">
+                This group needs to catch up. You can switch to other chats while it syncs.
+              </p>
             </div>
           </div>
         ) : isInitialLoading ? (

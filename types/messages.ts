@@ -161,7 +161,9 @@ export interface PaginationState {
   hasMore: boolean;
   oldestMessageNs: bigint | null;
   isLoading: boolean;
-  /** Error message if the conversation has sync issues (e.g., forked group) */
+  /** Whether the conversation is syncing (catching up on epochs) */
+  isSyncing?: boolean;
+  /** Error message if sync fails completely */
   error?: string;
 }
 
