@@ -89,6 +89,16 @@ export function TickerChartModal({ symbol, data, onClose, onRetry, isLoading }: 
     maximumFractionDigits: data.priceChange24h < 1 ? 6 : 2,
   }).format(Math.abs(data.priceChange24h));
 
+  // Format market cap
+  const formattedMarketCap = data.marketCap
+    ? new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        notation: 'compact',
+        maximumFractionDigits: 2,
+      }).format(data.marketCap)
+    : null;
+
   // External URL based on ticker type
   const isStock = data.type === 'stock';
   const externalUrl = isStock
@@ -161,6 +171,11 @@ export function TickerChartModal({ symbol, data, onClose, onRetry, isLoading }: 
             </span>
             <span className="text-[var(--text-tertiary)]">24h</span>
           </div>
+          {formattedMarketCap && (
+            <div className="mt-2 text-[13px] text-[var(--text-secondary)]">
+              Market Cap: <span className="font-medium text-[var(--text-primary)]">{formattedMarketCap}</span>
+            </div>
+          )}
         </div>
 
         {/* Chart */}

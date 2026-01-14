@@ -30,6 +30,7 @@ import { MessageText, MessageLinkPreview } from "./MessageContent";
 import { MessageTickerPreview } from "./TickerPreview";
 import { TickerChartModal } from "./TickerChartModal";
 import type { TickerPriceData } from "@/app/api/ticker-price/route";
+import { updateTickerCache } from "@/hooks/useTickerPrice";
 import { hasTickers } from "@/lib/ticker/utils";
 import { isJustUrl, extractUrls } from "./LinkPreview";
 import { PaymentMessage } from "./PaymentMessage";
@@ -921,6 +922,8 @@ export function MessagePanel({
       if (response.ok) {
         const data = await response.json();
         setTickerModal({ symbol: tickerModal.symbol, data });
+        // Also update the client cache so inline preview updates
+        updateTickerCache(tickerModal.symbol, data);
       }
     } catch (e) {
       console.error('Failed to refresh ticker:', e);

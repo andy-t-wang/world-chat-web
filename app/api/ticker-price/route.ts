@@ -17,6 +17,8 @@ export interface TickerPriceData {
   image?: string;
   /** Whether this is a stock or crypto */
   type: 'crypto' | 'stock';
+  /** Market capitalization in USD */
+  marketCap?: number;
 }
 
 // Server-side cache to minimize API calls
@@ -89,6 +91,7 @@ async function fetchCryptoPrice(symbol: string, coinGeckoId: string): Promise<Ti
     lastUpdated: data.market_data?.last_updated ?? new Date().toISOString(),
     image: data.image?.small,
     type: 'crypto',
+    marketCap: data.market_data?.market_cap?.usd,
   };
 }
 
@@ -167,9 +170,10 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   // Sparkline from all closing prices
   const sparkline7d = bars.map((bar) => bar.c);
 
-  // Fetch ticker details for name and branding
+  // Fetch ticker details for name, branding, and market cap
   let name = config.name || symbol;
   let image: string | undefined;
+  let marketCap: number | undefined;
 
   try {
     const tickerResponse = await fetch(
@@ -184,6 +188,7 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
       const tickerData = await tickerResponse.json();
       if (tickerData.status === 'OK' && tickerData.results) {
         name = tickerData.results.name || name;
+        marketCap = tickerData.results.market_cap;
         // Add API key to branding URL
         if (tickerData.results.branding?.icon_url) {
           image = `${tickerData.results.branding.icon_url}?apiKey=${currentApiKey}`;
@@ -204,6 +209,7 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
     lastUpdated: new Date().toISOString(),
     image,
     type: 'stock',
+    marketCap,
   };
 }
 

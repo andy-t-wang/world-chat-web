@@ -17,6 +17,23 @@ interface CacheEntry {
 const tickerCache = new Map<string, CacheEntry>();
 const pendingRequests = new Map<string, Promise<TickerPriceData>>();
 
+// Simple event system for cache updates
+const cacheListeners = new Map<string, Set<() => void>>();
+
+function subscribeToCacheUpdates(symbol: string, callback: () => void): () => void {
+  if (!cacheListeners.has(symbol)) {
+    cacheListeners.set(symbol, new Set());
+  }
+  cacheListeners.get(symbol)!.add(callback);
+  return () => {
+    cacheListeners.get(symbol)?.delete(callback);
+  };
+}
+
+function notifyCacheUpdate(symbol: string): void {
+  cacheListeners.get(symbol)?.forEach((cb) => cb());
+}
+
 // Client-side cache TTL (use cached data for 2 minutes before refetching)
 const CACHE_TTL_MS = 2 * 60 * 1000;
 
@@ -175,6 +192,22 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
     fetchData(symbol);
   }, [symbol, fetchData]);
 
+  // Subscribe to external cache updates (e.g., when modal refreshes)
+  useEffect(() => {
+    if (!symbol) return;
+
+    const unsubscribe = subscribeToCacheUpdates(symbol, () => {
+      const cached = tickerCache.get(symbol);
+      if (cached) {
+        setData(cached.data);
+        setIsStale(cached.isStale ?? false);
+        setError(null);
+      }
+    });
+
+    return unsubscribe;
+  }, [symbol]);
+
   // Retry function for manual refresh
   const retry = useCallback(() => {
     if (symbol) {
@@ -191,4 +224,17 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
 export function clearTickerCache(): void {
   tickerCache.clear();
   pendingRequests.clear();
+}
+
+/**
+ * Update the cache with new data (used when modal refreshes)
+ * Also notifies any listening hooks to update
+ */
+export function updateTickerCache(symbol: string, data: TickerPriceData): void {
+  tickerCache.set(symbol, {
+    data,
+    timestamp: Date.now(),
+    isStale: false,
+  });
+  notifyCacheUpdate(symbol);
 }
