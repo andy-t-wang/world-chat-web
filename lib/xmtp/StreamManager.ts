@@ -250,7 +250,8 @@ const STREAM_RESTART_DELAY_MS = 2000;  // Wait before restarting crashed stream
 const MAX_STREAM_RESTARTS = 5;          // Max restart attempts before giving up
 
 // Timeout for XMTP operations to prevent hangs on forked groups
-const XMTP_OPERATION_TIMEOUT_MS = 15000; // 15 seconds max for sync/messages
+// Messages should load from local cache almost instantly - if it takes >3s something is wrong
+const XMTP_OPERATION_TIMEOUT_MS = 3000; // 3 seconds max
 
 /**
  * Wrap a promise with a timeout to prevent infinite hangs
