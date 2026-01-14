@@ -1220,13 +1220,15 @@ class XMTPStreamManager {
 
       for (const msg of messages) {
         const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
-        const isOwnMessage = msg.senderInboxId === ownInboxId;
+        // Defensive: only mark as own message if we can properly identify (ownInboxId is set)
+        const isOwnMessage = ownInboxId ? msg.senderInboxId === ownInboxId : false;
 
         // Skip read receipts entirely
         if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) continue;
 
         // Count unread: messages from others that are newer than lastReadTs
-        if (!isOwnMessage && msg.sentAtNs > lastReadTs) {
+        // Only count if we can properly identify own messages (ownInboxId must be set)
+        if (ownInboxId && !isOwnMessage && msg.sentAtNs > lastReadTs) {
           unreadCount++;
         }
 
@@ -1876,12 +1878,15 @@ class XMTPStreamManager {
 
           if (metadata) {
             // Handle unread count and notifications for peer messages
-            const isOwnMessage = msg.senderInboxId === this.client?.inboxId;
+            // Defensive: only count as own message if client.inboxId is available
+            const ownInboxId = this.client?.inboxId;
+            const isOwnMessage = ownInboxId ? msg.senderInboxId === ownInboxId : false;
             const selectedId = store.get(selectedConversationIdAtom);
             const isSelected = selectedId === conversationId;
             const tabVisible = isTabVisible();
 
-            if (!isOwnMessage) {
+            // Only increment unread if we can properly identify own messages
+            if (ownInboxId && !isOwnMessage) {
               // Increment unread only if not viewing this conversation
               if (!isSelected) {
                 metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
@@ -2015,6 +2020,11 @@ class XMTPStreamManager {
         this.incrementMetadataVersion();
         this.resortConversations();
       }
+
+      // Update read timestamp - sending implies we've read everything up to now
+      // This helps sync read state across devices
+      this.lastReadTimestamps.set(conversationId, sentAtNs);
+      this.saveLastReadTimestamps();
 
       return messageId;
     } catch (error) {
@@ -2158,6 +2168,10 @@ class XMTPStreamManager {
         this.incrementMetadataVersion();
         this.resortConversations();
       }
+
+      // Update read timestamp - sending implies we've read everything up to now
+      this.lastReadTimestamps.set(conversationId, sentAtNs);
+      this.saveLastReadTimestamps();
 
       return messageId;
     } catch (error) {
