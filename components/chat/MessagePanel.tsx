@@ -905,11 +905,29 @@ export function MessagePanel({
     symbol: string;
     data: TickerPriceData;
   } | null>(null);
+  const [tickerModalLoading, setTickerModalLoading] = useState(false);
 
   // Handler to open ticker modal (passed to MessageText)
   const handleTickerClick = useCallback((symbol: string, data: TickerPriceData) => {
     setTickerModal({ symbol, data });
   }, []);
+
+  // Handler to refresh ticker data in modal
+  const handleTickerRefresh = useCallback(async () => {
+    if (!tickerModal) return;
+    setTickerModalLoading(true);
+    try {
+      const response = await fetch(`/api/ticker-price?symbol=${encodeURIComponent(tickerModal.symbol)}`);
+      if (response.ok) {
+        const data = await response.json();
+        setTickerModal({ symbol: tickerModal.symbol, data });
+      }
+    } catch (e) {
+      console.error('Failed to refresh ticker:', e);
+    } finally {
+      setTickerModalLoading(false);
+    }
+  }, [tickerModal]);
 
   // Handler to scroll to bottom when dynamic content loads (e.g., ticker preview)
   const handleContentLoad = useCallback(() => {
@@ -2825,6 +2843,8 @@ export function MessagePanel({
           symbol={tickerModal.symbol}
           data={tickerModal.data}
           onClose={() => setTickerModal(null)}
+          onRetry={handleTickerRefresh}
+          isLoading={tickerModalLoading}
         />
       )}
     </div>

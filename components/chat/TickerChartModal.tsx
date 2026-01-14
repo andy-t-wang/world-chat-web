@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { X, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, ExternalLink, RefreshCw } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -19,12 +19,16 @@ interface TickerChartModalProps {
   data: TickerPriceData;
   /** Close callback */
   onClose: () => void;
+  /** Retry callback for refreshing data */
+  onRetry?: () => void;
+  /** Whether data is currently loading */
+  isLoading?: boolean;
 }
 
 /**
  * Modal displaying detailed 7-day price chart for a ticker
  */
-export function TickerChartModal({ symbol, data, onClose }: TickerChartModalProps) {
+export function TickerChartModal({ symbol, data, onClose, onRetry, isLoading }: TickerChartModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape key
@@ -229,8 +233,18 @@ export function TickerChartModal({ symbol, data, onClose }: TickerChartModalProp
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="h-full flex items-center justify-center text-[var(--text-tertiary)]">
-              No chart data available
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-[var(--text-tertiary)]">
+              <span>No chart data available</span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  disabled={isLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 text-[13px] text-[var(--accent-blue)] hover:bg-[var(--bg-hover)] rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                  {isLoading ? 'Refreshing...' : 'Refresh'}
+                </button>
+              )}
             </div>
           )}
         </div>
