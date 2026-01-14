@@ -94,6 +94,7 @@ async function fetchCryptoPrice(symbol: string, coinGeckoId: string): Promise<Ti
 
 /**
  * Fetch stock price data from Massive API (formerly Polygon)
+ * Uses single aggregates call for price, change, and sparkline
  */
 async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<TickerPriceData> {
   const apiKey = getMassiveApiKey();
@@ -102,112 +103,69 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   }
 
   const baseUrl = 'https://api.massive.com';
-
-  // Get the most recent trading day (skip weekends)
-  const getLastTradingDay = (date: Date): string => {
-    const day = date.getDay();
-    if (day === 0) date.setDate(date.getDate() - 2); // Sunday -> Friday
-    else if (day === 6) date.setDate(date.getDate() - 1); // Saturday -> Friday
-    return date.toISOString().split('T')[0];
-  };
-
-  // Try to get daily summary for most recent trading day
-  const today = new Date();
-  let currentDate = getLastTradingDay(new Date(today));
-  let previousDate = getLastTradingDay(new Date(today.getTime() - 24 * 60 * 60 * 1000));
-
-  // Fetch daily ticker summary for current price
-  // Try up to 5 previous trading days to find valid data
-  let dailyData: { status: string; close?: number; open?: number; afterHours?: number } | null = null;
   let currentApiKey = apiKey;
 
-  for (let attempts = 0; attempts < 5; attempts++) {
-    const dailyResponse = await fetch(
-      `${baseUrl}/v1/open-close/${config.id}/${currentDate}?adjusted=true&apiKey=${currentApiKey}`,
-      {
-        headers: { Accept: 'application/json' },
-        cache: 'no-store',
-      }
-    );
+  // Calculate date range for 30-day data
+  const today = new Date();
+  const toDate = today.toISOString().split('T')[0];
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
 
-    if (dailyResponse.status === 429) {
-      // Try rotating to next API key before giving up
-      if (MASSIVE_API_KEYS.length > 1) {
-        rotateApiKey();
-        const newKey = getMassiveApiKey();
-        if (newKey && newKey !== currentApiKey) {
-          currentApiKey = newKey;
-          continue; // Retry with new key
-        }
+  // Single API call: fetch 30-day aggregates for price, change, AND sparkline
+  let aggsResponse = await fetch(
+    `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
+    {
+      headers: { Accept: 'application/json' },
+      cache: 'no-store',
+    }
+  );
+
+  // Handle rate limiting with key rotation
+  if (aggsResponse.status === 429) {
+    if (MASSIVE_API_KEYS.length > 1) {
+      rotateApiKey();
+      const newKey = getMassiveApiKey();
+      if (newKey && newKey !== currentApiKey) {
+        currentApiKey = newKey;
+        aggsResponse = await fetch(
+          `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
+          {
+            headers: { Accept: 'application/json' },
+            cache: 'no-store',
+          }
+        );
       }
+    }
+    if (aggsResponse.status === 429) {
       massiveRateLimitedUntil = Date.now() + RATE_LIMIT_BACKOFF_MS;
       throw new Error('RATE_LIMITED');
     }
-
-    if (dailyResponse.ok) {
-      const data = await dailyResponse.json();
-      if (data.status === 'OK') {
-        dailyData = data;
-        break;
-      }
-    }
-
-    // Try previous trading day
-    const prevDay = new Date(currentDate);
-    prevDay.setDate(prevDay.getDate() - 1);
-    currentDate = getLastTradingDay(prevDay);
-
-    const prevPrevDay = new Date(previousDate);
-    prevPrevDay.setDate(prevPrevDay.getDate() - 1);
-    previousDate = getLastTradingDay(prevPrevDay);
   }
 
-  if (!dailyData || dailyData.status !== 'OK') {
+  if (!aggsResponse.ok) {
+    throw new Error(`Massive API error: ${aggsResponse.status}`);
+  }
+
+  const aggsData = await aggsResponse.json();
+
+  // Accept both 'OK' and 'DELAYED' status
+  const validStatus = aggsData.status === 'OK' || aggsData.status === 'DELAYED';
+  if (!validStatus || !aggsData.results || aggsData.results.length === 0) {
     throw new Error('No data available for this stock');
   }
 
-  // Fetch previous day for price change calculation
-  const prevDailyResponse = await fetch(
-    `${baseUrl}/v1/open-close/${config.id}/${previousDate}?adjusted=true&apiKey=${currentApiKey}`,
-    {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    }
-  );
+  // Extract data from aggregates
+  const bars = aggsData.results as Array<{ c: number; o: number; h: number; l: number }>;
+  const latestBar = bars[bars.length - 1];
+  const previousBar = bars.length > 1 ? bars[bars.length - 2] : latestBar;
 
-  let previousClose = dailyData.open ?? dailyData.close ?? 0; // Fallback to open price
-  if (prevDailyResponse.ok) {
-    const prevDailyData = await prevDailyResponse.json();
-    if (prevDailyData.status === 'OK' && prevDailyData.close) {
-      previousClose = prevDailyData.close;
-    }
-  }
-
-  // Calculate price change
-  const currentPrice = dailyData.afterHours ?? dailyData.close ?? 0;
-  const priceChange = previousClose > 0 ? currentPrice - previousClose : 0;
+  const currentPrice = latestBar.c;
+  const previousClose = previousBar.c;
+  const priceChange = currentPrice - previousClose;
   const priceChangePercent = previousClose > 0 ? (priceChange / previousClose) * 100 : 0;
 
-  // Fetch 30-day sparkline data
-  const thirtyDaysAgo = new Date(currentDate);
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
-
-  const aggsResponse = await fetch(
-    `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/day/${fromDate}/${currentDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
-    {
-      headers: { Accept: 'application/json' },
-      cache: 'no-store',
-    }
-  );
-
-  let sparkline7d: number[] = [];
-  if (aggsResponse.ok) {
-    const aggsData = await aggsResponse.json();
-    if ((aggsData.status === 'OK' || aggsData.status === 'DELAYED') && aggsData.results) {
-      sparkline7d = aggsData.results.map((bar: { c: number }) => bar.c);
-    }
-  }
+  // Sparkline from all closing prices
+  const sparkline7d = bars.map((bar) => bar.c);
 
   // Fetch ticker details for name and branding
   let name = config.name || symbol;
