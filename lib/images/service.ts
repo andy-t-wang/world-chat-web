@@ -180,13 +180,13 @@ function normalizeAttachment(attachment: RemoteAttachmentContent): RemoteAttachm
  */
 async function deriveKey(secret: Uint8Array, salt: Uint8Array): Promise<CryptoKey> {
   const crypto = window.crypto;
-  const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+  const keyMaterial = await crypto.subtle.importKey('raw', secret.buffer as ArrayBuffer, 'HKDF', false, ['deriveKey']);
   return crypto.subtle.deriveKey(
     {
       name: 'HKDF',
       hash: 'SHA-256',
-      salt: salt,
-      info: new Uint8Array(0),
+      salt: salt.buffer as ArrayBuffer,
+      info: new ArrayBuffer(0),
     },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
@@ -205,9 +205,9 @@ async function decryptPayload(
 ): Promise<Uint8Array> {
   const crypto = window.crypto;
   const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: nonce },
+    { name: 'AES-GCM', iv: nonce.buffer as ArrayBuffer },
     key,
-    ciphertext
+    ciphertext.buffer as ArrayBuffer
   );
   return new Uint8Array(decrypted);
 }

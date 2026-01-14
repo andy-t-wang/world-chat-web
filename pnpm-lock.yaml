@@ -44,6 +44,9 @@ importers:
       '@xmtp/content-type-text':
         specifier: ^2.0.2
         version: 2.0.2
+      '@xmtp/proto':
+        specifier: ^3.88.0
+        version: 3.88.0
       jotai:
         specifier: ^2.16.1
         version: 2.16.1(@babel/core@7.28.5)(@babel/template@7.27.2)(@types/react@19.2.7)(react@19.2.3)
@@ -932,6 +935,9 @@ packages:
 
   '@xmtp/proto@3.78.0':
     resolution: {integrity: sha512-JHkkvbdyqpWo1YOg88uOrc2GAsPnfXhIWaUKyIjXQdt4LltR4iAMgXcr1CFN+xjUmOBkAwwJ2JywUYv/uA4yZA==}
+
+  '@xmtp/proto@3.88.0':
+    resolution: {integrity: sha512-mQgkpzi6foqpILuRP3R+VsCKK97g7Lp2tIBa2WcH+tFTcXY5kYEW79hBm+aLHvQO3Vkt8cz53u1fpwxZnTP7kg==}
 
   '@xmtp/wasm-bindings@1.8.1':
     resolution: {integrity: sha512-EH6oMtXAn/Rl8pg/e+dtj2uGDHl6Z35G+yzTNm/EMa1R3e9iNVKQWMFemz9L70lPhAKKkmYMyZRCCCLxgvTnxw==}
@@ -3326,6 +3332,12 @@ snapshots:
       protobufjs: 7.5.4
       rxjs: 7.8.2
       undici: 5.29.0
+
+  '@xmtp/proto@3.88.0':
+    dependencies:
+      long: 5.3.2
+      protobufjs: 7.5.4
+      rxjs: 7.8.2
 
   '@xmtp/wasm-bindings@1.8.1': {}
 

@@ -932,10 +932,14 @@ class XMTPStreamManager {
         for (const msg of messages) {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
-          // Skip read receipts
+          // Handle read receipts
           if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
+              // Peer read receipt - update to show "Read" on our sent messages
               this.updateReadReceipt(conversationId, msg.sentAtNs);
+            } else {
+              // Own read receipt from another device - sync our read state
+              this.syncOwnReadReceipt(conversationId, msg.sentAtNs);
             }
             continue;
           }
@@ -1527,10 +1531,14 @@ class XMTPStreamManager {
         for (const msg of messages) {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
-          // Process read receipts from the peer (but don't display)
+          // Handle read receipts (but don't display)
           if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
+              // Peer read receipt - update to show "Read" on our sent messages
               this.updateReadReceipt(conversationId, msg.sentAtNs);
+            } else {
+              // Own read receipt from another device - sync our read state
+              this.syncOwnReadReceipt(conversationId, msg.sentAtNs);
             }
             continue;
           }
@@ -1706,12 +1714,16 @@ class XMTPStreamManager {
 
           const conversationId = msg.conversationId;
 
-          // Check if this is a read receipt from the peer
+          // Handle read receipts
           const typeId = msg.contentType?.typeId;
 
           if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
+              // Peer read receipt - update to show "Read" on our sent messages
               this.updateReadReceipt(conversationId, msg.sentAtNs);
+            } else {
+              // Own read receipt from another device - sync our read state
+              this.syncOwnReadReceipt(conversationId, msg.sentAtNs);
             }
             continue;
           }
@@ -2199,6 +2211,33 @@ class XMTPStreamManager {
       // Increment version to trigger UI re-renders
       const version = store.get(readReceiptVersionAtom);
       store.set(readReceiptVersionAtom, version + 1);
+    }
+  }
+
+  /**
+   * Sync our own read receipt from another device
+   * Called when we receive a read receipt from our own inboxId (cross-device sync)
+   */
+  private syncOwnReadReceipt(conversationId: string, timestampNs: bigint): void {
+    const existingTs = this.lastReadTimestamps.get(conversationId);
+
+    // Only update if this is a newer timestamp
+    if (!existingTs || timestampNs > existingTs) {
+      this.lastReadTimestamps.set(conversationId, timestampNs);
+      this.saveLastReadTimestamps();
+
+      // Update metadata to reflect 0 unread
+      const metadata = this.conversationMetadata.get(conversationId);
+      if (metadata && metadata.unreadCount > 0) {
+        metadata.unreadCount = 0;
+        // Trigger UI updates
+        const unreadVersion = store.get(unreadVersionAtom);
+        const metadataVersion = store.get(conversationMetadataVersionAtom);
+        store.set(unreadVersionAtom, unreadVersion + 1);
+        store.set(conversationMetadataVersionAtom, metadataVersion + 1);
+        // Update tab title
+        this.updateTabTitle();
+      }
     }
   }
 
