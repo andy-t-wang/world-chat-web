@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import type { TickerPriceData } from '@/app/api/ticker-price/route';
+import { formatTicker } from '@/lib/ticker/utils';
 
 interface TickerChartModalProps {
   /** Ticker symbol */
@@ -130,7 +131,7 @@ export function TickerChartModal({ symbol, data, onClose, onRetry, isLoading }: 
             )}
             <div>
               <h2 className="text-[18px] font-semibold text-[var(--text-primary)]">
-                ${symbol}
+                {formatTicker(symbol, data.type)}
               </h2>
               <p className="text-[13px] text-[var(--text-secondary)]">{data.name}</p>
             </div>

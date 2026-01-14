@@ -1,24 +1,33 @@
 /**
  * Ticker Symbol Utilities
- * Detects and extracts ticker symbols (e.g., $WLD, $wld, $BTC) from message text
+ * Detects and extracts ticker symbols from message text:
+ * - $SYMBOL for crypto (e.g., $BTC, $ETH, $WLD)
+ * - #SYMBOL for stocks (e.g., #AAPL, #TSLA, #MSTR)
  */
 
-// Regex to match ticker symbols: $ followed by 1-5 letters (case-insensitive)
-// Does not match: $100 (numbers only)
-const TICKER_REGEX = /\$([A-Za-z]{1,5})\b/g;
+export type TickerType = 'crypto' | 'stock';
+
+// Regex to match ticker symbols:
+// $ followed by 1-5 letters = crypto
+// # followed by 1-5 letters = stock
+const TICKER_REGEX = /([#$])([A-Za-z]{1,5})\b/g;
 
 export interface TickerMatch {
-  /** Symbol without $ prefix, normalized to uppercase (e.g., "WLD") */
+  /** Symbol without prefix, normalized to uppercase (e.g., "WLD", "AAPL") */
   symbol: string;
-  /** Full match including $ (e.g., "$WLD" or "$wld") */
+  /** Full match including prefix (e.g., "$WLD", "#AAPL") */
   fullMatch: string;
+  /** The prefix character ($ or #) */
+  prefix: '$' | '#';
+  /** Type of ticker based on prefix */
+  type: TickerType;
   /** Position in text */
   index: number;
 }
 
 /**
  * Extract all ticker symbols from text
- * Returns unique tickers (deduped by symbol, normalized to uppercase)
+ * Returns unique tickers (deduped by symbol+type)
  */
 export function extractTickers(text: string): TickerMatch[] {
   const matches: TickerMatch[] = [];
@@ -28,18 +37,24 @@ export function extractTickers(text: string): TickerMatch[] {
   TICKER_REGEX.lastIndex = 0;
 
   while ((match = TICKER_REGEX.exec(text)) !== null) {
+    const prefix = match[1] as '$' | '#';
+    const symbol = match[2].toUpperCase();
+
     matches.push({
-      symbol: match[1].toUpperCase(), // Normalize to uppercase
+      symbol,
       fullMatch: match[0],
+      prefix,
+      type: prefix === '$' ? 'crypto' : 'stock',
       index: match.index,
     });
   }
 
-  // Deduplicate by symbol (keep first occurrence)
+  // Deduplicate by symbol+type (keep first occurrence)
   const seen = new Set<string>();
   return matches.filter((m) => {
-    if (seen.has(m.symbol)) return false;
-    seen.add(m.symbol);
+    const key = `${m.type}:${m.symbol}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
     return true;
   });
 }
@@ -58,4 +73,11 @@ export function hasTickers(text: string): boolean {
 export function getFirstTicker(text: string): TickerMatch | null {
   const tickers = extractTickers(text);
   return tickers.length > 0 ? tickers[0] : null;
+}
+
+/**
+ * Format a ticker for display (with appropriate prefix)
+ */
+export function formatTicker(symbol: string, type: TickerType): string {
+  return type === 'crypto' ? `$${symbol}` : `#${symbol}`;
 }

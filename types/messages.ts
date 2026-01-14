@@ -161,6 +161,8 @@ export interface PaginationState {
   hasMore: boolean;
   oldestMessageNs: bigint | null;
   isLoading: boolean;
+  /** Error message if the conversation has sync issues (e.g., forked group) */
+  error?: string;
 }
 
 /** Cached message for LRU storage */

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getTickerConfig, type TickerConfig } from '@/config/tickers';
+import { getCoinGeckoId, getStockConfig, type TickerConfig } from '@/config/tickers';
 
 /**
  * Ticker price data returned by this API
@@ -76,6 +76,9 @@ async function fetchCryptoPrice(symbol: string, coinGeckoId: string): Promise<Ti
   }
 
   if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('COIN_NOT_FOUND');
+    }
     throw new Error(`CoinGecko API error: ${response.status}`);
   }
 
@@ -146,6 +149,9 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   }
 
   if (!aggsResponse.ok) {
+    if (aggsResponse.status === 404) {
+      throw new Error('STOCK_NOT_FOUND');
+    }
     throw new Error(`Massive API error: ${aggsResponse.status}`);
   }
 
@@ -154,7 +160,7 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   // Accept both 'OK' and 'DELAYED' status
   const validStatus = aggsData.status === 'OK' || aggsData.status === 'DELAYED';
   if (!validStatus || !aggsData.results || aggsData.results.length === 0) {
-    throw new Error('No data available for this stock');
+    throw new Error('STOCK_NOT_FOUND');
   }
 
   // Extract data from aggregates
@@ -216,21 +222,24 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get('symbol')?.toUpperCase();
+  const tickerType = searchParams.get('type') as 'crypto' | 'stock' | null;
 
   if (!symbol) {
     return NextResponse.json({ error: 'Symbol parameter required' }, { status: 400 });
   }
 
-  const config = getTickerConfig(symbol);
-  if (!config) {
-    return NextResponse.json({ error: 'Unsupported ticker symbol' }, { status: 404 });
+  if (!tickerType || (tickerType !== 'crypto' && tickerType !== 'stock')) {
+    return NextResponse.json(
+      { error: 'Type parameter required (crypto or stock)' },
+      { status: 400 }
+    );
   }
 
-  const tickerType = config.type;
   const now = Date.now();
+  const cacheKey = `${tickerType}:${symbol}`;
 
   // Check fresh cache first
-  const cached = cache.get(symbol);
+  const cached = cache.get(cacheKey);
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
     return NextResponse.json(cached.data, {
       headers: {
@@ -273,13 +282,23 @@ export async function GET(request: NextRequest) {
     let priceData: TickerPriceData;
 
     if (tickerType === 'crypto') {
-      priceData = await fetchCryptoPrice(symbol, config.id);
+      // Look up CoinGecko ID dynamically
+      const coinGeckoId = await getCoinGeckoId(symbol);
+      if (!coinGeckoId) {
+        return NextResponse.json(
+          { error: `Crypto symbol ${symbol} not found` },
+          { status: 404 }
+        );
+      }
+      priceData = await fetchCryptoPrice(symbol, coinGeckoId);
     } else {
+      // For stocks, pass symbol directly - Massive API validates
+      const config = getStockConfig(symbol);
       priceData = await fetchStockPrice(symbol, config);
     }
 
     // Update cache
-    cache.set(symbol, { data: priceData, timestamp: now });
+    cache.set(cacheKey, { data: priceData, timestamp: now });
 
     return NextResponse.json(priceData, {
       headers: {
@@ -288,31 +307,45 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error(`[ticker-price] Error fetching ${symbol}:`, error);
+    console.error(`[ticker-price] Error fetching ${tickerType}:${symbol}:`, error);
 
-    // Handle rate limiting
-    if (error instanceof Error && error.message === 'RATE_LIMITED') {
-      if (cached) {
+    // Handle specific errors
+    if (error instanceof Error) {
+      if (error.message === 'COIN_NOT_FOUND') {
         return NextResponse.json(
-          { ...cached.data, stale: true },
+          { error: `Crypto symbol ${symbol} not found` },
+          { status: 404 }
+        );
+      }
+      if (error.message === 'STOCK_NOT_FOUND') {
+        return NextResponse.json(
+          { error: `Stock symbol ${symbol} not found or no data available` },
+          { status: 404 }
+        );
+      }
+      if (error.message === 'RATE_LIMITED') {
+        if (cached) {
+          return NextResponse.json(
+            { ...cached.data, stale: true },
+            {
+              headers: {
+                'Cache-Control': 'public, max-age=30',
+                'X-Cache': 'STALE',
+              },
+            }
+          );
+        }
+
+        return NextResponse.json(
+          { error: 'Rate limited, please try again later' },
           {
+            status: 429,
             headers: {
-              'Cache-Control': 'public, max-age=30',
-              'X-Cache': 'STALE',
+              'Retry-After': '60',
             },
           }
         );
       }
-
-      return NextResponse.json(
-        { error: 'Rate limited, please try again later' },
-        {
-          status: 429,
-          headers: {
-            'Retry-After': '60',
-          },
-        }
-      );
     }
 
     // Return stale cache on error if available

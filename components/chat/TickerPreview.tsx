@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Loader2, RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 import { SparklineChart } from '@/components/charts/SparklineChart';
 import { useTickerPrice } from '@/hooks/useTickerPrice';
-import { extractTickers } from '@/lib/ticker/utils';
-import { isSupportedTicker } from '@/config/tickers';
+import { extractTickers, formatTicker, type TickerType } from '@/lib/ticker/utils';
 import type { TickerPriceData } from '@/app/api/ticker-price/route';
 
 // Format price helper
@@ -27,10 +26,12 @@ function formatPrice(price: number): string {
 }
 
 interface TickerPreviewProps {
-  /** Ticker symbol without $ prefix (e.g., "WLD", "BTC") */
+  /** Ticker symbol without prefix (e.g., "WLD", "BTC", "AAPL") */
   symbol: string;
+  /** Ticker type - crypto ($) or stock (#) */
+  type: TickerType;
   /** Callback when user clicks to open detailed modal */
-  onOpenModal: (symbol: string, data: TickerPriceData) => void;
+  onOpenModal: (symbol: string, type: TickerType, data: TickerPriceData) => void;
   /** Callback when content loads (for scroll adjustment) */
   onLoad?: () => void;
 }
@@ -39,8 +40,8 @@ interface TickerPreviewProps {
  * Premium fintech-style price card
  * Refined typography, interactive chart, subtle depth
  */
-export function TickerPreview({ symbol, onOpenModal, onLoad }: TickerPreviewProps) {
-  const { data, isLoading, error, isStale, status, retry } = useTickerPrice(symbol);
+export function TickerPreview({ symbol, type, onOpenModal, onLoad }: TickerPreviewProps) {
+  const { data, isLoading, error, isStale, status, retry } = useTickerPrice(symbol, type);
   const [hoveredPrice, setHoveredPrice] = useState<number | null>(null);
   const hasCalledOnLoad = useRef(false);
 
@@ -58,6 +59,9 @@ export function TickerPreview({ symbol, onOpenModal, onLoad }: TickerPreviewProp
       });
     }
   }, [data, onLoad]);
+
+  // Format display with correct prefix
+  const displaySymbol = formatTicker(symbol, type);
 
   // Loading state - skeleton pulse
   if (isLoading && !data) {
@@ -89,7 +93,7 @@ export function TickerPreview({ symbol, onOpenModal, onLoad }: TickerPreviewProp
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-[var(--text-quaternary)]" />
             <span className="text-[13px] text-[var(--text-tertiary)]">
-              {symbol} unavailable
+              {displaySymbol} unavailable
             </span>
           </div>
           <button
@@ -117,13 +121,13 @@ export function TickerPreview({ symbol, onOpenModal, onLoad }: TickerPreviewProp
 
   return (
     <div
-      onClick={() => onOpenModal(symbol, data)}
+      onClick={() => onOpenModal(symbol, type, data)}
       className="group cursor-pointer w-[240px] rounded-xl bg-[var(--bg-tertiary)] p-3.5 shadow-sm hover:shadow-md transition-all duration-200 hover:scale-[1.02] outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-blue)] focus-visible:ring-offset-2"
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          onOpenModal(symbol, data);
+          onOpenModal(symbol, type, data);
         }
       }}
     >
@@ -149,7 +153,7 @@ export function TickerPreview({ symbol, onOpenModal, onLoad }: TickerPreviewProp
               {data.name}
             </div>
             <div className="text-[12px] text-[var(--text-tertiary)] font-medium tracking-wide">
-              {symbol}
+              {displaySymbol}
               {isStale && <span className="opacity-50 ml-1">•</span>}
             </div>
           </div>
@@ -209,18 +213,18 @@ interface MessageTickerPreviewProps {
   /** Full message text to extract tickers from */
   text: string;
   /** Callback when user clicks to open detailed modal */
-  onOpenModal: (symbol: string, data: TickerPriceData) => void;
+  onOpenModal: (symbol: string, type: TickerType, data: TickerPriceData) => void;
   /** Callback when content loads (for scroll adjustment) */
   onLoad?: () => void;
 }
 
 /**
- * Wrapper component that extracts the first supported ticker from message text
+ * Wrapper component that extracts the first ticker from message text
  * and renders a TickerPreview for it
  */
 export function MessageTickerPreview({ text, onOpenModal, onLoad }: MessageTickerPreviewProps) {
-  // Extract tickers and filter to supported ones
-  const tickers = extractTickers(text).filter((t) => isSupportedTicker(t.symbol));
+  // Extract tickers (now supports both $ and #)
+  const tickers = extractTickers(text);
 
   // Only show preview for first ticker (like link previews)
   if (tickers.length === 0) {
@@ -229,5 +233,12 @@ export function MessageTickerPreview({ text, onOpenModal, onLoad }: MessageTicke
 
   const firstTicker = tickers[0];
 
-  return <TickerPreview symbol={firstTicker.symbol} onOpenModal={onOpenModal} onLoad={onLoad} />;
+  return (
+    <TickerPreview
+      symbol={firstTicker.symbol}
+      type={firstTicker.type}
+      onOpenModal={onOpenModal}
+      onLoad={onLoad}
+    />
+  );
 }

@@ -249,6 +249,22 @@ const BACKGROUND_REFRESH_LIMIT = 100; // Limit for background sync refreshes
 const STREAM_RESTART_DELAY_MS = 2000;  // Wait before restarting crashed stream
 const MAX_STREAM_RESTARTS = 5;          // Max restart attempts before giving up
 
+// Timeout for XMTP operations to prevent hangs on forked groups
+const XMTP_OPERATION_TIMEOUT_MS = 15000; // 15 seconds max for sync/messages
+
+/**
+ * Wrap a promise with a timeout to prevent infinite hangs
+ * Used for XMTP operations that may get stuck on epoch mismatch
+ */
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, operationName: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${operationName} timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
 // localStorage key for persisting last-read timestamps
 const LAST_READ_TIMESTAMPS_KEY = 'xmtp-last-read-timestamps';
 const PEER_READ_RECEIPTS_KEY = 'xmtp-peer-read-receipts';
@@ -369,6 +385,10 @@ class XMTPStreamManager {
   // Track what's been loaded to prevent duplicates
   private conversationsLoaded = false;
   private loadedMessageConversations = new Set<string>();
+
+  // Track conversations with sync issues (e.g., forked groups with epoch mismatch)
+  // These will show an error state instead of hanging indefinitely
+  private problematicConversations = new Set<string>();
 
   // Store conversation metadata (not in atoms to avoid re-renders)
   private conversationMetadata = new Map<string, ConversationMetadata>();
@@ -1040,10 +1060,21 @@ class XMTPStreamManager {
       return;
     }
 
+    // Skip if this is a problematic conversation
+    if (this.problematicConversations.has(conversationId)) {
+      console.warn(`[StreamManager] Skipping metadata refresh for problematic conversation: ${conversationId}`);
+      return;
+    }
+
     try {
       // Sync the conversation to get latest member list
+      // Use timeout to prevent hanging on forked groups
       if ('sync' in conversation) {
-        await (conversation as unknown as { sync: () => Promise<unknown> }).sync();
+        await withTimeout(
+          (conversation as unknown as { sync: () => Promise<unknown> }).sync(),
+          XMTP_OPERATION_TIMEOUT_MS,
+          'refreshMetadata.sync'
+        );
       }
 
       // Rebuild metadata
@@ -1053,6 +1084,23 @@ class XMTPStreamManager {
     } catch (error) {
       console.error(`[StreamManager] Failed to refresh conversation metadata:`, error);
     }
+  }
+
+  /**
+   * Check if a conversation is marked as problematic (has sync issues)
+   */
+  isConversationProblematic(conversationId: string): boolean {
+    return this.problematicConversations.has(conversationId);
+  }
+
+  /**
+   * Retry loading a problematic conversation
+   * Clears the problematic flag and attempts to load again
+   */
+  async retryProblematicConversation(conversationId: string): Promise<void> {
+    this.problematicConversations.delete(conversationId);
+    this.loadedMessageConversations.delete(conversationId);
+    await this.loadMessagesForConversation(conversationId);
   }
 
   /**
@@ -1106,22 +1154,28 @@ class XMTPStreamManager {
       conversationType = isConvDm ? 'dm' : 'group';
 
       // Sync first if requested (skip for fast local load)
+      // Use timeout to prevent hanging on forked groups
       if (shouldSync) {
-        await conv.sync();
+        await withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'buildMetadata.sync');
       }
 
       // Parallelize all async calls for much faster metadata building
-      const [rawConsentState, members, messages, dmPeerInboxId, disappearingEnabled, disappearingSettings] = await Promise.all([
-        conv.consentState(),
-        conv.members(),
-        conv.messages({
-          limit: BigInt(MAX_MESSAGES_FOR_UNREAD_COUNT),
-          direction: SortDirection.Descending,
-        }),
-        isConvDm ? conv.peerInboxId() : Promise.resolve(''),
-        conv.isMessageDisappearingEnabled(),
-        conv.messageDisappearingSettings(),
-      ]);
+      // Wrap with timeout to prevent hanging on problematic conversations
+      const [rawConsentState, members, messages, dmPeerInboxId, disappearingEnabled, disappearingSettings] = await withTimeout(
+        Promise.all([
+          conv.consentState(),
+          conv.members(),
+          conv.messages({
+            limit: BigInt(MAX_MESSAGES_FOR_UNREAD_COUNT),
+            direction: SortDirection.Descending,
+          }),
+          isConvDm ? conv.peerInboxId() : Promise.resolve(''),
+          conv.isMessageDisappearingEnabled(),
+          conv.messageDisappearingSettings(),
+        ]),
+        XMTP_OPERATION_TIMEOUT_MS,
+        'buildMetadata.fetch'
+      );
 
       // Process disappearing messages settings
       disappearingMessagesEnabled = disappearingEnabled;
@@ -1480,6 +1534,19 @@ class XMTPStreamManager {
   async loadMessagesForConversation(conversationId: string): Promise<void> {
     if (!this.client) return;
 
+    // Check if this conversation has sync issues (forked group, epoch mismatch, etc.)
+    // These will show an error state instead of hanging indefinitely
+    if (this.problematicConversations.has(conversationId)) {
+      console.warn(`[StreamManager] Skipping problematic conversation: ${conversationId}`);
+      this.setPagination(conversationId, {
+        hasMore: false,
+        oldestMessageNs: null,
+        isLoading: false,
+        error: 'This conversation has sync issues. Try leaving and rejoining the group.',
+      });
+      return;
+    }
+
     // Check if already loaded
     if (this.loadedMessageConversations.has(conversationId)) {
       // Safety check: if marked as loaded but no messages, allow reload
@@ -1505,8 +1572,13 @@ class XMTPStreamManager {
       // Store conversation for later use
       this.conversations.set(conversationId, conv);
 
-      // Background sync - don't block message loading
-      conv.sync().catch(() => {});
+      // Background sync with timeout - don't let it hang forever
+      withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'conv.sync').catch((err) => {
+        // If sync times out, this might be a forked group - mark as problematic
+        if (err?.message?.includes('timed out')) {
+          console.warn(`[StreamManager] Sync timeout for ${conversationId}, may be a forked group`);
+        }
+      });
 
       // Keep fetching until we have enough displayable messages
       const displayableIds: string[] = [];
@@ -1517,11 +1589,13 @@ class XMTPStreamManager {
       while (displayableIds.length < MIN_DISPLAYABLE_MESSAGES && hasMore && iterations < MAX_FETCH_ITERATIONS) {
         iterations++;
 
-        const messages = await conv.messages({
+        // Wrap messages() call with timeout to prevent infinite hang on epoch mismatch
+        const messagesPromise = conv.messages({
           limit: BigInt(BATCH_SIZE),
           sentBeforeNs: oldestMessageNs ?? undefined,
           direction: SortDirection.Descending,
         });
+        const messages = await withTimeout(messagesPromise, XMTP_OPERATION_TIMEOUT_MS, 'conv.messages');
 
 
         if (messages.length === 0) {
@@ -1585,12 +1659,29 @@ class XMTPStreamManager {
 
       // Streams handle new messages - no need for background sync
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('[StreamManager] Failed to load messages:', error);
-      this.setPagination(conversationId, {
-        hasMore: false,
-        oldestMessageNs: null,
-        isLoading: false,
-      });
+
+      // Check if this is a timeout or epoch-related error - mark conversation as problematic
+      const isEpochError = errorMessage.includes('epoch') || errorMessage.includes('forked');
+      const isTimeout = errorMessage.includes('timed out');
+
+      if (isEpochError || isTimeout) {
+        console.warn(`[StreamManager] Marking ${conversationId} as problematic due to: ${errorMessage}`);
+        this.problematicConversations.add(conversationId);
+        this.setPagination(conversationId, {
+          hasMore: false,
+          oldestMessageNs: null,
+          isLoading: false,
+          error: 'This group has sync issues. Try leaving and rejoining.',
+        });
+      } else {
+        this.setPagination(conversationId, {
+          hasMore: false,
+          oldestMessageNs: null,
+          isLoading: false,
+        });
+      }
     }
   }
 
@@ -2042,15 +2133,26 @@ class XMTPStreamManager {
     const conv = this.conversations.get(conversationId);
     if (!conv) return;
 
+    // Skip if this is a problematic conversation
+    if (this.problematicConversations.has(conversationId)) {
+      console.warn(`[StreamManager] Skipping sync for problematic conversation: ${conversationId}`);
+      return;
+    }
+
     try {
       // Sync the conversation to get latest messages from network
-      await conv.sync();
+      // Use timeout to prevent hanging on forked groups
+      await withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'syncAndRefresh.sync');
 
       // Fetch recent messages including membership changes
-      const messages = await conv.messages({
-        limit: BigInt(20),
-        direction: SortDirection.Descending,
-      });
+      const messages = await withTimeout(
+        conv.messages({
+          limit: BigInt(20),
+          direction: SortDirection.Descending,
+        }),
+        XMTP_OPERATION_TIMEOUT_MS,
+        'syncAndRefresh.messages'
+      );
 
       const currentIds = this.getMessageIds(conversationId);
       const currentIdSet = new Set(currentIds);

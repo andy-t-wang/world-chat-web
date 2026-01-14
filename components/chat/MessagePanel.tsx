@@ -31,7 +31,7 @@ import { MessageTickerPreview } from "./TickerPreview";
 import { TickerChartModal } from "./TickerChartModal";
 import type { TickerPriceData } from "@/app/api/ticker-price/route";
 import { updateTickerCache } from "@/hooks/useTickerPrice";
-import { hasTickers } from "@/lib/ticker/utils";
+import { hasTickers, type TickerType } from "@/lib/ticker/utils";
 import { isJustUrl, extractUrls } from "./LinkPreview";
 import { PaymentMessage } from "./PaymentMessage";
 import { ImageMessage } from "./ImageMessage";
@@ -904,13 +904,14 @@ export function MessagePanel({
   // Ticker chart modal state
   const [tickerModal, setTickerModal] = useState<{
     symbol: string;
+    type: TickerType;
     data: TickerPriceData;
   } | null>(null);
   const [tickerModalLoading, setTickerModalLoading] = useState(false);
 
   // Handler to open ticker modal (passed to MessageText)
-  const handleTickerClick = useCallback((symbol: string, data: TickerPriceData) => {
-    setTickerModal({ symbol, data });
+  const handleTickerClick = useCallback((symbol: string, type: TickerType, data: TickerPriceData) => {
+    setTickerModal({ symbol, type, data });
   }, []);
 
   // Handler to refresh ticker data in modal
@@ -918,12 +919,12 @@ export function MessagePanel({
     if (!tickerModal) return;
     setTickerModalLoading(true);
     try {
-      const response = await fetch(`/api/ticker-price?symbol=${encodeURIComponent(tickerModal.symbol)}`);
+      const response = await fetch(`/api/ticker-price?symbol=${encodeURIComponent(tickerModal.symbol)}&type=${tickerModal.type}`);
       if (response.ok) {
         const data = await response.json();
-        setTickerModal({ symbol: tickerModal.symbol, data });
+        setTickerModal({ symbol: tickerModal.symbol, type: tickerModal.type, data });
         // Also update the client cache so inline preview updates
-        updateTickerCache(tickerModal.symbol, data);
+        updateTickerCache(tickerModal.symbol, tickerModal.type, data);
       }
     } catch (e) {
       console.error('Failed to refresh ticker:', e);
@@ -1001,10 +1002,12 @@ export function MessagePanel({
     isLoading,
     isInitialLoading,
     hasMore,
+    error: conversationError,
     loadMore,
     sendMessage,
     retryMessage,
     getMessage,
+    retryConversation,
   } = useMessages(conversationId);
 
   const ownInboxId = client?.inboxId ?? "";
@@ -1747,7 +1750,24 @@ export function MessagePanel({
             peerAddress={peerAddress}
           />
         )}
-        {isInitialLoading ? (
+        {conversationError ? (
+          <div className="flex items-center justify-center h-full p-4">
+            <div className="bg-[var(--bg-secondary)] border border-[var(--border-subtle)] rounded-xl p-4 text-center max-w-[320px]">
+              <div className="text-[15px] text-[var(--text-primary)] mb-2 font-medium">
+                Unable to load messages
+              </div>
+              <p className="text-[13px] text-[var(--text-secondary)] mb-3">
+                {conversationError}
+              </p>
+              <button
+                onClick={retryConversation}
+                className="px-4 py-2 text-[14px] font-medium text-white bg-[var(--accent-blue)] rounded-lg hover:opacity-90 transition-opacity"
+              >
+                Try Again
+              </button>
+            </div>
+          </div>
+        ) : isInitialLoading ? (
           <div className="flex items-center justify-center h-full">
             <Loader2 className="w-6 h-6 text-[var(--accent-blue)] animate-spin" />
           </div>

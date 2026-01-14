@@ -3,18 +3,18 @@
 import { useMemo, type ReactNode } from 'react';
 import { LinkPreview, extractUrls } from './LinkPreview';
 import { useLinkPreview } from '@/hooks/useLinkPreview';
-import { isSupportedTicker } from '@/config/tickers';
+import type { TickerType } from '@/lib/ticker/utils';
 
 interface MessageTextProps {
   text: string;
   isOwnMessage: boolean;
   /** Callback when a ticker symbol is clicked */
-  onTickerClick?: (symbol: string) => void;
+  onTickerClick?: (symbol: string, type: TickerType) => void;
 }
 
 // Regex patterns
 const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
-const TICKER_PATTERN = /\$([A-Za-z]{1,5})\b/g; // Case-insensitive
+const TICKER_PATTERN = /([#$])([A-Za-z]{1,5})\b/g; // $ for crypto, # for stocks
 
 // Component to render just the text content with clickable links and tickers
 export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextProps) {
@@ -25,6 +25,7 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
       type: 'url' | 'ticker';
       match: string;
       symbol?: string;
+      tickerType?: TickerType;
       start: number;
       end: number;
     }> = [];
@@ -41,21 +42,21 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
       });
     }
 
-    // Find tickers
+    // Find tickers ($ for crypto, # for stocks)
     let tickerMatch;
     const tickerRegex = new RegExp(TICKER_PATTERN.source, 'g');
     while ((tickerMatch = tickerRegex.exec(text)) !== null) {
-      const symbol = tickerMatch[1].toUpperCase(); // Normalize to uppercase
-      // Only highlight supported tickers
-      if (isSupportedTicker(symbol)) {
-        matches.push({
-          type: 'ticker',
-          match: tickerMatch[0],
-          symbol,
-          start: tickerMatch.index,
-          end: tickerMatch.index + tickerMatch[0].length,
-        });
-      }
+      const prefix = tickerMatch[1]; // $ or #
+      const symbol = tickerMatch[2].toUpperCase(); // Normalize to uppercase
+      const tickerType: TickerType = prefix === '$' ? 'crypto' : 'stock';
+      matches.push({
+        type: 'ticker',
+        match: tickerMatch[0],
+        symbol,
+        tickerType,
+        start: tickerMatch.index,
+        end: tickerMatch.index + tickerMatch[0].length,
+      });
     }
 
     // If no matches, return plain text
@@ -95,7 +96,7 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
             {m.match}
           </a>
         );
-      } else if (m.type === 'ticker' && m.symbol) {
+      } else if (m.type === 'ticker' && m.symbol && m.tickerType) {
         // Render ticker as clickable highlighted span
         parts.push(
           <span
@@ -109,12 +110,12 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
             }`}
             onClick={(e) => {
               e.stopPropagation();
-              onTickerClick?.(m.symbol!);
+              onTickerClick?.(m.symbol!, m.tickerType!);
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                onTickerClick?.(m.symbol!);
+                onTickerClick?.(m.symbol!, m.tickerType!);
               }
             }}
           >

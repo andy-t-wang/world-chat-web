@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { TickerPriceData } from '@/app/api/ticker-price/route';
-import { isSupportedTicker } from '@/config/tickers';
+import type { TickerType } from '@/lib/ticker/utils';
 
 /**
  * In-memory cache for ticker price data
@@ -20,18 +20,18 @@ const pendingRequests = new Map<string, Promise<TickerPriceData>>();
 // Simple event system for cache updates
 const cacheListeners = new Map<string, Set<() => void>>();
 
-function subscribeToCacheUpdates(symbol: string, callback: () => void): () => void {
-  if (!cacheListeners.has(symbol)) {
-    cacheListeners.set(symbol, new Set());
+function subscribeToCacheUpdates(cacheKey: string, callback: () => void): () => void {
+  if (!cacheListeners.has(cacheKey)) {
+    cacheListeners.set(cacheKey, new Set());
   }
-  cacheListeners.get(symbol)!.add(callback);
+  cacheListeners.get(cacheKey)!.add(callback);
   return () => {
-    cacheListeners.get(symbol)?.delete(callback);
+    cacheListeners.get(cacheKey)?.delete(callback);
   };
 }
 
-function notifyCacheUpdate(symbol: string): void {
-  cacheListeners.get(symbol)?.forEach((cb) => cb());
+function notifyCacheUpdate(cacheKey: string): void {
+  cacheListeners.get(cacheKey)?.forEach((cb) => cb());
 }
 
 // Client-side cache TTL (use cached data for 2 minutes before refetching)
@@ -57,10 +57,13 @@ export interface UseTickerPriceResult {
  */
 async function fetchTickerPrice(
   symbol: string,
+  type: TickerType,
   attempt = 0,
   onStatus?: (status: string | null) => void
 ): Promise<TickerPriceData> {
-  const response = await fetch(`/api/ticker-price?symbol=${encodeURIComponent(symbol)}`);
+  const response = await fetch(
+    `/api/ticker-price?symbol=${encodeURIComponent(symbol)}&type=${type}`
+  );
 
   if (response.status === 429) {
     // Rate limited - check if we should retry
@@ -76,7 +79,7 @@ async function fetchTickerPrice(
 
       await new Promise((resolve) => setTimeout(resolve, delay));
       onStatus?.(null);
-      return fetchTickerPrice(symbol, attempt + 1, onStatus);
+      return fetchTickerPrice(symbol, type, attempt + 1, onStatus);
     }
     throw new Error('Rate limited - please try again later');
   }
@@ -91,40 +94,41 @@ async function fetchTickerPrice(
 
 /**
  * Hook to fetch and cache ticker price data
- * @param symbol Ticker symbol without $ prefix (e.g., "WLD", "BTC")
+ * @param symbol Ticker symbol without prefix (e.g., "WLD", "BTC", "AAPL")
+ * @param type Ticker type - 'crypto' for $ prefix, 'stock' for # prefix
  */
-export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
+export function useTickerPrice(
+  symbol: string | null,
+  type: TickerType = 'crypto'
+): UseTickerPriceResult {
+  const cacheKey = symbol ? `${type}:${symbol}` : '';
+
   // Initialize from cache if available
   const [data, setData] = useState<TickerPriceData | null>(() => {
-    if (!symbol) return null;
-    const cached = tickerCache.get(symbol);
+    if (!cacheKey) return null;
+    const cached = tickerCache.get(cacheKey);
     return cached?.data ?? null;
   });
   const [isLoading, setIsLoading] = useState(() => {
-    if (!symbol) return false;
-    const cached = tickerCache.get(symbol);
+    if (!cacheKey) return false;
+    const cached = tickerCache.get(cacheKey);
     // Loading if no cache or cache is expired
     return !cached || Date.now() - cached.timestamp > CACHE_TTL_MS;
   });
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [isStale, setIsStale] = useState(() => {
-    if (!symbol) return false;
-    const cached = tickerCache.get(symbol);
+    if (!cacheKey) return false;
+    const cached = tickerCache.get(cacheKey);
     return cached?.isStale ?? false;
   });
 
-  const fetchData = useCallback(async (sym: string, force = false) => {
-    // Check if ticker is supported
-    if (!isSupportedTicker(sym)) {
-      setError('Unsupported ticker');
-      setIsLoading(false);
-      return;
-    }
+  const fetchData = useCallback(async (sym: string, tickerType: TickerType, force = false) => {
+    const key = `${tickerType}:${sym}`;
 
     // Check cache (unless forcing refresh)
     if (!force) {
-      const cached = tickerCache.get(sym);
+      const cached = tickerCache.get(key);
       if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
         setData(cached.data);
         setIsStale(cached.isStale ?? false);
@@ -140,10 +144,10 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
     setStatus(null);
 
     // Deduplicate concurrent requests
-    let fetchPromise = pendingRequests.get(sym);
+    let fetchPromise = pendingRequests.get(key);
     if (!fetchPromise) {
-      fetchPromise = fetchTickerPrice(sym, 0, setStatus);
-      pendingRequests.set(sym, fetchPromise);
+      fetchPromise = fetchTickerPrice(sym, tickerType, 0, setStatus);
+      pendingRequests.set(key, fetchPromise);
     }
 
     try {
@@ -151,7 +155,7 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
       const stale = 'stale' in priceData && (priceData as { stale?: boolean }).stale === true;
 
       // Update cache
-      tickerCache.set(sym, {
+      tickerCache.set(key, {
         data: priceData,
         timestamp: Date.now(),
         isStale: stale,
@@ -167,18 +171,18 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
       setStatus(null);
 
       // Keep showing stale data if available
-      const cached = tickerCache.get(sym);
+      const cached = tickerCache.get(key);
       if (cached) {
         setData(cached.data);
         setIsStale(true);
       }
     } finally {
       setIsLoading(false);
-      pendingRequests.delete(sym);
+      pendingRequests.delete(key);
     }
   }, []);
 
-  // Fetch on mount or symbol change
+  // Fetch on mount or symbol/type change
   useEffect(() => {
     if (!symbol) {
       setData(null);
@@ -189,15 +193,15 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
       return;
     }
 
-    fetchData(symbol);
-  }, [symbol, fetchData]);
+    fetchData(symbol, type);
+  }, [symbol, type, fetchData]);
 
   // Subscribe to external cache updates (e.g., when modal refreshes)
   useEffect(() => {
-    if (!symbol) return;
+    if (!cacheKey) return;
 
-    const unsubscribe = subscribeToCacheUpdates(symbol, () => {
-      const cached = tickerCache.get(symbol);
+    const unsubscribe = subscribeToCacheUpdates(cacheKey, () => {
+      const cached = tickerCache.get(cacheKey);
       if (cached) {
         setData(cached.data);
         setIsStale(cached.isStale ?? false);
@@ -206,14 +210,14 @@ export function useTickerPrice(symbol: string | null): UseTickerPriceResult {
     });
 
     return unsubscribe;
-  }, [symbol]);
+  }, [cacheKey]);
 
   // Retry function for manual refresh
   const retry = useCallback(() => {
     if (symbol) {
-      fetchData(symbol, true);
+      fetchData(symbol, type, true);
     }
-  }, [symbol, fetchData]);
+  }, [symbol, type, fetchData]);
 
   return { data, isLoading, error, isStale, status, retry };
 }
@@ -230,11 +234,16 @@ export function clearTickerCache(): void {
  * Update the cache with new data (used when modal refreshes)
  * Also notifies any listening hooks to update
  */
-export function updateTickerCache(symbol: string, data: TickerPriceData): void {
-  tickerCache.set(symbol, {
+export function updateTickerCache(
+  symbol: string,
+  type: TickerType,
+  data: TickerPriceData
+): void {
+  const cacheKey = `${type}:${symbol}`;
+  tickerCache.set(cacheKey, {
     data,
     timestamp: Date.now(),
     isStale: false,
   });
-  notifyCacheUpdate(symbol);
+  notifyCacheUpdate(cacheKey);
 }
