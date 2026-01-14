@@ -87,25 +87,31 @@ export function TickerPreview({ symbol, type, onOpenModal, onLoad }: TickerPrevi
 
   // Error state
   if (error && !data) {
+    // Check if it's a "not found" error vs other errors
+    const isNotFound = error.toLowerCase().includes('not found');
+
     return (
       <div className="w-[240px] rounded-xl bg-[var(--bg-tertiary)] p-3.5 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-[var(--text-quaternary)]" />
             <span className="text-[13px] text-[var(--text-tertiary)]">
-              {displaySymbol} unavailable
+              {isNotFound ? 'No matching ticker found' : `${displaySymbol} unavailable`}
             </span>
           </div>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              retry();
-            }}
-            className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] transition-colors outline-none"
-            title="Retry"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          {/* Only show retry for non-404 errors */}
+          {!isNotFound && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                retry();
+              }}
+              className="p-1.5 rounded-lg hover:bg-[var(--bg-hover)] text-[var(--text-tertiary)] transition-colors outline-none"
+              title="Retry"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
     );
