@@ -20,7 +20,9 @@ export interface HighlightedInputRef {
 }
 
 // Regex to match tickers ($ for crypto, # for stocks)
+// Note: Use separate regex for test vs exec to avoid lastIndex issues with global flag
 const TICKER_PATTERN = /([#$])([A-Za-z]{1,5})\b/g;
+const TICKER_TEST_PATTERN = /([#$])([A-Za-z]{1,5})\b/;
 
 /**
  * Textarea with highlighted ticker symbols
@@ -147,7 +149,7 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
       return parts;
     }, [value, handleTickerClick]);
 
-    const hasTickers = TICKER_PATTERN.test(value);
+    const hasTickers = TICKER_TEST_PATTERN.test(value);
 
     return (
       <div ref={containerRef} className="relative flex-1 min-w-0">
