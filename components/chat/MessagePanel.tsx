@@ -29,6 +29,7 @@ import { VerificationBadge } from "@/components/ui/VerificationBadge";
 import { MessageText, MessageLinkPreview } from "./MessageContent";
 import { MessageTickerPreview } from "./TickerPreview";
 import { TickerChartModal } from "./TickerChartModal";
+import { HighlightedInput, type HighlightedInputRef } from "./HighlightedInput";
 import type { TickerPriceData } from "@/app/api/ticker-price/route";
 import { updateTickerCache } from "@/hooks/useTickerPrice";
 import { hasTickers, type TickerType } from "@/lib/ticker/utils";
@@ -885,7 +886,7 @@ export function MessagePanel({
   const [message, setMessage] = useAtom(messageInputDraftAtom(conversationId));
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const inputRef = useRef<HighlightedInputRef>(null);
 
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
@@ -1457,9 +1458,9 @@ export function MessagePanel({
         return;
       }
 
-      // Focus textarea and let the key event flow through
-      if (textareaRef.current) {
-        textareaRef.current.focus();
+      // Focus input and let the key event flow through
+      if (inputRef.current) {
+        inputRef.current.focus();
       }
     };
 
@@ -1482,10 +1483,6 @@ export function MessagePanel({
     const replyToId = replyingTo?.messageId;
     setMessage("");
     setReplyingTo(null); // Clear reply state
-    // Reset textarea height to original size
-    if (textareaRef.current) {
-      textareaRef.current.style.height = '44px';
-    }
     setIsSending(true);
     try {
       await sendMessage(content, replyToId);
@@ -1547,8 +1544,8 @@ export function MessagePanel({
       senderAddress: contextMenu.senderAddress,
     });
     setContextMenu(null);
-    // Focus the textarea after a brief delay to ensure UI has updated
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    // Focus the input after a brief delay to ensure UI has updated
+    setTimeout(() => inputRef.current?.focus(), 0);
   }, [contextMenu, setReplyingTo]);
 
   // Handle quick reply from hover button
@@ -1577,8 +1574,8 @@ export function MessagePanel({
         content,
         senderAddress,
       });
-      // Focus the textarea
-      setTimeout(() => textareaRef.current?.focus(), 0);
+      // Focus the input
+      setTimeout(() => inputRef.current?.focus(), 0);
     },
     [conversationType, peerAddress, memberPreviews, client?.inboxId, setReplyingTo, getMessageText]
   );
@@ -2824,20 +2821,13 @@ export function MessagePanel({
             >
               <Paperclip className="w-5 h-5 text-[var(--text-quaternary)]" />
             </button>
-            <textarea
-              ref={textareaRef}
+            <HighlightedInput
+              ref={inputRef}
               value={message}
-              onChange={(e) => {
-                setMessage(e.target.value);
-                // Auto-resize textarea
-                e.target.style.height = 'auto';
-                e.target.style.height = Math.min(e.target.scrollHeight, 128) + 'px';
-              }}
+              onChange={setMessage}
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
-              rows={1}
-              className="flex-1 min-w-0 px-4 py-2.5 bg-[var(--bg-hover)] border border-[var(--border-default)] rounded-2xl text-[var(--text-primary)] placeholder-[var(--text-quaternary)] outline-none resize-none leading-[1.4] transition-all scrollbar-hide"
-              style={{ minHeight: '44px', maxHeight: '128px' }}
+              onTickerClick={handleTickerClick}
             />
             <button
               onClick={handleSend}
