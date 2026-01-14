@@ -125,6 +125,57 @@ interface LoadedAttachment {
 }
 
 /**
+ * Convert a value to Uint8Array if it's been serialized (e.g., through web workers)
+ * Handles: Uint8Array, ArrayBuffer, Array, plain objects with numeric keys
+ */
+function toUint8Array(value: unknown): Uint8Array {
+  // Already a Uint8Array
+  if (value instanceof Uint8Array) {
+    return value;
+  }
+
+  // ArrayBuffer
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+
+  // Array of numbers
+  if (Array.isArray(value)) {
+    return new Uint8Array(value);
+  }
+
+  // Plain object with numeric keys (serialized Uint8Array from web worker)
+  if (typeof value === 'object' && value !== null) {
+    const obj = value as Record<string, number>;
+    const keys = Object.keys(obj);
+    // Check if it looks like a serialized array (keys are "0", "1", "2", etc.)
+    if (keys.length > 0 && keys.every(k => /^\d+$/.test(k))) {
+      const arr = new Uint8Array(keys.length);
+      for (const key of keys) {
+        arr[parseInt(key, 10)] = obj[key];
+      }
+      return arr;
+    }
+  }
+
+  // Fallback - try to create from the value
+  return new Uint8Array(value as ArrayLike<number>);
+}
+
+/**
+ * Normalize a RemoteAttachmentContent to ensure Uint8Array fields are proper Uint8Arrays
+ * This is needed because web worker serialization can convert Uint8Arrays to plain objects
+ */
+function normalizeAttachment(attachment: RemoteAttachmentContent): RemoteAttachmentContent {
+  return {
+    ...attachment,
+    salt: toUint8Array(attachment.salt),
+    nonce: toUint8Array(attachment.nonce),
+    secret: toUint8Array(attachment.secret),
+  };
+}
+
+/**
  * Download and decrypt an image using RemoteAttachmentCodec
  */
 async function downloadAndDecrypt(
@@ -137,11 +188,15 @@ async function downloadAndDecrypt(
     // Import the codec dynamically
     const { RemoteAttachmentCodec } = await import('@xmtp/content-type-remote-attachment');
 
+    // Normalize the attachment to ensure Uint8Array fields are proper Uint8Arrays
+    // (web worker serialization can convert them to plain objects)
+    const normalizedAttachment = normalizeAttachment(remoteAttachment);
+
     // Rewrite URL to go through our proxy to avoid CORS issues
     const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
 
     const proxiedAttachment = {
-      ...remoteAttachment,
+      ...normalizedAttachment,
       url: proxyUrl,
     };
 
