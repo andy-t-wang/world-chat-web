@@ -752,6 +752,9 @@ class XMTPStreamManager {
       // Save any newly initialized lastReadTimestamps
       this.saveLastReadTimestamps();
 
+      // Update badge with initial unread count
+      this.updateTabTitle();
+
       // Schedule another metadata version bump to ensure React components
       // that mounted during the load will re-render with fresh data
       setTimeout(() => {
@@ -840,6 +843,9 @@ class XMTPStreamManager {
       store.set(isLoadingConversationsAtom, false);
       this.incrementMetadataVersion();
       this.saveLastReadTimestamps();
+
+      // Update badge with synced unread counts
+      this.updateTabTitle();
 
       // Refresh messages for any conversations that were already opened
       await this.refreshLoadedConversations();
