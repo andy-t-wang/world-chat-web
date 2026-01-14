@@ -176,37 +176,118 @@ function normalizeAttachment(attachment: RemoteAttachmentContent): RemoteAttachm
 }
 
 /**
- * Download and decrypt an image using RemoteAttachmentCodec
+ * Derive AES-256-GCM key from secret using HKDF
+ */
+async function deriveKey(secret: Uint8Array, salt: Uint8Array): Promise<CryptoKey> {
+  const crypto = window.crypto;
+  const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {
+      name: 'HKDF',
+      hash: 'SHA-256',
+      salt: salt,
+      info: new Uint8Array(0),
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+}
+
+/**
+ * Decrypt ciphertext using AES-256-GCM
+ */
+async function decryptPayload(
+  ciphertext: Uint8Array,
+  nonce: Uint8Array,
+  key: CryptoKey
+): Promise<Uint8Array> {
+  const crypto = window.crypto;
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: nonce },
+    key,
+    ciphertext
+  );
+  return new Uint8Array(decrypted);
+}
+
+/**
+ * Convert bytes to hex string
+ */
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
+ * Download and decrypt an image manually
+ * browser-sdk v6 doesn't have codecFor method, so we implement decryption ourselves
  */
 async function downloadAndDecrypt(
   remoteAttachment: RemoteAttachmentContent,
-  xmtpClient: unknown
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _xmtpClient: unknown
 ): Promise<ImageLoadResult> {
   const { contentDigest, filename, url } = remoteAttachment;
 
   try {
-    // Import the codec dynamically
-    const { RemoteAttachmentCodec } = await import('@xmtp/content-type-remote-attachment');
-
     // Normalize the attachment to ensure Uint8Array fields are proper Uint8Arrays
-    // (web worker serialization can convert them to plain objects)
     const normalizedAttachment = normalizeAttachment(remoteAttachment);
+    const { salt, nonce, secret } = normalizedAttachment;
 
     // Rewrite URL to go through our proxy to avoid CORS issues
     const proxyUrl = `/api/image-proxy?url=${encodeURIComponent(url)}`;
 
-    const proxiedAttachment = {
-      ...normalizedAttachment,
-      url: proxyUrl,
-    };
+    // Fetch encrypted content
+    const response = await fetch(proxyUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch: ${response.status} ${response.statusText}`);
+    }
 
-    // Use the SDK's built-in load method which handles decryption
-    // We use 'as any' because XMTP message content may not exactly match the SDK's expected type
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const attachment = await RemoteAttachmentCodec.load(
-      proxiedAttachment as any,
-      xmtpClient as any
-    ) as LoadedAttachment;
+    const encryptedData = new Uint8Array(await response.arrayBuffer());
+    if (encryptedData.length === 0) {
+      throw new Error('Empty payload');
+    }
+
+    // Verify content digest
+    const crypto = window.crypto;
+    const digestBuffer = await crypto.subtle.digest('SHA-256', encryptedData);
+    const computedDigest = bytesToHex(new Uint8Array(digestBuffer));
+    if (computedDigest !== contentDigest) {
+      throw new Error('Content digest mismatch');
+    }
+
+    // Derive decryption key using HKDF
+    const key = await deriveKey(secret, salt);
+
+    // Decrypt the payload
+    const decryptedData = await decryptPayload(encryptedData, nonce, key);
+
+    // Decode the protobuf EncodedContent
+    // Import proto module dynamically
+    const { content: contentProto } = await import('@xmtp/proto');
+    const encodedContent = contentProto.EncodedContent.decode(decryptedData);
+
+    // The inner content should be an Attachment with data, filename, mimeType
+    // The content is protobuf-encoded attachment data
+    if (!encodedContent.content || encodedContent.content.length === 0) {
+      throw new Error('No content in decoded payload');
+    }
+
+    // For attachment content type, the parameters contain filename and mimeType
+    const attachmentFilename = encodedContent.parameters?.filename || filename || 'attachment';
+    const mimeType = encodedContent.parameters?.mimeType || 'application/octet-stream';
+
+    // The content field contains the raw attachment data
+    const attachmentData = encodedContent.content;
+
+    const attachment: LoadedAttachment = {
+      filename: attachmentFilename,
+      mimeType: mimeType,
+      data: attachmentData,
+    };
 
     // Create blob URL from decrypted data
     const blob = new Blob([attachment.data as BlobPart], { type: attachment.mimeType });
