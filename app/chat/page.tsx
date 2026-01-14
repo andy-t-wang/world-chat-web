@@ -188,6 +188,41 @@ export default function ChatPage() {
     }
   }, [client, selectedId]);
 
+  // Handle disappearing messages change
+  const handleDisappearingMessagesChange = useCallback(async (durationNs: bigint | null) => {
+    if (!client || !selectedId) return;
+
+    try {
+      const conversation = await client.conversations.getConversationById(selectedId);
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      // Type cast to access the disappearing messages methods
+      const conv = conversation as unknown as {
+        updateMessageDisappearingSettings: (fromNs: bigint, inNs: bigint) => Promise<void>;
+        removeMessageDisappearingSettings: () => Promise<void>;
+      };
+
+      if (durationNs === null) {
+        // Turn off disappearing messages
+        await conv.removeMessageDisappearingSettings();
+      } else {
+        // Update to new duration
+        // fromNs is the starting timestamp (now), inNs is the retention duration
+        const nowNs = BigInt(Date.now()) * BigInt(1_000_000);
+        await conv.updateMessageDisappearingSettings(nowNs, durationNs);
+      }
+
+      // Sync and refresh to get the updated settings and any system messages
+      await streamManager.syncAndRefreshMessages(selectedId);
+      await streamManager.refreshConversationMetadata(selectedId);
+    } catch (error) {
+      console.error('Failed to update disappearing messages:', error);
+      throw error;
+    }
+  }, [client, selectedId]);
+
   // Try to restore session on mount if we have a cached session but no client
   const attemptRestore = useCallback(async () => {
     if (hasXmtpClient) {
@@ -400,6 +435,7 @@ export default function ChatPage() {
               isVerified={isGroupVerified}
               verifiedCount={verifiedCount}
               unverifiedCount={unverifiedCount}
+              hasDisappearingMessages={conversationMetadata.disappearingMessagesEnabled}
               onOpenGroupDetails={() => setShowGroupDetails(prev => !prev)}
               onMemberAvatarClick={handleMemberAvatarClick}
               onBack={handleBack}
@@ -413,6 +449,7 @@ export default function ChatPage() {
               peerInboxId={conversationMetadata.peerInboxId}
               isVerified={isPeerVerified}
               isMessageRequest={isMessageRequest}
+              hasDisappearingMessages={conversationMetadata.disappearingMessagesEnabled}
               onOpenPeerProfile={handleOpenPeerProfile}
               onBack={handleBack}
             />
@@ -456,6 +493,9 @@ export default function ChatPage() {
                 onMemberAdded={handleMemberAdded}
                 onMemberRemoved={handleMemberRemoved}
                 onMemberClick={handleMemberAvatarClick}
+                disappearingMessagesEnabled={conversationMetadata.disappearingMessagesEnabled}
+                disappearingMessagesDurationNs={conversationMetadata.disappearingMessagesDurationNs}
+                onDisappearingMessagesChange={handleDisappearingMessagesChange}
               />
             </div>
           </>
@@ -475,6 +515,14 @@ export default function ChatPage() {
                 address={selectedMemberProfile.address}
                 inboxId={selectedMemberProfile.inboxId}
                 onClose={() => setSelectedMemberProfile(null)}
+                // Pass disappearing messages props only for DM conversations viewing the peer
+                {...(conversationMetadata?.conversationType === 'dm' &&
+                     conversationMetadata.peerInboxId === selectedMemberProfile.inboxId && selectedId ? {
+                  conversationId: selectedId,
+                  disappearingMessagesEnabled: conversationMetadata.disappearingMessagesEnabled,
+                  disappearingMessagesDurationNs: conversationMetadata.disappearingMessagesDurationNs,
+                  onDisappearingMessagesChange: handleDisappearingMessagesChange,
+                } : {})}
               />
             </div>
           </>

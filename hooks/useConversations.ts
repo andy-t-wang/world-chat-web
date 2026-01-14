@@ -40,6 +40,9 @@ export interface ConversationMetadata {
   unreadCount: number;
   // Consent state for message requests
   consentState: 'allowed' | 'denied' | 'unknown';
+  // Disappearing messages
+  disappearingMessagesEnabled: boolean;
+  disappearingMessagesDurationNs?: bigint;
 }
 
 /**

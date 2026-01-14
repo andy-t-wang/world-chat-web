@@ -78,7 +78,6 @@ export function UpdateBanner() {
     setStatus('downloading');
     try {
       await electronAPI?.downloadUpdate?.();
-      console.log('[UpdateBanner] Download started');
     } catch (error) {
       console.error('[UpdateBanner] Download failed:', error);
       setStatus('error');

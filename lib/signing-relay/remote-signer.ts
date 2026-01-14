@@ -9,6 +9,7 @@
 
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { toBytes } from 'viem';
+import { IdentifierKind } from '@xmtp/browser-sdk';
 import { supabase, getChannelName } from './client';
 import type { RelayMessage, PendingSignRequest } from './types';
 import { SIGN_TIMEOUT_MS, AUTH_TIMEOUT_MS } from './types';
@@ -306,7 +307,7 @@ export class RemoteSigner {
       type: 'SCW' as const, // Smart Contract Wallet (Safe)
       getIdentifier: () => ({
         identifier: address.toLowerCase(),
-        identifierKind: 'Ethereum' as const,
+        identifierKind: IdentifierKind.Ethereum,
       }),
       signMessage: async (message: string): Promise<Uint8Array> => {
         const signature = await this.requestSignature(message);

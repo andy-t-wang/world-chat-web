@@ -22,6 +22,7 @@ import {
   SmilePlus,
   ChevronLeft,
   Reply,
+  Timer,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
@@ -94,6 +95,35 @@ function StatusMessage({ text }: { text: string }) {
         </p>
       </div>
     </div>
+  );
+}
+
+// Message timestamp with optional timer icon for disappearing messages
+function MessageTimestamp({
+  timeString,
+  isOwnMessage,
+  hasTimer = false,
+  className = "",
+}: {
+  timeString: string;
+  isOwnMessage: boolean;
+  hasTimer?: boolean;
+  className?: string;
+}) {
+  const baseClass = `text-[11px] font-medium ${
+    isOwnMessage ? "text-[var(--text-quaternary)]" : "text-[var(--text-secondary)]"
+  }`;
+
+  return (
+    <span className={`inline-flex items-center gap-1 ${baseClass} ${className}`}>
+      {hasTimer && (
+        <Timer
+          size={11}
+          className={isOwnMessage ? "text-[var(--text-quaternary)]" : "text-[var(--text-secondary)]"}
+        />
+      )}
+      {timeString}
+    </span>
   );
 }
 
@@ -224,6 +254,20 @@ function GroupedMembershipChangeMessage({
   );
 }
 
+// Format disappearing messages duration for display
+function formatDisappearingDuration(durationNs: bigint): string {
+  const hours = Number(durationNs / BigInt(1_000_000_000) / BigInt(3600));
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'}`;
+  }
+  const days = Math.floor(hours / 24);
+  if (days < 7) {
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  const weeks = Math.floor(days / 7);
+  return `${weeks} week${weeks === 1 ? '' : 's'}`;
+}
+
 // Membership change message component - renders XMTP membership changes as status pills
 function MembershipChangeMessage({
   content,
@@ -241,6 +285,27 @@ function MembershipChangeMessage({
     for (const change of content.metadataFieldChanges) {
       if (change.fieldName === 'group_name' && change.newValue) {
         metadataTexts.push(`Group name changed to "${change.newValue}"`);
+      }
+      // Handle disappearing messages changes
+      // Only match the duration field (message_disappear_in_ns), NOT the timestamp field (message_disappear_from_ns)
+      if (change.fieldName === 'message_disappear_in_ns' ||
+          change.fieldName === 'disappear_in_ns' ||
+          change.fieldName === 'retention_duration_ns') {
+        if (change.newValue && change.newValue !== '0') {
+          try {
+            const durationNs = BigInt(change.newValue);
+            if (durationNs > BigInt(0)) {
+              const duration = formatDisappearingDuration(durationNs);
+              metadataTexts.push(`Disappearing messages turned on. Messages will be deleted after ${duration}.`);
+            }
+          } catch {
+            metadataTexts.push('Disappearing messages turned on');
+          }
+        } else if (!change.newValue || change.newValue === '0' || change.newValue === '') {
+          if (change.oldValue && change.oldValue !== '0') {
+            metadataTexts.push('Disappearing messages turned off');
+          }
+        }
       }
     }
   }
@@ -784,6 +849,7 @@ interface MessagePanelProps {
   unverifiedCount?: number;
   memberPreviews?: MemberPreview[];
   isMessageRequest?: boolean;
+  hasDisappearingMessages?: boolean;
   onOpenGroupDetails?: () => void;
   onMemberAvatarClick?: (address: string, inboxId: string) => void;
   onOpenPeerProfile?: () => void;
@@ -805,6 +871,7 @@ export function MessagePanel({
   unverifiedCount,
   memberPreviews,
   isMessageRequest = false,
+  hasDisappearingMessages = false,
   onOpenGroupDetails,
   onMemberAvatarClick,
   onOpenPeerProfile,
@@ -1144,6 +1211,26 @@ export function MessagePanel({
 
       // Check if this is a membership change that can be grouped
       if (curr.isMembershipChange && curr.membershipContent) {
+        const content = curr.membershipContent;
+
+        // Check if this is a metadata-only change (like disappearing messages)
+        const hasMetadataChanges = content.metadataFieldChanges && content.metadataFieldChanges.length > 0;
+        const hasMemberChanges = (content.addedInboxes && content.addedInboxes.length > 0) ||
+                                  (content.removedInboxes && content.removedInboxes.length > 0);
+
+        // Handle metadata-only changes as individual items (don't group them)
+        if (hasMetadataChanges && !hasMemberChanges) {
+          items.push({
+            type: "message",
+            id: curr.id,
+            isFirstInGroup: true,
+            isLastInGroup: true,
+            showAvatar: false,
+          });
+          i++;
+          continue;
+        }
+
         // Collect consecutive membership changes within 1 minute
         const groupedChanges: Array<{ type: 'added' | 'removed'; inboxIds: string[] }> = [];
         const groupedIds: string[] = [];
@@ -1161,18 +1248,26 @@ export function MessagePanel({
           // Stop if date changed
           if (msg.dateKey !== curr.dateKey) break;
 
-          // Add this message's changes to the group
-          const content = msg.membershipContent;
-          if (content.addedInboxes?.length) {
+          // Add this message's changes to the group (skip metadata-only changes)
+          const msgContent = msg.membershipContent;
+          const msgHasMemberChanges = (msgContent.addedInboxes && msgContent.addedInboxes.length > 0) ||
+                                       (msgContent.removedInboxes && msgContent.removedInboxes.length > 0);
+
+          if (!msgHasMemberChanges) {
+            // Metadata-only change - stop grouping here
+            break;
+          }
+
+          if (msgContent.addedInboxes?.length) {
             groupedChanges.push({
               type: 'added',
-              inboxIds: content.addedInboxes.map(m => m.inboxId),
+              inboxIds: msgContent.addedInboxes.map(m => m.inboxId),
             });
           }
-          if (content.removedInboxes?.length) {
+          if (msgContent.removedInboxes?.length) {
             groupedChanges.push({
               type: 'removed',
-              inboxIds: content.removedInboxes.map(m => m.inboxId),
+              inboxIds: msgContent.removedInboxes.map(m => m.inboxId),
             });
           }
           groupedIds.push(msg.id);
@@ -1547,6 +1642,7 @@ export function MessagePanel({
               imageUrl={avatarUrl}
               memberPreviews={memberPreviews}
               size="md"
+              showDisappearingIcon={hasDisappearingMessages}
             />
           ) : (
             <Avatar
@@ -1554,6 +1650,7 @@ export function MessagePanel({
               name={nameOverride}
               imageUrl={avatarUrl}
               size="md"
+              showDisappearingIcon={hasDisappearingMessages}
             />
           )}
           <div className="flex flex-col">
@@ -1838,13 +1935,12 @@ export function MessagePanel({
                             sentAtNs={msg.sentAtNs}
                           />
                           {isLastInGroup && (
-                            <span
-                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
-                                isOwnMessage ? "text-right pr-1" : "ml-1"
-                              }`}
-                            >
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={isOwnMessage}
+                              hasTimer={!!msg.expiresAtNs}
+                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -1905,13 +2001,12 @@ export function MessagePanel({
                             ownInboxId={ownInboxId}
                           />
                           {isLastInGroup && (
-                            <span
-                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
-                                isOwnMessage ? "text-right pr-1" : "ml-1"
-                              }`}
-                            >
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={isOwnMessage}
+                              hasTimer={!!msg.expiresAtNs}
+                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -1990,13 +2085,12 @@ export function MessagePanel({
                             </div>
                           </div>
                           {isLastInGroup && (
-                            <span
-                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
-                                isOwnMessage ? "text-right pr-1" : "ml-1"
-                              }`}
-                            >
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={isOwnMessage}
+                              hasTimer={!!msg.expiresAtNs}
+                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -2069,13 +2163,12 @@ export function MessagePanel({
                             ownInboxId={ownInboxId}
                           />
                           {isLastInGroup && (
-                            <span
-                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
-                                isOwnMessage ? "text-right pr-1" : "ml-1"
-                              }`}
-                            >
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={isOwnMessage}
+                              hasTimer={!!msg.expiresAtNs}
+                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -2089,33 +2182,68 @@ export function MessagePanel({
                   const isReply = typeId === "reply";
                   if (isReply) {
                     // Extract reply content structure
+                    // SDK v6.1.0 Reply format: { content: string | EncodedContent, reference?: string, referenceId?: string, inReplyTo?: DecodedMessage }
                     const replyContent = msg.content as
                       | {
-                          content?: string;
+                          content?: string | { content?: string };
                           reference?: string;
+                          referenceId?: string;
+                          inReplyTo?: {
+                            content?: unknown;
+                            senderInboxId?: string;
+                          };
                         }
                       | undefined;
 
-                    const replyText = replyContent?.content ?? "";
-                    const referencedMessageId = replyContent?.reference;
+                    // Extract reply text - handle both string and EncodedContent formats
+                    let replyText = "";
+                    if (typeof replyContent?.content === "string") {
+                      replyText = replyContent.content;
+                    } else if (replyContent?.content && typeof replyContent.content === "object") {
+                      // EncodedContent format - content is nested
+                      replyText = (replyContent.content as { content?: string }).content ?? "";
+                    }
+
+                    // Get referenced message ID - try both formats
+                    const referencedMessageId = replyContent?.reference ?? replyContent?.referenceId;
 
                     // Look up the original message
                     let quotedContent = "";
                     let quotedSenderAddress = "";
-                    if (referencedMessageId) {
+                    let quotedSenderInboxId = "";
+
+                    // First try to get from inReplyTo (SDK v6.1.0 enriched format)
+                    if (replyContent?.inReplyTo) {
+                      const original = replyContent.inReplyTo;
+                      quotedSenderInboxId = original.senderInboxId ?? "";
+                      // Extract content from original message
+                      if (typeof original.content === "string") {
+                        quotedContent = original.content;
+                      } else if (original.content && typeof original.content === "object") {
+                        const c = original.content as { content?: string; text?: string };
+                        quotedContent = c.content ?? c.text ?? "";
+                      }
+                    }
+
+                    // Fall back to looking up the message if inReplyTo didn't have content
+                    if (!quotedContent && referencedMessageId) {
                       const originalMsg = getMessage(referencedMessageId);
                       if (originalMsg) {
                         quotedContent = getMessageText(originalMsg) ?? "";
-                        // Get sender address
-                        quotedSenderAddress =
-                          conversationType === "group"
-                            ? memberPreviews?.find(
-                                (m) => m.inboxId === originalMsg.senderInboxId
-                              )?.address ?? ""
-                            : originalMsg.senderInboxId === ownInboxId
-                            ? ""
-                            : peerAddress ?? "";
+                        quotedSenderInboxId = originalMsg.senderInboxId;
                       }
+                    }
+
+                    // Resolve sender address from inboxId
+                    if (quotedSenderInboxId) {
+                      quotedSenderAddress =
+                        conversationType === "group"
+                          ? memberPreviews?.find(
+                              (m) => m.inboxId === quotedSenderInboxId
+                            )?.address ?? ""
+                          : quotedSenderInboxId === ownInboxId
+                          ? ""
+                          : peerAddress ?? "";
                     }
 
                     // Get sender address for current message
@@ -2212,13 +2340,12 @@ export function MessagePanel({
                           )}
                           {/* Timestamp for reply messages */}
                           {isLastInGroup && (
-                            <span
-                              className={`text-[11px] text-[var(--text-secondary)] font-medium mt-1 ${
-                                isOwnMessage ? "text-right pr-1" : "ml-1"
-                              }`}
-                            >
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={isOwnMessage}
+                              hasTimer={!!msg.expiresAtNs}
+                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
+                            />
                           )}
                         </div>
                       </div>
@@ -2280,9 +2407,11 @@ export function MessagePanel({
                           {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
                           {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                             <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                              <span className="text-[11px] text-[var(--text-quaternary)] font-medium">
-                                {formatTime(msg.sentAtNs)}
-                              </span>
+                              <MessageTimestamp
+                                timeString={formatTime(msg.sentAtNs)}
+                                isOwnMessage={true}
+                                hasTimer={!!msg.expiresAtNs}
+                              />
                               {item.id === lastOwnMessageId &&
                                 (isRead ? (
                                   <span className="text-[11px] text-[var(--accent-green)] font-medium">
@@ -2343,9 +2472,11 @@ export function MessagePanel({
                         {/* Hide timestamp if there's a pending message after this - prevents jump on send */}
                         {isLastInGroup && !(displayItems[index + 1]?.type === "pending") && (
                           <div className="flex justify-end items-center gap-1.5 mt-1 pr-1">
-                            <span className="text-[11px] text-[var(--text-quaternary)] font-medium">
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={true}
+                              hasTimer={!!msg.expiresAtNs}
+                            />
                             {/* Only show Sent/Read on the very last own message */}
                             {item.id === lastOwnMessageId &&
                               (isRead ? (
@@ -2443,9 +2574,12 @@ export function MessagePanel({
                             </div>
                           </MessageWrapper>
                           {isLastInGroup && (
-                            <span className="text-[11px] text-[var(--text-secondary)] font-medium mt-1 ml-1">
-                              {formatTime(msg.sentAtNs)}
-                            </span>
+                            <MessageTimestamp
+                              timeString={formatTime(msg.sentAtNs)}
+                              isOwnMessage={false}
+                              hasTimer={!!msg.expiresAtNs}
+                              className="mt-1 ml-1"
+                            />
                           )}
                         </div>
                       </div>
@@ -2519,9 +2653,12 @@ export function MessagePanel({
                           </div>
                         )}
                         {isLastInGroup && (
-                          <span className="text-[11px] text-[var(--text-secondary)] font-medium mt-1 ml-1">
-                            {formatTime(msg.sentAtNs)}
-                          </span>
+                          <MessageTimestamp
+                            timeString={formatTime(msg.sentAtNs)}
+                            isOwnMessage={false}
+                            hasTimer={!!msg.expiresAtNs}
+                            className="mt-1 ml-1"
+                          />
                         )}
                       </div>
                     </div>

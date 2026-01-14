@@ -17,7 +17,7 @@ import { searchUsernames } from "@/lib/username/service";
 import { useCanMessage } from "@/hooks/useXmtpClient";
 import { streamManager } from "@/lib/xmtp/StreamManager";
 import type { UsernameRecord } from "@/types/username";
-import type { Identifier } from "@xmtp/browser-sdk";
+import { IdentifierKind, type Identifier } from "@xmtp/browser-sdk";
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -144,11 +144,11 @@ export function NewConversationModal({
       try {
         const identifier: Identifier = {
           identifier: address.toLowerCase(),
-          identifierKind: "Ethereum",
+          identifierKind: IdentifierKind.Ethereum,
         };
 
         // Create or find existing DM using identifier
-        const conversation = await client.conversations.newDmWithIdentifier(
+        const conversation = await client.conversations.createDmWithIdentifier(
           identifier
         );
 

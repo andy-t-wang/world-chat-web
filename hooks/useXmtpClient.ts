@@ -2,7 +2,7 @@
 
 import { useCallback } from 'react';
 import { useAtom } from 'jotai';
-import type { Client, Identifier } from '@xmtp/browser-sdk';
+import { IdentifierKind, type Client, type Identifier } from '@xmtp/browser-sdk';
 import { clientLifecycleAtom, xmtpClientAtom, clientStateAtom } from '@/stores/client';
 import { streamManager } from '@/lib/xmtp/StreamManager';
 import { clearSession } from '@/lib/auth/session';
@@ -52,7 +52,7 @@ export function useCanMessage() {
       try {
         const identifier: Identifier = {
           identifier: address.toLowerCase(),
-          identifierKind: 'Ethereum',
+          identifierKind: IdentifierKind.Ethereum,
         };
         const result = await client.canMessage([identifier]);
         return result.get(address.toLowerCase()) ?? false;

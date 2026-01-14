@@ -25,27 +25,19 @@ let moduleLoadPromise: Promise<
  * Load all XMTP modules in parallel (cached)
  */
 async function loadAllModules() {
-  const [
-    xmtpModule,
-    reactionModule,
-    replyModule,
-    readReceiptModule,
-    remoteAttachmentModule,
-    transactionRefModule,
-  ] = await Promise.all([
-    import("@xmtp/browser-sdk"),
-    import("@xmtp/content-type-reaction"),
-    import("@xmtp/content-type-reply"),
-    import("@xmtp/content-type-read-receipt"),
-    import("@xmtp/content-type-remote-attachment"),
-    import("@/lib/xmtp/TransactionReferenceCodec"),
-  ]);
+  // v6 has built-in send methods (sendText, sendReaction, sendReply, sendReadReceipt)
+  // so we only need codecs for custom types and attachments
+  const [xmtpModule, remoteAttachmentModule, transactionRefModule] =
+    await Promise.all([
+      import("@xmtp/browser-sdk"),
+      import("@xmtp/content-type-remote-attachment"),
+      import("@/lib/xmtp/TransactionReferenceCodec"),
+    ]);
 
   return {
     Client: xmtpModule.Client,
-    ReactionCodec: reactionModule.ReactionCodec,
-    ReplyCodec: replyModule.ReplyCodec,
-    ReadReceiptCodec: readReceiptModule.ReadReceiptCodec,
+    IdentifierKind: xmtpModule.IdentifierKind,
+    LogLevel: xmtpModule.LogLevel,
     RemoteAttachmentCodec: remoteAttachmentModule.RemoteAttachmentCodec,
     AttachmentCodec: remoteAttachmentModule.AttachmentCodec,
     TransactionReferenceCodec: transactionRefModule.TransactionReferenceCodec,
@@ -143,9 +135,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       // Use cached modules for faster load
       const {
         Client,
-        ReactionCodec,
-        ReplyCodec,
-        ReadReceiptCodec,
+        IdentifierKind,
+        LogLevel,
         RemoteAttachmentCodec,
         AttachmentCodec,
         TransactionReferenceCodec,
@@ -156,29 +147,21 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       const xmtpClient = await Client.build(
         {
           identifier: cachedSession.address.toLowerCase(),
-          identifierKind: "Ethereum" as const,
+          identifierKind: IdentifierKind.Ethereum,
         },
         {
           env: "production",
           appVersion: "WorldChat/1.0.0",
-          loggingLevel: "info",
+          loggingLevel: LogLevel.Error,
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
-          disableDeviceSync: false,
+          // v6 has built-in send methods - only need codecs for attachments and custom types
           codecs: [
-            new ReactionCodec(),
-            new ReplyCodec(),
-            new ReadReceiptCodec(),
             new AttachmentCodec(),
             new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
           ],
         }
-      );
-
-      console.log(
-        "[QRXmtpClient] Client restored with inboxId:",
-        xmtpClient.inboxId
       );
 
       // Update cache timestamp (async, don't await)
@@ -256,9 +239,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         // Use cached modules for faster load
         const {
           Client,
-          ReactionCodec,
-          ReplyCodec,
-          ReadReceiptCodec,
+          LogLevel,
           RemoteAttachmentCodec,
           AttachmentCodec,
           TransactionReferenceCodec,
@@ -267,24 +248,16 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         const xmtpClient = await Client.create(signer, {
           env: "production",
           appVersion: "WorldChat/1.0.0",
-          loggingLevel: "info",
+          loggingLevel: LogLevel.Error,
           // Explicitly set history sync URL for cross-device message sync
           historySyncUrl: "https://message-history.ephemera.network",
-          disableDeviceSync: false,
+          // v6 has built-in send methods - only need codecs for attachments and custom types
           codecs: [
-            new ReactionCodec(),
-            new ReplyCodec(),
-            new ReadReceiptCodec(),
             new AttachmentCodec(),
             new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
           ],
         });
-
-        console.log(
-          "[QRXmtpClient] Client created with inboxId:",
-          xmtpClient.inboxId
-        );
 
         // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {

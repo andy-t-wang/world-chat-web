@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Timer } from 'lucide-react';
 import { useUsername } from '@/hooks/useUsername';
 
 interface MemberPreview {
@@ -23,6 +24,8 @@ interface AvatarProps {
   groupName?: string;
   /** Member previews for group stacked avatars */
   memberPreviews?: MemberPreview[];
+  /** Whether to show disappearing messages timer icon */
+  showDisappearingIcon?: boolean;
 }
 
 // Refined color palette - sophisticated, muted tones for secure messaging
@@ -120,6 +123,25 @@ function MiniAvatar({ address, size }: { address: string; size: number }) {
   );
 }
 
+// Timer icon overlay component
+function DisappearingTimerIcon({ size }: { size: 'sm' | 'md' | 'lg' | 'xl' }) {
+  const iconSizes = { sm: 12, md: 14, lg: 16, xl: 18 };
+  const iconSize = iconSizes[size];
+
+  return (
+    <div
+      className="absolute -bottom-0.5 -right-0.5 bg-[var(--bg-primary)] rounded-full p-0.5 shadow-sm"
+      style={{ zIndex: 10 }}
+    >
+      <Timer
+        className="text-[var(--text-secondary)]"
+        size={iconSize}
+        strokeWidth={2}
+      />
+    </div>
+  );
+}
+
 // Group avatar with stacked member avatars or icon fallback
 function GroupAvatar({
   groupName,
@@ -127,12 +149,14 @@ function GroupAvatar({
   memberPreviews,
   size,
   className,
+  showDisappearingIcon,
 }: {
   groupName?: string;
   groupImageUrl?: string;
   memberPreviews?: MemberPreview[];
   size: 'sm' | 'md' | 'lg' | 'xl';
   className: string;
+  showDisappearingIcon?: boolean;
 }) {
   const [imgError, setImgError] = useState(false);
   const dimensions = SIZE_MAP[size];
@@ -141,15 +165,18 @@ function GroupAvatar({
   if (groupImageUrl && !imgError) {
     return (
       <div
-        className={`relative shrink-0 rounded-full overflow-hidden ${className}`}
+        className={`relative shrink-0 ${className}`}
         style={{ width: dimensions.container, height: dimensions.container }}
       >
-        <img
-          src={groupImageUrl}
-          alt={groupName ?? 'Group'}
-          className="w-full h-full object-cover"
-          onError={() => setImgError(true)}
-        />
+        <div className="rounded-full overflow-hidden w-full h-full">
+          <img
+            src={groupImageUrl}
+            alt={groupName ?? 'Group'}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        </div>
+        {showDisappearingIcon && <DisappearingTimerIcon size={size} />}
       </div>
     );
   }
@@ -189,6 +216,7 @@ function GroupAvatar({
         >
           <MiniAvatar address={displayMembers[0].address} size={miniSize} />
         </div>
+        {showDisappearingIcon && <DisappearingTimerIcon size={size} />}
       </div>
     );
   }
@@ -200,19 +228,24 @@ function GroupAvatar({
 
   return (
     <div
-      className={`relative shrink-0 rounded-full flex items-center justify-center ${className}`}
+      className={`relative shrink-0 ${className}`}
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: colors.bg,
       }}
     >
-      <span
-        className="font-light leading-none"
-        style={{ color: colors.text, fontSize: dimensions.text }}
+      <div
+        className="rounded-full flex items-center justify-center w-full h-full"
+        style={{ backgroundColor: colors.bg }}
       >
-        {initials}
-      </span>
+        <span
+          className="font-light leading-none"
+          style={{ color: colors.text, fontSize: dimensions.text }}
+        >
+          {initials}
+        </span>
+      </div>
+      {showDisappearingIcon && <DisappearingTimerIcon size={size} />}
     </div>
   );
 }
@@ -226,6 +259,7 @@ export function Avatar({
   isGroup = false,
   groupName,
   memberPreviews,
+  showDisappearingIcon = false,
 }: AvatarProps) {
   // Handle group avatars
   if (isGroup) {
@@ -236,6 +270,7 @@ export function Avatar({
         memberPreviews={memberPreviews}
         size={size}
         className={className}
+        showDisappearingIcon={showDisappearingIcon}
       />
     );
   }
@@ -260,15 +295,18 @@ export function Avatar({
   if (avatarUrl) {
     return (
       <div
-        className={`relative shrink-0 rounded-full overflow-hidden ${className}`}
+        className={`relative shrink-0 ${className}`}
         style={{ width: dimensions.container, height: dimensions.container }}
       >
-        <img
-          src={avatarUrl}
-          alt={displayLabel}
-          className="w-full h-full object-cover"
-          onError={() => setImgError(true)}
-        />
+        <div className="rounded-full overflow-hidden w-full h-full">
+          <img
+            src={avatarUrl}
+            alt={displayLabel}
+            className="w-full h-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        </div>
+        {showDisappearingIcon && <DisappearingTimerIcon size={size} />}
       </div>
     );
   }
@@ -276,22 +314,27 @@ export function Avatar({
   // No valid profile picture - use colored circle with initials
   return (
     <div
-      className={`relative shrink-0 rounded-full flex items-center justify-center ${className}`}
+      className={`relative shrink-0 ${className}`}
       style={{
         width: dimensions.container,
         height: dimensions.container,
-        backgroundColor: colors.bg,
       }}
     >
-      <span
-        className="font-light leading-none"
-        style={{
-          color: colors.text,
-          fontSize: dimensions.text,
-        }}
+      <div
+        className="rounded-full flex items-center justify-center w-full h-full"
+        style={{ backgroundColor: colors.bg }}
       >
-        {initials}
-      </span>
+        <span
+          className="font-light leading-none"
+          style={{
+            color: colors.text,
+            fontSize: dimensions.text,
+          }}
+        >
+          {initials}
+        </span>
+      </div>
+      {showDisappearingIcon && <DisappearingTimerIcon size={size} />}
     </div>
   );
 }

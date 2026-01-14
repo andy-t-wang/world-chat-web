@@ -206,6 +206,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
       timestamp: formatTimestamp(data.lastActivityNs),
       unreadCount: data.unreadCount ?? 0,
       isNewRequest: isNewRequest(id),
+      hasDisappearingMessages: data.disappearingMessagesEnabled ?? false,
     };
 
     if (data.conversationType === "group") {

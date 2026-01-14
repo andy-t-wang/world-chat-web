@@ -39,6 +39,8 @@ export interface ConversationItemProps {
   isSelected?: boolean;
   /** Whether this is a new/unseen message request */
   isNewRequest?: boolean;
+  /** Whether disappearing messages are enabled for this conversation */
+  hasDisappearingMessages?: boolean;
   onClick?: () => void;
 }
 
@@ -106,6 +108,7 @@ export function ConversationItem(props: ConversationItemProps) {
     isMuted = false,
     isSelected = false,
     isNewRequest = false,
+    hasDisappearingMessages = false,
     onClick,
   } = props;
 
@@ -145,9 +148,10 @@ export function ConversationItem(props: ConversationItemProps) {
           imageUrl={avatarUrl}
           memberPreviews={memberPreviews}
           size="md"
+          showDisappearingIcon={hasDisappearingMessages}
         />
       ) : (
-        <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="md" />
+        <Avatar address={peerAddress} name={nameOverride} imageUrl={avatarUrl} size="md" showDisappearingIcon={hasDisappearingMessages} />
       )}
 
       {/* Content */}

@@ -24,8 +24,8 @@ importers:
         specifier: ^1.9.9
         version: 1.9.9(@types/react@19.2.7)(react@19.2.3)(typescript@5.9.3)(viem@2.43.4(typescript@5.9.3)(zod@4.3.4))(zod@4.3.4)
       '@xmtp/browser-sdk':
-        specifier: ^5.3.0
-        version: 5.3.0
+        specifier: ^6.1.0
+        version: 6.1.0
       '@xmtp/content-type-primitives':
         specifier: ^2.0.3
         version: 2.0.3
@@ -901,15 +901,15 @@ packages:
       react: ^17 || ^18 || ^19
       viem: ^2.23.5
 
-  '@xmtp/browser-sdk@5.3.0':
-    resolution: {integrity: sha512-yWD/wgCwsRHo7knrdPQmqT87DQ2+t7Bm1PYDQx5ntyKskZ9dUI9NA9V2bQV5ro5tsbvLZiSR1/3U0tqd+ky4Yw==}
+  '@xmtp/browser-sdk@6.1.0':
+    resolution: {integrity: sha512-FxSSmEkdqqWcYXXje2Wf1rKlLv68MmH/Ouu73nyUBrmpgDiUm7bICOsWoqIinKz9vDJAq0HifzskNrK8gh76vw==}
     engines: {node: '>=22'}
-
-  '@xmtp/content-type-group-updated@2.0.3':
-    resolution: {integrity: sha512-X4h8KBZftFUGA0Zr/im22E52oDdI/krO8Ulh+PcZVvSBhr7Unj4zaDKWkNKQKylwiIcuCi6/tqf3iqfuptw9nw==}
 
   '@xmtp/content-type-primitives@2.0.3':
     resolution: {integrity: sha512-JOTaNHhcqNO1uAZV9wE8TLEtEgMApuzuoAKMuMRXsKXfAb86G7Pe84moVsr20r7VaIqDjhDlzPw1GYYs7DMODw==}
+
+  '@xmtp/content-type-primitives@3.0.0':
+    resolution: {integrity: sha512-gxK6+k0ywOz39LFJjrUF3fOXWXR3aAmIkF7e0rFz7c27izDimZC5E2oja9iz/CYyzDS6lf9Pm31qRcGTMSYaHg==}
 
   '@xmtp/content-type-reaction@2.0.2':
     resolution: {integrity: sha512-v7wGMycSsUi8NyLR+ytjDhNY4Nr4p8qNwKx8LZPlA8IwLacq2Bp2vKxlOAnGX7m5XP9ivpBNNZvkpR5Limvz1g==}
@@ -926,11 +926,15 @@ packages:
   '@xmtp/content-type-text@2.0.2':
     resolution: {integrity: sha512-nlRufOYPrG5sNbruNPCsb6Qk9/jmJ5lMooPsZEo4Dbwda/2S4bSvrrIncT6if7M2SCha3hxtlgJlFGeTtHy4gQ==}
 
+  '@xmtp/node-bindings@1.8.0':
+    resolution: {integrity: sha512-dyppg1pQNsEdGH13RfsbkbXdnUdjufak6ea1YahjCROgmaJClDpMHcMcSfMzoJzASanU58MwEdCgYUF638NKgw==}
+    engines: {node: '>=22'}
+
   '@xmtp/proto@3.78.0':
     resolution: {integrity: sha512-JHkkvbdyqpWo1YOg88uOrc2GAsPnfXhIWaUKyIjXQdt4LltR4iAMgXcr1CFN+xjUmOBkAwwJ2JywUYv/uA4yZA==}
 
-  '@xmtp/wasm-bindings@1.6.8':
-    resolution: {integrity: sha512-WyKGmD6PMcNTw3PYRYl1w2w4XQH2x8P7FQSrxT8JxTkKx+RnF7JZJylcH386dbKx3QW3J+3j/xfnrwN/X8dnzw==}
+  '@xmtp/wasm-bindings@1.8.1':
+    resolution: {integrity: sha512-EH6oMtXAn/Rl8pg/e+dtj2uGDHl6Z35G+yzTNm/EMa1R3e9iNVKQWMFemz9L70lPhAKKkmYMyZRCCCLxgvTnxw==}
     engines: {node: '>=22'}
 
   '@xtuc/ieee754@1.2.0':
@@ -2367,10 +2371,6 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
-  uuid@11.1.0:
-    resolution: {integrity: sha512-0/A9rDy9P7cJ+8w1c9WD9V//9Wj15Ce2MPz8Ri6032usz+NfePxx5AcN3bN+r6ZL6jEo066/yNYB3tn4pQEx+A==}
-    hasBin: true
-
   viem@2.43.4:
     resolution: {integrity: sha512-PSoML7uG5es/SA1v2988grfcHdMDIogqC0LftdX74q8ZUHj3E7uiAXypNQiUxRZBuyoD5LO1nGEgTU9AGRvuHA==}
     peerDependencies:
@@ -3282,22 +3282,18 @@ snapshots:
       - typescript
       - zod
 
-  '@xmtp/browser-sdk@5.3.0':
+  '@xmtp/browser-sdk@6.1.0':
     dependencies:
-      '@xmtp/content-type-group-updated': 2.0.3
-      '@xmtp/content-type-primitives': 2.0.3
-      '@xmtp/content-type-text': 2.0.2
-      '@xmtp/wasm-bindings': 1.6.8
-      uuid: 11.1.0
-
-  '@xmtp/content-type-group-updated@2.0.3':
-    dependencies:
-      '@xmtp/content-type-primitives': 2.0.3
-      '@xmtp/proto': 3.78.0
+      '@xmtp/content-type-primitives': 3.0.0
+      '@xmtp/wasm-bindings': 1.8.1
 
   '@xmtp/content-type-primitives@2.0.3':
     dependencies:
       '@xmtp/proto': 3.78.0
+
+  '@xmtp/content-type-primitives@3.0.0':
+    dependencies:
+      '@xmtp/node-bindings': 1.8.0
 
   '@xmtp/content-type-reaction@2.0.2':
     dependencies:
@@ -3322,6 +3318,8 @@ snapshots:
     dependencies:
       '@xmtp/content-type-primitives': 2.0.3
 
+  '@xmtp/node-bindings@1.8.0': {}
+
   '@xmtp/proto@3.78.0':
     dependencies:
       long: 5.3.2
@@ -3329,7 +3327,7 @@ snapshots:
       rxjs: 7.8.2
       undici: 5.29.0
 
-  '@xmtp/wasm-bindings@1.6.8': {}
+  '@xmtp/wasm-bindings@1.8.1': {}
 
   '@xtuc/ieee754@1.2.0': {}
 
@@ -5007,8 +5005,6 @@ snapshots:
   use-sync-external-store@1.4.0(react@19.2.3):
     dependencies:
       react: 19.2.3
-
-  uuid@11.1.0: {}
 
   viem@2.43.4(typescript@5.9.3)(zod@4.3.4):
     dependencies:

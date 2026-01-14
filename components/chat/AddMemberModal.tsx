@@ -8,7 +8,7 @@ import { xmtpClientAtom } from "@/stores/client";
 import { searchUsernames } from "@/lib/username/service";
 import { useCanMessage } from "@/hooks/useXmtpClient";
 import type { UsernameRecord } from "@/types/username";
-import type { Identifier } from "@xmtp/browser-sdk";
+import { IdentifierKind, type Identifier } from "@xmtp/browser-sdk";
 
 interface AddMemberModalProps {
   isOpen: boolean;
@@ -164,7 +164,7 @@ export function AddMemberModal({
         // Create identifier for the address
         const identifier: Identifier = {
           identifier: address.toLowerCase(),
-          identifierKind: "Ethereum",
+          identifierKind: IdentifierKind.Ethereum,
         };
 
         // Add the member

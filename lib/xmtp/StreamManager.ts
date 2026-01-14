@@ -8,8 +8,8 @@
  * - Updates Jotai atoms which React subscribes to
  */
 
-import type { Dm, Group } from '@xmtp/browser-sdk';
-import { SortDirection, ConsentState, GroupMessageKind } from '@xmtp/browser-sdk';
+import type { Dm, Group, Reply, Reaction } from '@xmtp/browser-sdk';
+import { SortDirection, ConsentState, GroupMessageKind, IdentifierKind, ReactionAction, ReactionSchema, encodeText } from '@xmtp/browser-sdk';
 import { ContentTypeReadReceipt } from '@xmtp/content-type-read-receipt';
 import type { AnyClient } from '@/types/xmtp';
 import {
@@ -30,7 +30,8 @@ import {
 } from '@/stores';
 import type { ReactionContent, StoredReaction } from '@/stores/messages';
 import type { DecodedMessage } from '@xmtp/browser-sdk';
-import type { PaginationState } from '@/types/messages';
+import type { PaginationState, DisplayReaction } from '@/types/messages';
+import { extractReactions } from '@/types/messages';
 import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash, setCurrentChatName } from '@/lib/notifications';
 import { getCachedUsername, getAvatarUrl, resolveAddress } from '@/lib/username/service';
 
@@ -60,6 +61,9 @@ interface ConversationMetadata {
   unreadCount: number;
   // Consent state for message requests
   consentState: 'allowed' | 'denied' | 'unknown';
+  // Disappearing messages
+  disappearingMessagesEnabled: boolean;
+  disappearingMessagesDurationNs?: bigint;
 }
 
 // Check if a conversation is a DM
@@ -250,12 +254,21 @@ const LAST_READ_TIMESTAMPS_KEY = 'xmtp-last-read-timestamps';
 const PEER_READ_RECEIPTS_KEY = 'xmtp-peer-read-receipts';
 const MAX_MESSAGES_FOR_UNREAD_COUNT = 50; // Only count first N messages per conversation
 
+// Helper to check if a typeId matches a content type (case-insensitive)
+function matchesContentType(typeId: string | undefined, contentType: string): boolean {
+  if (!typeId) return false;
+  const lower = typeId.toLowerCase();
+  const target = contentType.toLowerCase();
+  return lower === target || lower.includes(target);
+}
+
 // Check if a message is a hidden type (shouldn't show ANY preview text)
 function isSpecialContentType(message: { contentType?: { typeId?: string } }): boolean {
   const typeId = message.contentType?.typeId;
   // Only read receipts and reactions are completely hidden
   // Remote attachments show "Image" preview, so not included here
-  return typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION;
+  return matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT) ||
+         matchesContentType(typeId, CONTENT_TYPE_REACTION);
 }
 
 // Extract text content from a message
@@ -394,10 +407,6 @@ class XMTPStreamManager {
 
     this.client = client;
 
-    // Log client info for debugging
-    console.log('[StreamManager] Initializing with inboxId:', client.inboxId);
-    console.log('[StreamManager] Account identifier:', client.accountIdentifier);
-
     // Load persisted data from localStorage
     this.loadLastReadTimestamps();
     this.loadPeerReadReceipts();
@@ -430,7 +439,6 @@ class XMTPStreamManager {
     if (hasCachedConversations) {
       this.performInitialSync();
     } else {
-      console.log('[StreamManager] Fresh install detected, awaiting initial sync...');
       await this.performInitialSync();
     }
 
@@ -651,6 +659,7 @@ class XMTPStreamManager {
           lastActivityNs: BigInt(0),
           unreadCount: 0,
           consentState: 'unknown',
+          disappearingMessagesEnabled: false,
         };
         this.conversationMetadata.set(conv.id, placeholderMetadata);
         ids.push(conv.id);
@@ -771,36 +780,25 @@ class XMTPStreamManager {
     this.initialSyncDone = true;
 
     try {
-      console.log('[StreamManager] Starting initial sync...');
+      // Request message history from other devices (cross-device sync)
+      await this.client.sendSyncRequest();
 
       // First sync preferences to pull in consent state from other devices
       await this.client.preferences.sync();
-      console.log('[StreamManager] Preferences sync completed');
-
-      // Send sync request to other installations to get message history
-      console.log('[StreamManager] Sending sync request to other devices...');
-      await this.client.sendSyncRequest();
-      console.log('[StreamManager] Sync request sent');
 
       // Sync conversation list from network
       await this.client.conversations.sync();
-      console.log('[StreamManager] Conversations sync completed');
 
       // Priority 1: Sync Allowed conversations first (these are the important ones)
-      console.log('[StreamManager] Syncing Allowed conversations...');
-      const allowedSyncResult = await this.client.conversations.syncAll([ConsentState.Allowed]);
-      console.log('[StreamManager] Allowed syncAll result:', allowedSyncResult);
+      await this.client.conversations.syncAll([ConsentState.Allowed]);
 
       // Priority 2: Sync Unknown conversations (message requests)
-      console.log('[StreamManager] Syncing Unknown conversations...');
-      const unknownSyncResult = await this.client.conversations.syncAll([ConsentState.Unknown]);
-      console.log('[StreamManager] Unknown syncAll result:', unknownSyncResult);
+      await this.client.conversations.syncAll([ConsentState.Unknown]);
 
       // Re-list to get any new conversations
       const conversations = await this.client.conversations.list({
         consentStates: [ConsentState.Allowed, ConsentState.Unknown],
       });
-      console.log('[StreamManager] Found', conversations.length, 'conversations after sync');
 
       const currentIds = store.get(conversationIdsAtom);
       const currentIdSet = new Set(currentIds);
@@ -846,8 +844,6 @@ class XMTPStreamManager {
       // Refresh messages for any conversations that were already opened
       await this.refreshLoadedConversations();
 
-      console.log('[StreamManager] Initial sync complete, found', filteredIds.length, 'conversations');
-
       // Schedule another metadata version bump to ensure React components
       // that mounted after the sync started will re-render with fresh data
       setTimeout(() => {
@@ -872,11 +868,8 @@ class XMTPStreamManager {
     this.requestsSynced = true;
 
     try {
-      console.log('[StreamManager] Syncing message requests...');
-
       // Sync Unknown conversations specifically
-      const syncResult = await this.client.conversations.syncAll([ConsentState.Unknown]);
-      console.log('[StreamManager] Message requests syncAll result:', syncResult);
+      await this.client.conversations.syncAll([ConsentState.Unknown]);
 
       // Re-list Unknown conversations
       const unknownConversations = await this.client.conversations.list({
@@ -934,7 +927,7 @@ class XMTPStreamManager {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
           // Skip read receipts
-          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             }
@@ -942,7 +935,7 @@ class XMTPStreamManager {
           }
 
           // Process reactions
-          if (typeId === CONTENT_TYPE_REACTION) {
+          if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
@@ -965,7 +958,7 @@ class XMTPStreamManager {
           const orderedIds: string[] = [];
           for (const msg of messages) {
             const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
-            if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
+            if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT) || matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
               continue;
             }
             orderedIds.push(msg.id);
@@ -1095,6 +1088,8 @@ class XMTPStreamManager {
     let lastActivityNs = BigInt(0);
     let unreadCount = 0;
     let consentState: 'allowed' | 'denied' | 'unknown' = 'unknown';
+    let disappearingMessagesEnabled = false;
+    let disappearingMessagesDurationNs: bigint | undefined;
 
     try {
       const isConvDm = isDm(conv);
@@ -1106,7 +1101,7 @@ class XMTPStreamManager {
       }
 
       // Parallelize all async calls for much faster metadata building
-      const [rawConsentState, members, messages, dmPeerInboxId] = await Promise.all([
+      const [rawConsentState, members, messages, dmPeerInboxId, disappearingEnabled, disappearingSettings] = await Promise.all([
         conv.consentState(),
         conv.members(),
         conv.messages({
@@ -1114,7 +1109,15 @@ class XMTPStreamManager {
           direction: SortDirection.Descending,
         }),
         isConvDm ? conv.peerInboxId() : Promise.resolve(''),
+        conv.isMessageDisappearingEnabled(),
+        conv.messageDisappearingSettings(),
       ]);
+
+      // Process disappearing messages settings
+      disappearingMessagesEnabled = disappearingEnabled;
+      if (disappearingSettings && 'inNs' in disappearingSettings) {
+        disappearingMessagesDurationNs = BigInt((disappearingSettings as { inNs: bigint }).inNs);
+      }
 
       // Process consent state
       if (rawConsentState === ConsentState.Allowed) {
@@ -1154,16 +1157,49 @@ class XMTPStreamManager {
         }
       }
 
-      // Get last read timestamp for this conversation
-      // If no timestamp exists, assume fully read (use current time) to avoid counting old messages as unread
+      // Get last read timestamp for this conversation using SDK's lastReadTimes()
+      // This syncs across devices automatically
       const nowNs = BigInt(Date.now()) * 1_000_000n;
-      let lastReadTs = this.lastReadTimestamps.get(conv.id);
-      if (!lastReadTs) {
-        // First time seeing this conversation - mark as read up to now
-        lastReadTs = nowNs;
-        this.lastReadTimestamps.set(conv.id, nowNs);
-      }
       const ownInboxId = this.client?.inboxId;
+      let lastReadTs: bigint;
+
+      try {
+        // SDK v6: Query lastReadTimes to get our own last read timestamp
+        // This is synced across devices, giving accurate unread counts
+        const lastReadTimes = await conv.lastReadTimes();
+        const sdkLastRead = ownInboxId ? lastReadTimes.get(ownInboxId) : undefined;
+
+        if (sdkLastRead && sdkLastRead > BigInt(0)) {
+          lastReadTs = sdkLastRead;
+          // Also update our local cache for consistency
+          this.lastReadTimestamps.set(conv.id, sdkLastRead);
+        } else {
+          // Fall back to local timestamp if SDK doesn't have one
+          const localTs = this.lastReadTimestamps.get(conv.id);
+          if (localTs) {
+            lastReadTs = localTs;
+          } else {
+            // First time seeing this conversation - mark as read up to now
+            lastReadTs = nowNs;
+            this.lastReadTimestamps.set(conv.id, nowNs);
+          }
+        }
+
+        // Also update peer read receipt while we have the data
+        for (const [inboxId, timestamp] of lastReadTimes) {
+          if (inboxId !== ownInboxId && timestamp > BigInt(0)) {
+            this.updateReadReceipt(conv.id, timestamp);
+            break; // For DMs, there's only one peer
+          }
+        }
+      } catch {
+        // Fall back to local timestamp on error
+        const localTs = this.lastReadTimestamps.get(conv.id);
+        lastReadTs = localTs ?? nowNs;
+        if (!localTs) {
+          this.lastReadTimestamps.set(conv.id, nowNs);
+        }
+      }
 
       // Find displayable messages for preview + count unread
       // Track both: first message from others (for unread preview) and first message overall (fallback)
@@ -1177,7 +1213,7 @@ class XMTPStreamManager {
         const isOwnMessage = msg.senderInboxId === ownInboxId;
 
         // Skip read receipts entirely
-        if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
+        if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) continue;
 
         // Count unread: messages from others that are newer than lastReadTs
         if (!isOwnMessage && msg.sentAtNs > lastReadTs) {
@@ -1188,7 +1224,7 @@ class XMTPStreamManager {
         let previewText = '';
         let previewActivityNs = BigInt(0);
 
-        if (typeId === CONTENT_TYPE_REACTION) {
+        if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
           const reactionContent = await tryDecodeReaction(msg as unknown as {
             content: unknown;
             contentType?: { typeId?: string };
@@ -1262,6 +1298,8 @@ class XMTPStreamManager {
       lastActivityNs,
       unreadCount,
       consentState,
+      disappearingMessagesEnabled,
+      disappearingMessagesDurationNs,
     };
   }
 
@@ -1297,16 +1335,8 @@ class XMTPStreamManager {
           const metadata = await this.buildConversationMetadata(conv, true);
           this.conversationMetadata.set(conv.id, metadata);
 
-          // Log new DM details for debugging
+          // Check for existing DM with same peer address
           if (metadata.conversationType === 'dm') {
-            console.log('[StreamManager] New DM streamed:', {
-              convId: conv.id,
-              peerAddress: metadata.peerAddress,
-              peerInboxId: metadata.peerInboxId,
-              consentState,
-            });
-
-            // Check for existing DM with same peer address
             const existingDm = this.findExistingDmByPeerAddress(metadata.peerAddress);
             if (existingDm && existingDm.convId !== conv.id) {
               console.warn('[StreamManager] DUPLICATE DM detected in stream!', {
@@ -1492,7 +1522,7 @@ class XMTPStreamManager {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
           // Process read receipts from the peer (but don't display)
-          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             }
@@ -1500,7 +1530,7 @@ class XMTPStreamManager {
           }
 
           // Process reactions (but don't display as messages)
-          if (typeId === CONTENT_TYPE_REACTION) {
+          if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
@@ -1513,12 +1543,22 @@ class XMTPStreamManager {
           // This is a displayable message
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
           displayableIds.push(msg.id);
+
+          // Extract inline reactions from SDK v6.1.0 (message.reactions)
+          const msgWithReactions = msg as unknown as { reactions?: DecodedMessage<Reaction>[] };
+          if (msgWithReactions.reactions && msgWithReactions.reactions.length > 0) {
+            this.storeInlineReactions(msg.id, msgWithReactions.reactions);
+          }
         }
 
         // Update oldest for next iteration
         oldestMessageNs = messages[messages.length - 1].sentAtNs;
         hasMore = messages.length === BATCH_SIZE;
       }
+
+      // Trigger reactions update if any were extracted
+      const version = store.get(reactionsVersionAtom);
+      store.set(reactionsVersionAtom, version + 1);
 
       this.setMessageIds(conversationId, displayableIds);
       this.setPagination(conversationId, {
@@ -1580,13 +1620,13 @@ class XMTPStreamManager {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
 
           // Process reactions (but don't display as messages)
-          if (typeId === CONTENT_TYPE_REACTION) {
+          if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             await this.processReaction(msg as unknown as DecodedMessage);
             continue;
           }
 
           // Skip read receipts
-          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             continue;
           }
 
@@ -1599,12 +1639,22 @@ class XMTPStreamManager {
           if (!messageCache.has(msg.id)) {
             messageCache.set(msg.id, msg as unknown as DecodedMessage);
             newDisplayableIds.push(msg.id);
+
+            // Extract inline reactions from SDK v6.1.0 (message.reactions)
+            const msgWithReactions = msg as unknown as { reactions?: DecodedMessage<Reaction>[] };
+            if (msgWithReactions.reactions && msgWithReactions.reactions.length > 0) {
+              this.storeInlineReactions(msg.id, msgWithReactions.reactions);
+            }
           }
         }
 
         oldestMessageNs = messages[messages.length - 1].sentAtNs;
         hasMore = messages.length === BATCH_SIZE;
       }
+
+      // Trigger reactions update if any were extracted
+      const version = store.get(reactionsVersionAtom);
+      store.set(reactionsVersionAtom, version + 1);
 
       // Append to end (older messages go after current ones in our descending list)
       this.setMessageIds(conversationId, [...currentIds, ...newDisplayableIds]);
@@ -1653,7 +1703,7 @@ class XMTPStreamManager {
           // Check if this is a read receipt from the peer
           const typeId = msg.contentType?.typeId;
 
-          if (typeId === CONTENT_TYPE_READ_RECEIPT) {
+          if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) {
             if (msg.senderInboxId !== this.client?.inboxId) {
               this.updateReadReceipt(conversationId, msg.sentAtNs);
             }
@@ -1661,7 +1711,7 @@ class XMTPStreamManager {
           }
 
           // Handle reaction messages
-          if (typeId === CONTENT_TYPE_REACTION) {
+          if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             await this.processReaction(msg as unknown as DecodedMessage, true);
             continue;
           }
@@ -1734,6 +1784,7 @@ class XMTPStreamManager {
                   lastActivityNs: msg.sentAtNs,
                   unreadCount: 0,
                   consentState: 'unknown',
+                  disappearingMessagesEnabled: false,
                 };
                 this.conversationMetadata.set(conversationId, metadata);
               }
@@ -1748,6 +1799,7 @@ class XMTPStreamManager {
                 lastActivityNs: msg.sentAtNs,
                 unreadCount: 0,
                 consentState: 'unknown',
+                disappearingMessagesEnabled: false,
               };
               this.conversationMetadata.set(conversationId, metadata);
             }
@@ -1917,7 +1969,7 @@ class XMTPStreamManager {
 
     try {
       const sentAtNs = BigInt(Date.now()) * 1_000_000n;
-      const messageId = await conv.send(content.trim());
+      const messageId = await conv.sendText(content.trim());
 
       // Add message to cache immediately for optimistic display
       // This prevents the 30+ second delay waiting for stream round-trip
@@ -1981,10 +2033,10 @@ class XMTPStreamManager {
         const msgKind = (msg as { kind?: unknown }).kind;
 
         // Skip read receipts
-        if (typeId === CONTENT_TYPE_READ_RECEIPT) continue;
+        if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT)) continue;
 
         // Skip reactions (they're processed separately)
-        if (typeId === CONTENT_TYPE_REACTION) continue;
+        if (matchesContentType(typeId, CONTENT_TYPE_REACTION)) continue;
 
         // Check if this is a membership change message
         const isMembershipChange =
@@ -1993,7 +2045,6 @@ class XMTPStreamManager {
           msgKind === 1;
 
         if (isMembershipChange) {
-          console.log('[StreamManager] Found membership change message:', msg);
           // Process membership change - creates synthetic status messages
           await this.processMembershipChange(
             msg as { id: string; conversationId: string; content: unknown; sentAtNs: bigint; senderInboxId: string },
@@ -2017,7 +2068,7 @@ class XMTPStreamManager {
           const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
           const msgKind = (msg as { kind?: unknown }).kind;
           // Skip non-displayable types
-          if (typeId === CONTENT_TYPE_READ_RECEIPT || typeId === CONTENT_TYPE_REACTION) {
+          if (matchesContentType(typeId, CONTENT_TYPE_READ_RECEIPT) || matchesContentType(typeId, CONTENT_TYPE_REACTION)) {
             continue;
           }
           // Skip membership changes (handled separately)
@@ -2042,31 +2093,33 @@ class XMTPStreamManager {
   async sendReply(
     conversationId: string,
     replyToMessageId: string,
-    content: string
+    content: string,
+    originalSenderInboxId?: string
   ): Promise<string | null> {
     const conv = this.conversations.get(conversationId);
     if (!conv || !content.trim()) return null;
 
     try {
-      // Import the reply content type
-      const { ContentTypeReply } = await import('@xmtp/content-type-reply');
-      const { ContentTypeText } = await import('@xmtp/content-type-text');
-
       const sentAtNs = BigInt(Date.now()) * 1_000_000n;
 
-      const replyContent = {
-        content: content.trim(),
+      // Encode the text content for the reply
+      const encodedContent = await encodeText(content.trim());
+
+      // Construct the Reply object for v6 API
+      const reply: Reply = {
         reference: replyToMessageId,
-        contentType: ContentTypeText,
+        referenceInboxId: originalSenderInboxId,
+        content: encodedContent,
       };
 
-      const messageId = await conv.send(replyContent, ContentTypeReply);
+      // Use new v6 sendReply API
+      const messageId = await conv.sendReply(reply);
 
       // Add message to cache immediately for optimistic display
       const optimisticMessage = {
         id: messageId,
         conversationId,
-        content: replyContent, // Reply content object
+        content: reply,
         senderInboxId: this.client?.inboxId ?? '',
         sentAtNs,
         contentType: { typeId: 'reply', authorityId: 'xmtp.org' },
@@ -2113,8 +2166,8 @@ class XMTPStreamManager {
         }
       }
 
-      // Send empty object with read receipt content type
-      await conv.send({}, ContentTypeReadReceipt);
+      // Use new v6 sendReadReceipt API
+      await conv.sendReadReceipt();
     } catch {
       // Read receipt failures are non-critical
     }
@@ -2162,6 +2215,44 @@ class XMTPStreamManager {
   getReadReceiptTimestamp(conversationId: string): bigint | undefined {
     const receipts = store.get(readReceiptsAtom);
     return receipts.get(conversationId);
+  }
+
+  /**
+   * Query the SDK for last read times of all members in a conversation
+   * Uses the v6 SDK's lastReadTimes() method for accurate read status
+   * Returns the peer's last read time for DMs, or undefined if not available
+   */
+  async fetchLastReadTimes(conversationId: string): Promise<bigint | undefined> {
+    const conv = this.conversations.get(conversationId);
+    if (!conv || !this.client) return undefined;
+
+    try {
+      // SDK v6 provides lastReadTimes() which returns Map<inboxId, timestamp>
+      const lastReadTimes = await conv.lastReadTimes();
+      const ownInboxId = this.client.inboxId;
+
+      // For DMs, find the peer's last read time
+      // For groups, we could aggregate but for now return the most recent non-self read
+      let peerLastRead: bigint | undefined;
+
+      for (const [inboxId, timestamp] of lastReadTimes) {
+        if (inboxId !== ownInboxId) {
+          if (!peerLastRead || timestamp > peerLastRead) {
+            peerLastRead = timestamp;
+          }
+        }
+      }
+
+      // Update our read receipts atom if we got a newer timestamp
+      if (peerLastRead) {
+        this.updateReadReceipt(conversationId, peerLastRead);
+      }
+
+      return peerLastRead;
+    } catch (error) {
+      console.error('[StreamManager] Failed to fetch last read times:', error);
+      return undefined;
+    }
   }
 
   /**
@@ -2227,7 +2318,7 @@ class XMTPStreamManager {
       // Use type assertion since AnyClient type doesn't expose this method directly
       const clientWithMethod = this.client as unknown as {
         inboxStateFromInboxIds: (ids: string[], refresh: boolean) => Promise<Array<{
-          identifiers?: Array<{ identifier: string; identifierKind: string }>;
+          identifiers?: Array<{ identifier: string; identifierKind: IdentifierKind }>;
         }>>;
       };
       const inboxStates = await clientWithMethod.inboxStateFromInboxIds([inboxId], false);
@@ -2235,7 +2326,7 @@ class XMTPStreamManager {
         const state = inboxStates[0];
         // Get first Ethereum identifier
         const ethIdentifier = state.identifiers?.find(
-          (id) => id.identifierKind === 'Ethereum'
+          (id) => id.identifierKind === IdentifierKind.Ethereum
         );
         if (ethIdentifier?.identifier) {
           // Cache it
@@ -2399,6 +2490,47 @@ class XMTPStreamManager {
 
     // Update metadata version to trigger re-render
     this.incrementMetadataVersion();
+  }
+
+  /**
+   * Extract and store inline reactions from a message
+   * SDK v6.1.0 provides message.reactions: DecodedMessage<Reaction>[]
+   * This extracts those inline reactions and adds them to reactionsAtom
+   */
+  private storeInlineReactions(messageId: string, reactions: DecodedMessage<Reaction>[]): void {
+    if (!reactions || reactions.length === 0) return;
+
+    // Use the extractReactions helper from types/messages.ts
+    const displayReactions = extractReactions(reactions);
+    if (displayReactions.length === 0) return;
+
+    // Convert DisplayReaction[] to StoredReaction[]
+    const storedReactions: StoredReaction[] = displayReactions.map(r => ({
+      emoji: r.emoji,
+      senderInboxId: r.senderInboxId,
+      messageId: r.messageId,
+    }));
+
+    // Add to reactionsAtom
+    const currentReactions = store.get(reactionsAtom);
+    const existingReactions = currentReactions.get(messageId) ?? [];
+
+    // Merge, avoiding duplicates
+    const merged = [...existingReactions];
+    for (const newReaction of storedReactions) {
+      const exists = merged.some(
+        r => r.emoji === newReaction.emoji && r.senderInboxId === newReaction.senderInboxId
+      );
+      if (!exists) {
+        merged.push(newReaction);
+      }
+    }
+
+    if (merged.length > existingReactions.length) {
+      const newMap = new Map(currentReactions);
+      newMap.set(messageId, merged);
+      store.set(reactionsAtom, newMap);
+    }
   }
 
   /**
@@ -2640,18 +2772,17 @@ class XMTPStreamManager {
         store.set(reactionsVersionAtom, store.get(reactionsVersionAtom) + 1);
       }
 
-      // Import the reaction content type
-      const { ContentTypeReaction } = await import('@xmtp/content-type-reaction');
-
-      const reactionContent: ReactionContent = {
-        content: emoji,
-        action,
+      // Construct the Reaction object for v6 API
+      const reaction: Reaction = {
         reference: targetMessageId,
-        schema: 'custom',
+        referenceInboxId: '', // SDK handles this internally for DMs
+        action: action === 'added' ? ReactionAction.Added : ReactionAction.Removed,
+        content: emoji,
+        schema: ReactionSchema.Unicode,
       };
 
-      // Send to network
-      await conv.send(reactionContent, ContentTypeReaction);
+      // Use new v6 sendReaction API
+      await conv.sendReaction(reaction);
     } catch (error) {
       // ROLLBACK: Restore previous state on error
       const rollbackMap = new Map(store.get(reactionsAtom));
@@ -2727,15 +2858,11 @@ class XMTPStreamManager {
       if (!this.client) return;
 
       try {
-        console.log('[StreamManager] Periodic history sync - uploading for other devices...');
         await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
-        console.log('[StreamManager] Periodic history sync complete');
       } catch (error) {
         console.error('[StreamManager] Periodic history sync error:', error);
       }
     }, SYNC_INTERVAL_MS);
-
-    console.log('[StreamManager] Started periodic history sync (every 5 minutes)');
   }
 }
 

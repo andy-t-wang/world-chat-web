@@ -132,6 +132,7 @@ export function ConversationList({
       lastMessage: data.lastMessagePreview ?? undefined,
       timestamp: formatTimestamp(data.lastActivityNs),
       unreadCount: data.unreadCount ?? 0,
+      hasDisappearingMessages: data.disappearingMessagesEnabled ?? false,
     };
 
     // Add type-specific props
