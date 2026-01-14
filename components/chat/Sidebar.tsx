@@ -156,9 +156,9 @@ function GlobalSettingsDropdown() {
               <Link2Off className="w-5 h-5 text-[var(--text-tertiary)]" />
             )}
             <div className="flex-1 text-left">
-              <p className="text-[14px] text-[var(--text-primary)]">Link Previews</p>
+              <p className="text-[14px] text-[var(--text-primary)]">Rich Previews</p>
               <p className="text-[12px] text-[var(--text-secondary)]">
-                {linkPreviewEnabled ? 'URLs will be fetched for previews' : 'URLs won\'t be fetched'}
+                {linkPreviewEnabled ? 'Show link & ticker previews' : 'No link or ticker previews'}
               </p>
             </div>
             <div

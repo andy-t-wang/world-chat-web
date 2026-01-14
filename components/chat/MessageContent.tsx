@@ -3,53 +3,127 @@
 import { useMemo, type ReactNode } from 'react';
 import { LinkPreview, extractUrls } from './LinkPreview';
 import { useLinkPreview } from '@/hooks/useLinkPreview';
+import { isSupportedTicker } from '@/config/tickers';
 
 interface MessageTextProps {
   text: string;
   isOwnMessage: boolean;
+  /** Callback when a ticker symbol is clicked */
+  onTickerClick?: (symbol: string) => void;
 }
 
-// Component to render just the text content with clickable links
-export function MessageText({ text, isOwnMessage }: MessageTextProps) {
-  // Extract URLs from text
-  const urls = useMemo(() => extractUrls(text), [text]);
+// Regex patterns
+const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+const TICKER_PATTERN = /\$([A-Za-z]{1,5})\b/g; // Case-insensitive
 
-  // Render text with clickable links
+// Component to render just the text content with clickable links and tickers
+export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextProps) {
+  // Render text with clickable links and highlighted tickers
   const formattedText = useMemo(() => {
-    if (urls.length === 0) return text;
+    // Find all URLs and tickers with their positions
+    const matches: Array<{
+      type: 'url' | 'ticker';
+      match: string;
+      symbol?: string;
+      start: number;
+      end: number;
+    }> = [];
 
-    // Split text by URLs and render links
-    let lastIndex = 0;
+    // Find URLs
+    let urlMatch;
+    const urlRegex = new RegExp(URL_PATTERN.source, 'gi');
+    while ((urlMatch = urlRegex.exec(text)) !== null) {
+      matches.push({
+        type: 'url',
+        match: urlMatch[0],
+        start: urlMatch.index,
+        end: urlMatch.index + urlMatch[0].length,
+      });
+    }
+
+    // Find tickers
+    let tickerMatch;
+    const tickerRegex = new RegExp(TICKER_PATTERN.source, 'g');
+    while ((tickerMatch = tickerRegex.exec(text)) !== null) {
+      const symbol = tickerMatch[1].toUpperCase(); // Normalize to uppercase
+      // Only highlight supported tickers
+      if (isSupportedTicker(symbol)) {
+        matches.push({
+          type: 'ticker',
+          match: tickerMatch[0],
+          symbol,
+          start: tickerMatch.index,
+          end: tickerMatch.index + tickerMatch[0].length,
+        });
+      }
+    }
+
+    // If no matches, return plain text
+    if (matches.length === 0) return text;
+
+    // Sort by position
+    matches.sort((a, b) => a.start - b.start);
+
+    // Build parts array
     const parts: ReactNode[] = [];
-    const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/gi;
+    let lastIndex = 0;
 
-    let match;
-    while ((match = urlRegex.exec(text)) !== null) {
-      // Add text before the URL
-      if (match.index > lastIndex) {
-        parts.push(text.slice(lastIndex, match.index));
+    for (const m of matches) {
+      // Skip if this match overlaps with previous (e.g., ticker inside URL)
+      if (m.start < lastIndex) continue;
+
+      // Add text before this match
+      if (m.start > lastIndex) {
+        parts.push(text.slice(lastIndex, m.start));
       }
 
-      // Add the URL as a link
-      const url = match[0];
-      parts.push(
-        <a
-          key={`${url}-${match.index}`}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`underline break-all ${
-            isOwnMessage
-              ? 'text-white hover:text-white/80'
-              : 'text-[var(--accent-blue)] hover:opacity-80'
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {url}
-        </a>
-      );
+      if (m.type === 'url') {
+        // Render URL as link
+        parts.push(
+          <a
+            key={`url-${m.start}`}
+            href={m.match}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`underline break-all ${
+              isOwnMessage
+                ? 'text-white hover:text-white/80'
+                : 'text-[var(--accent-blue)] hover:opacity-80'
+            }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {m.match}
+          </a>
+        );
+      } else if (m.type === 'ticker' && m.symbol) {
+        // Render ticker as clickable highlighted span
+        parts.push(
+          <span
+            key={`ticker-${m.start}`}
+            role="button"
+            tabIndex={0}
+            className={`font-medium cursor-pointer ${
+              isOwnMessage
+                ? 'text-white/90 hover:text-white underline decoration-white/40'
+                : 'text-[var(--accent-blue)] hover:opacity-80'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onTickerClick?.(m.symbol!);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onTickerClick?.(m.symbol!);
+              }
+            }}
+          >
+            {m.match}
+          </span>
+        );
+      }
 
-      lastIndex = match.index + url.length;
+      lastIndex = m.end;
     }
 
     // Add remaining text
@@ -58,7 +132,7 @@ export function MessageText({ text, isOwnMessage }: MessageTextProps) {
     }
 
     return parts;
-  }, [text, urls, isOwnMessage]);
+  }, [text, isOwnMessage, onTickerClick]);
 
   return (
     <p

@@ -27,6 +27,10 @@ import {
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
 import { MessageText, MessageLinkPreview } from "./MessageContent";
+import { MessageTickerPreview } from "./TickerPreview";
+import { TickerChartModal } from "./TickerChartModal";
+import type { TickerPriceData } from "@/app/api/ticker-price/route";
+import { hasTickers } from "@/lib/ticker/utils";
 import { isJustUrl, extractUrls } from "./LinkPreview";
 import { PaymentMessage } from "./PaymentMessage";
 import { ImageMessage } from "./ImageMessage";
@@ -895,6 +899,29 @@ export function MessagePanel({
     senderAddress: string;
     position: { x: number; y: number };
   } | null>(null);
+
+  // Ticker chart modal state
+  const [tickerModal, setTickerModal] = useState<{
+    symbol: string;
+    data: TickerPriceData;
+  } | null>(null);
+
+  // Handler to open ticker modal (passed to MessageText)
+  const handleTickerClick = useCallback((symbol: string, data: TickerPriceData) => {
+    setTickerModal({ symbol, data });
+  }, []);
+
+  // Handler to scroll to bottom when dynamic content loads (e.g., ticker preview)
+  const handleContentLoad = useCallback(() => {
+    if (parentRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = parentRef.current;
+      // Only auto-scroll if we're already near the bottom (within 150px)
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+      if (isNearBottom) {
+        parentRef.current.scrollTop = scrollHeight;
+      }
+    }
+  }, []);
 
   // Reply state
   const [replyingTo, setReplyingTo] = useAtom(replyingToAtom);
@@ -2349,6 +2376,16 @@ export function MessagePanel({
                               />
                             </div>
                           )}
+                          {/* Ticker preview for reply messages */}
+                          {linkPreviewEnabled && hasTickers(replyText) && (
+                            <div className={`mt-2 flex ${isOwnMessage ? "justify-end" : "justify-start"}`}>
+                              <MessageTickerPreview
+                                text={replyText}
+                                onOpenModal={handleTickerClick}
+                                onLoad={handleContentLoad}
+                              />
+                            </div>
+                          )}
                           {/* Timestamp for reply messages */}
                           {isLastInGroup && (
                             <MessageTimestamp
@@ -2481,6 +2518,16 @@ export function MessagePanel({
                             <MessageLinkPreview
                               text={text}
                               isOwnMessage={true}
+                            />
+                          </div>
+                        )}
+                        {/* Ticker preview outside the bubble */}
+                        {linkPreviewEnabled && hasTickers(text) && (
+                          <div className="mt-2 flex justify-end">
+                            <MessageTickerPreview
+                              text={text}
+                              onOpenModal={handleTickerClick}
+                              onLoad={handleContentLoad}
                             />
                           </div>
                         )}
@@ -2667,6 +2714,16 @@ export function MessagePanel({
                             />
                           </div>
                         )}
+                        {/* Ticker preview for incoming messages */}
+                        {linkPreviewEnabled && hasTickers(text) && (
+                          <div className="mt-2 flex justify-start">
+                            <MessageTickerPreview
+                              text={text}
+                              onOpenModal={handleTickerClick}
+                              onLoad={handleContentLoad}
+                            />
+                          </div>
+                        )}
                         {isLastInGroup && (
                           <MessageTimestamp
                             timeString={formatTime(msg.sentAtNs)}
@@ -2759,6 +2816,15 @@ export function MessagePanel({
           position={reactionPicker.position}
           onSelect={handleReactionSelect}
           onClose={() => setReactionPicker(null)}
+        />
+      )}
+
+      {/* Ticker Chart Modal */}
+      {tickerModal && (
+        <TickerChartModal
+          symbol={tickerModal.symbol}
+          data={tickerModal.data}
+          onClose={() => setTickerModal(null)}
         />
       )}
     </div>
