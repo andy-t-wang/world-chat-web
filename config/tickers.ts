@@ -220,6 +220,13 @@ const COMMODITY_MAPPINGS: Record<string, { id: string; name: string }> = {
   NATGAS: { id: 'UNG', name: 'United States Natural Gas Fund' },
   UNG: { id: 'UNG', name: 'United States Natural Gas Fund' },
   GAS: { id: 'UNG', name: 'United States Natural Gas Fund' },
+  // Agriculture (Teucrium ETFs)
+  WHEAT: { id: 'WEAT', name: 'Teucrium Wheat Fund' },
+  WEAT: { id: 'WEAT', name: 'Teucrium Wheat Fund' },
+  CORN: { id: 'CORN', name: 'Teucrium Corn Fund' },
+  SOYBEAN: { id: 'SOYB', name: 'Teucrium Soybean Fund' },
+  SOYB: { id: 'SOYB', name: 'Teucrium Soybean Fund' },
+  SOY: { id: 'SOYB', name: 'Teucrium Soybean Fund' },
 };
 
 /**
