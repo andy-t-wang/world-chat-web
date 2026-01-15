@@ -43,6 +43,8 @@ export interface ConversationMetadata {
   // Disappearing messages
   disappearingMessagesEnabled: boolean;
   disappearingMessagesDurationNs?: bigint;
+  // Mention tracking - true if user was @mentioned in unread messages
+  hasMention?: boolean;
 }
 
 /**

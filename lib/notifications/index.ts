@@ -288,8 +288,9 @@ export function updateElectronBadge(count: number): void {
  * Start tab title notification for new message
  * @param senderName - Name of the person who sent the message
  * @param isCurrentChat - Whether the message is in the currently selected chat
+ * @param hasMention - Whether the user was @mentioned (bypasses mute)
  */
-export function startTitleFlash(senderName: string, isCurrentChat: boolean = false): void {
+export function startTitleFlash(senderName: string, isCurrentChat: boolean = false, hasMention: boolean = false): void {
   if (typeof document === 'undefined') return;
 
   // Don't change if tab is visible
@@ -300,12 +301,14 @@ export function startTitleFlash(senderName: string, isCurrentChat: boolean = fal
 
   pendingNotification = { senderName, isCurrentChat };
 
-  // Play notification sound (unless muted) - throttled to prevent stacking
+  // Play notification sound - throttled to prevent stacking
   // Additional focus check as final safeguard - don't play if user is actively using the app
+  // Note: @mentions bypass the mute setting to ensure users don't miss direct mentions
   const isMuted = store.get(soundMutedAtom);
+  const shouldBypassMute = hasMention;
   const hasFocus = typeof document !== 'undefined' && document.hasFocus();
   const now = Date.now();
-  if (!isMuted && !hasFocus && now - lastSoundTime >= SOUND_THROTTLE_MS) {
+  if ((!isMuted || shouldBypassMute) && !hasFocus && now - lastSoundTime >= SOUND_THROTTLE_MS) {
     lastSoundTime = now;
     playNotificationSound();
   }

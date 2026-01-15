@@ -10,22 +10,26 @@ interface MessageTextProps {
   isOwnMessage: boolean;
   /** Callback when a ticker symbol is clicked */
   onTickerClick?: (symbol: string, type: TickerType) => void;
+  /** Callback when a @mention is clicked */
+  onMentionClick?: (username: string) => void;
 }
 
 // Regex patterns
 const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
 const TICKER_PATTERN = /([#$])([A-Za-z]{1,5})\b/g; // $ for crypto, # for stocks
+const MENTION_PATTERN = /@([A-Za-z0-9_\.]+)/g; // @username mentions
 
 // Component to render just the text content with clickable links and tickers
-export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextProps) {
+export function MessageText({ text, isOwnMessage, onTickerClick, onMentionClick }: MessageTextProps) {
   // Render text with clickable links and highlighted tickers
   const formattedText = useMemo(() => {
-    // Find all URLs and tickers with their positions
+    // Find all URLs, tickers, and mentions with their positions
     const matches: Array<{
-      type: 'url' | 'ticker';
+      type: 'url' | 'ticker' | 'mention';
       match: string;
       symbol?: string;
       tickerType?: TickerType;
+      username?: string;
       start: number;
       end: number;
     }> = [];
@@ -56,6 +60,19 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
         tickerType,
         start: tickerMatch.index,
         end: tickerMatch.index + tickerMatch[0].length,
+      });
+    }
+
+    // Find @mentions
+    let mentionMatch;
+    const mentionRegex = new RegExp(MENTION_PATTERN.source, 'g');
+    while ((mentionMatch = mentionRegex.exec(text)) !== null) {
+      matches.push({
+        type: 'mention',
+        match: mentionMatch[0],
+        username: mentionMatch[1],
+        start: mentionMatch.index,
+        end: mentionMatch.index + mentionMatch[0].length,
       });
     }
 
@@ -122,6 +139,32 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
             {m.match}
           </span>
         );
+      } else if (m.type === 'mention' && m.username) {
+        // Render @mention as bold text
+        parts.push(
+          <span
+            key={`mention-${m.start}`}
+            role="button"
+            tabIndex={0}
+            className={`font-semibold cursor-pointer ${
+              isOwnMessage
+                ? 'text-white hover:underline'
+                : 'text-[var(--text-primary)] hover:underline'
+            }`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMentionClick?.(m.username!);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onMentionClick?.(m.username!);
+              }
+            }}
+          >
+            {m.match}
+          </span>
+        );
       }
 
       lastIndex = m.end;
@@ -133,7 +176,7 @@ export function MessageText({ text, isOwnMessage, onTickerClick }: MessageTextPr
     }
 
     return parts;
-  }, [text, isOwnMessage, onTickerClick]);
+  }, [text, isOwnMessage, onTickerClick, onMentionClick]);
 
   return (
     <p

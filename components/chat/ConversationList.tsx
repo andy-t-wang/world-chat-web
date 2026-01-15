@@ -6,10 +6,10 @@ import { useAtomValue, useSetAtom, useAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
 import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
-import { hideEmptyConversationsAtom, pinnedConversationIdsAtom } from '@/stores/settings';
+import { hideEmptyConversationsAtom, pinnedConversationIdsAtom, mutedConversationIdsAtom } from '@/stores/settings';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
-import { Loader2, SearchX, Pin, PinOff } from 'lucide-react';
+import { Loader2, SearchX, Pin, PinOff, Bell, BellOff } from 'lucide-react';
 import { getCachedUsername } from '@/lib/username/service';
 
 interface ConversationListProps {
@@ -32,6 +32,7 @@ export function ConversationList({
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
   const hideEmptyConversations = useAtomValue(hideEmptyConversationsAtom);
   const [pinnedIds, setPinnedIds] = useAtom(pinnedConversationIdsAtom);
+  const [mutedIds, setMutedIds] = useAtom(mutedConversationIdsAtom);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -43,8 +44,9 @@ export function ConversationList({
   // Use conversations hook - it handles all loading and provides metadata
   const { conversationIds, metadata, isLoading } = useConversations();
 
-  // Memoize pinned set for O(1) lookups
+  // Memoize pinned and muted sets for O(1) lookups
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+  const mutedSet = useMemo(() => new Set(mutedIds), [mutedIds]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -70,6 +72,17 @@ export function ConversationList({
     });
     setContextMenu(null);
   }, [setPinnedIds]);
+
+  // Mute/unmute handlers
+  const toggleMute = useCallback((conversationId: string) => {
+    setMutedIds(prev => {
+      if (prev.includes(conversationId)) {
+        return prev.filter(id => id !== conversationId);
+      }
+      return [...prev, conversationId];
+    });
+    setContextMenu(null);
+  }, [setMutedIds]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, conversationId: string) => {
     e.preventDefault();
@@ -189,7 +202,9 @@ export function ConversationList({
       timestamp: formatTimestamp(data.lastActivityNs),
       unreadCount: data.unreadCount ?? 0,
       hasDisappearingMessages: data.disappearingMessagesEnabled ?? false,
+      hasMention: data.hasMention ?? false,
       isPinned: pinnedSet.has(id),
+      isMuted: mutedSet.has(id),
     };
 
     // Add type-specific props
@@ -343,6 +358,22 @@ export function ConversationList({
               <>
                 <Pin className="w-5 h-5 text-[var(--text-quaternary)]" />
                 Pin
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => toggleMute(contextMenu.conversationId)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 text-left text-[15px] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            {mutedSet.has(contextMenu.conversationId) ? (
+              <>
+                <Bell className="w-5 h-5 text-[var(--text-quaternary)]" />
+                Unmute
+              </>
+            ) : (
+              <>
+                <BellOff className="w-5 h-5 text-[var(--text-quaternary)]" />
+                Mute
               </>
             )}
           </button>

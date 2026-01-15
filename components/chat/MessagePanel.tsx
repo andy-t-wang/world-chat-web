@@ -1655,10 +1655,8 @@ export function MessagePanel({
 
   return (
     <div className="flex-1 flex flex-col bg-[var(--bg-primary)] relative">
-      {/* Invisible drag region for Electron - positioned at top, doesn't affect layout */}
-      <div className="electron-drag absolute top-0 left-0 right-0 h-8 z-10 md:hidden" />
-      {/* Header */}
-      <header className="shrink-0 h-16 px-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
+      {/* Header - draggable for Electron window */}
+      <header className="electron-drag shrink-0 h-16 px-4 flex items-center justify-between border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-2">
           {/* Back button - mobile only */}
           {onBack && (

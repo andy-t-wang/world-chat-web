@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw, Sun, Moon, Monitor } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw, Sun, Moon, Monitor, Share2, Check } from 'lucide-react';
 import { clearSession } from '@/lib/auth/session';
 import { clearSessionCache } from '@/lib/storage';
 import { streamManager } from '@/lib/xmtp/StreamManager';
@@ -25,7 +25,12 @@ function GlobalSettingsDropdown() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [isElectron, setIsElectron] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Download link - use NEXT_PUBLIC_URL or fallback
+  const BASE_URL = process.env.NEXT_PUBLIC_URL || 'https://world-chat-web.vercel.app';
+  const DOWNLOAD_URL = `${BASE_URL}/download`;
 
   const handleLogout = async () => {
     if (isLoggingOut) return;
@@ -74,6 +79,16 @@ function GlobalSettingsDropdown() {
     } catch (error) {
       console.error('Check for updates failed:', error);
       setIsCheckingUpdates(false);
+    }
+  };
+
+  const handleCopyDownloadLink = async () => {
+    try {
+      await navigator.clipboard.writeText(DOWNLOAD_URL);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy link:', error);
     }
   };
 
@@ -247,6 +262,24 @@ function GlobalSettingsDropdown() {
               </p>
               <p className="text-[12px] text-[var(--text-secondary)]">
                 {isElectron ? 'Download and install updates' : 'Refresh to get latest version'}
+              </p>
+            </div>
+          </button>
+          <button
+            onClick={handleCopyDownloadLink}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            {linkCopied ? (
+              <Check className="w-5 h-5 text-[var(--accent-green)]" />
+            ) : (
+              <Share2 className="w-5 h-5 text-[var(--text-tertiary)]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[var(--text-primary)]">
+                {linkCopied ? 'Link Copied!' : 'Share Download Link'}
+              </p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
+                Copy the macOS app download link
               </p>
             </div>
           </button>

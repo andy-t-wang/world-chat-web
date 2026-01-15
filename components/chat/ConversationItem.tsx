@@ -41,6 +41,8 @@ export interface ConversationItemProps {
   isNewRequest?: boolean;
   /** Whether disappearing messages are enabled for this conversation */
   hasDisappearingMessages?: boolean;
+  /** Whether user was @mentioned in unread messages */
+  hasMention?: boolean;
   onClick?: () => void;
 }
 
@@ -109,6 +111,7 @@ export function ConversationItem(props: ConversationItemProps) {
     isSelected = false,
     isNewRequest = false,
     hasDisappearingMessages = false,
+    hasMention = false,
     onClick,
   } = props;
 
@@ -208,7 +211,15 @@ export function ConversationItem(props: ConversationItemProps) {
                 isSelected ? 'bg-[var(--text-selected)]' : 'bg-[var(--accent-blue)]'
               }`} />
             )}
-            {unreadCount > 0 && !isNewRequest && (
+            {/* Mention indicator - @ symbol */}
+            {hasMention && !isNewRequest && (
+              <span className={`w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center ${
+                isSelected ? 'bg-[var(--text-selected)] text-[var(--bg-selected)]' : 'bg-[var(--accent-blue)] text-white'
+              }`}>
+                @
+              </span>
+            )}
+            {unreadCount > 0 && !isNewRequest && !hasMention && (
               <span className={`min-w-[20px] h-5 px-1.5 rounded-full text-xs font-medium flex items-center justify-center ${
                 isSelected ? 'bg-[var(--text-selected)] text-[var(--bg-selected)]' : 'bg-[var(--text-primary)] text-[var(--bg-primary)]'
               }`}>

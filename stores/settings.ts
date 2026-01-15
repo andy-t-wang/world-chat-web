@@ -23,3 +23,7 @@ export const requestFirstSeenAtom = atomWithStorage<Record<string, number>>('req
 
 // Pinned conversation IDs - persisted to localStorage
 export const pinnedConversationIdsAtom = atomWithStorage<string[]>('pinned-conversations', []);
+
+// Muted conversation IDs - persisted to localStorage
+// Muted conversations don't show notifications (except @mentions which bypass mute)
+export const mutedConversationIdsAtom = atomWithStorage<string[]>('muted-conversations', []);

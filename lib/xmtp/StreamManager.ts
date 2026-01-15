@@ -34,6 +34,9 @@ import type { PaginationState, DisplayReaction } from '@/types/messages';
 import { extractReactions } from '@/types/messages';
 import { showMessageNotification, requestNotificationPermission, updateTitleWithUnreadCount, isTabVisible, startTitleFlash, setCurrentChatName } from '@/lib/notifications';
 import { getCachedUsername, getAvatarUrl, resolveAddress } from '@/lib/username/service';
+import { isMentioned } from '@/lib/mentions/utils';
+import { getSessionCache } from '@/lib/storage';
+import { mutedConversationIdsAtom } from '@/stores/settings';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -64,6 +67,8 @@ interface ConversationMetadata {
   // Disappearing messages
   disappearingMessagesEnabled: boolean;
   disappearingMessagesDurationNs?: bigint;
+  // Mention tracking - true if user was @mentioned in unread messages
+  hasMention?: boolean;
 }
 
 // Check if a conversation is a DM
@@ -413,6 +418,9 @@ class XMTPStreamManager {
   // Periodic history sync interval (to respond to new installation sync requests)
   private historySyncInterval: ReturnType<typeof setInterval> | null = null;
 
+  // Current user's username (for @mention detection)
+  private currentUserUsername: string | null = null;
+
   /**
    * Initialize the manager with an XMTP client
    *
@@ -442,6 +450,9 @@ class XMTPStreamManager {
       });
     }, 5000);
 
+    // Fetch current user's username for @mention detection (async, non-blocking)
+    this.fetchCurrentUserUsername();
+
     // Phase 1: Load from local cache (instant)
     const hasCachedConversations = await this.loadConversationsFromCache();
 
@@ -466,6 +477,24 @@ class XMTPStreamManager {
     // Phase 5: Periodic sync to upload history for other devices
     // This ensures we respond to history sync requests from new installations
     this.startPeriodicHistorySync();
+  }
+
+  /**
+   * Fetch current user's username from session cache for @mention detection
+   */
+  private async fetchCurrentUserUsername(): Promise<void> {
+    try {
+      const session = await getSessionCache();
+      if (session?.address) {
+        const record = await resolveAddress(session.address);
+        if (record?.username) {
+          this.currentUserUsername = record.username;
+          console.log('[StreamManager] Current user username:', this.currentUserUsername);
+        }
+      }
+    } catch (error) {
+      console.warn('[StreamManager] Failed to fetch current user username:', error);
+    }
   }
 
   /**
@@ -544,10 +573,11 @@ class XMTPStreamManager {
     this.lastReadTimestamps.set(conversationId, nowNs);
     this.saveLastReadTimestamps();
 
-    // Update metadata to reflect 0 unread
+    // Update metadata to reflect 0 unread and clear mention flag
     const metadata = this.conversationMetadata.get(conversationId);
-    if (metadata && metadata.unreadCount > 0) {
+    if (metadata && (metadata.unreadCount > 0 || metadata.hasMention)) {
       metadata.unreadCount = 0;
+      metadata.hasMention = false;
       // Batch both updates together to prevent multiple re-renders
       const unreadVersion = store.get(unreadVersionAtom);
       const metadataVersion = store.get(conversationMetadataVersionAtom);
@@ -776,11 +806,14 @@ class XMTPStreamManager {
       // Update badge with initial unread count
       this.updateTabTitle();
 
-      // Schedule another metadata version bump to ensure React components
+      // Schedule metadata version bumps to ensure React components
       // that mounted during the load will re-render with fresh data
       setTimeout(() => {
         this.incrementMetadataVersion();
       }, 100);
+      setTimeout(() => {
+        this.incrementMetadataVersion();
+      }, 500);
 
       return hasCachedConversations;
     } catch (error) {
@@ -818,6 +851,9 @@ class XMTPStreamManager {
 
       // Priority 2: Sync Unknown conversations (message requests)
       await this.client.conversations.syncAll([ConsentState.Unknown]);
+
+      // Trigger re-render after syncing requests (important for fresh installs)
+      this.incrementMetadataVersion();
 
       // Re-list to get any new conversations
       const conversations = await this.client.conversations.list({
@@ -871,11 +907,18 @@ class XMTPStreamManager {
       // Refresh messages for any conversations that were already opened
       await this.refreshLoadedConversations();
 
-      // Schedule another metadata version bump to ensure React components
+      // Schedule metadata version bumps to ensure React components
       // that mounted after the sync started will re-render with fresh data
+      // Multiple bumps at different intervals to catch components mounting at various times
       setTimeout(() => {
         this.incrementMetadataVersion();
       }, 100);
+      setTimeout(() => {
+        this.incrementMetadataVersion();
+      }, 500);
+      setTimeout(() => {
+        this.incrementMetadataVersion();
+      }, 1000);
     } catch (error) {
       console.error('[StreamManager] Initial sync error:', error);
       store.set(isLoadingConversationsAtom, false);
@@ -1388,7 +1431,18 @@ class XMTPStreamManager {
 
           // Check consent state - only show Allowed conversations in the list
           // But sync Unknown ones too in case consent changed on another device
-          const consentState = await conv.consentState();
+          // Use timeout to prevent hanging on problematic conversations
+          let consentState = ConsentState.Unknown;
+          try {
+            consentState = await withTimeout(
+              conv.consentState(),
+              XMTP_OPERATION_TIMEOUT_MS,
+              'stream.consentState'
+            );
+          } catch {
+            // Timeout or error - default to Unknown so user can see the conversation
+            console.warn('[StreamManager] Consent check timed out for streamed conversation', conv.id);
+          }
 
           // Store the conversation regardless of consent
           this.conversations.set(conv.id, conv);
@@ -1761,11 +1815,23 @@ class XMTPStreamManager {
       while (newDisplayableIds.length < MIN_LOADMORE_MESSAGES && hasMore && iterations < MAX_FETCH_ITERATIONS) {
         iterations++;
 
-        const messages = await conv.messages({
-          limit: BigInt(BATCH_SIZE),
-          sentBeforeNs: oldestMessageNs ?? undefined,
-          direction: SortDirection.Descending,
-        });
+        let messages;
+        try {
+          messages = await withTimeout(
+            conv.messages({
+              limit: BigInt(BATCH_SIZE),
+              sentBeforeNs: oldestMessageNs ?? undefined,
+              direction: SortDirection.Descending,
+            }),
+            XMTP_OPERATION_TIMEOUT_MS,
+            'loadMore.messages'
+          );
+        } catch (error) {
+          // Timeout - stop trying to load more
+          console.warn('[StreamManager] Load more messages timed out for', conversationId);
+          hasMore = false;
+          break;
+        }
 
         if (messages.length === 0) {
           hasMore = false;
@@ -1917,11 +1983,15 @@ class XMTPStreamManager {
               let conv = this.conversations.get(conversationId);
 
               if (!conv) {
-                // Try to sync this specific conversation first
+                // Try to sync this specific conversation first (with timeout to prevent hangs)
                 try {
-                  await this.client.conversations.sync();
+                  await withTimeout(
+                    this.client.conversations.sync(),
+                    XMTP_OPERATION_TIMEOUT_MS,
+                    'messageStream.conversationsSync'
+                  );
                 } catch {
-                  // Sync failed, continue anyway
+                  // Sync failed or timed out, continue anyway
                 }
                 conv = await this.client.conversations.getConversationById(conversationId);
               }
@@ -1986,15 +2056,20 @@ class XMTPStreamManager {
           const isOwnMsg = msg.senderInboxId === this.client?.inboxId;
 
           // Re-check consent state from the conversation (it may have changed on another device)
+          // Use timeout to prevent hanging on problematic conversations
           const conv = this.conversations.get(conversationId);
           let hasValidConsent = false;
           if (conv) {
             try {
-              const consentState = await conv.consentState();
+              const consentState = await withTimeout(
+                conv.consentState(),
+                XMTP_OPERATION_TIMEOUT_MS,
+                'messageStream.consentState'
+              );
               // Show Allowed and Unknown (so users can see and respond to new conversations)
               hasValidConsent = consentState === ConsentState.Allowed || consentState === ConsentState.Unknown;
             } catch {
-              // If we can't check, assume allowed if it's our own message
+              // If we can't check or timeout, assume allowed if it's our own message
               hasValidConsent = isOwnMsg;
             }
           } else {
@@ -2027,15 +2102,29 @@ class XMTPStreamManager {
 
             // Only increment unread if we can properly identify own messages
             if (ownInboxId && !isOwnMessage) {
+              // Check if this message mentions the current user
+              const wasMentioned = isMentioned(content || '', this.currentUserUsername);
+
               // Increment unread only if not viewing this conversation
               if (!isSelected) {
                 metadata.unreadCount = (metadata.unreadCount ?? 0) + 1;
+                // Track if user was mentioned in any unread message
+                if (wasMentioned) {
+                  metadata.hasMention = true;
+                }
                 const version = store.get(unreadVersionAtom);
                 store.set(unreadVersionAtom, version + 1);
               }
 
+              // Check if this conversation is muted
+              const mutedIds = store.get(mutedConversationIdsAtom);
+              const isConversationMuted = mutedIds.includes(conversationId);
+
               // Show notification and update title if tab not visible
-              if (!tabVisible) {
+              // @mentions bypass conversation mute to ensure users don't miss direct mentions
+              const shouldNotify = (!tabVisible || wasMentioned) && (!isConversationMuted || wasMentioned);
+
+              if (shouldNotify) {
                 // Track messages received while tab is hidden
                 this.hiddenTabMessageCount++;
 
@@ -2093,7 +2182,8 @@ class XMTPStreamManager {
                   this.updateTabTitle();
 
                   // Start flashing the tab title to get user's attention
-                  startTitleFlash(notificationTitle, false);
+                  // Pass wasMentioned to bypass mute for @mentions
+                  startTitleFlash(notificationTitle, false, wasMentioned);
                 })();
               } else if (!isSelected) {
                 // Tab visible but different conversation - still update title
@@ -2190,13 +2280,18 @@ class XMTPStreamManager {
 
     try {
       // Sync the conversation to get latest messages from network
-      await conv.sync();
+      // Use timeout to prevent hanging on problematic conversations
+      await withTimeout(conv.sync(), XMTP_OPERATION_TIMEOUT_MS, 'refresh.sync');
 
       // Fetch recent messages including membership changes
-      const messages = await conv.messages({
-        limit: BigInt(20),
-        direction: SortDirection.Descending,
-      });
+      const messages = await withTimeout(
+        conv.messages({
+          limit: BigInt(20),
+          direction: SortDirection.Descending,
+        }),
+        XMTP_OPERATION_TIMEOUT_MS,
+        'refresh.messages'
+      );
 
       const currentIds = this.getMessageIds(conversationId);
       const currentIdSet = new Set(currentIds);
@@ -2386,10 +2481,11 @@ class XMTPStreamManager {
       this.lastReadTimestamps.set(conversationId, timestampNs);
       this.saveLastReadTimestamps();
 
-      // Update metadata to reflect 0 unread
+      // Update metadata to reflect 0 unread and clear mention flag
       const metadata = this.conversationMetadata.get(conversationId);
-      if (metadata && metadata.unreadCount > 0) {
+      if (metadata && (metadata.unreadCount > 0 || metadata.hasMention)) {
         metadata.unreadCount = 0;
+        metadata.hasMention = false;
         // Trigger UI updates
         const unreadVersion = store.get(unreadVersionAtom);
         const metadataVersion = store.get(conversationMetadataVersionAtom);
@@ -2572,6 +2668,14 @@ class XMTPStreamManager {
       const metadata = this.conversationMetadata.get(conversationId);
       if (metadata) {
         metadata.consentState = 'allowed';
+      }
+
+      // Add to main conversation list if not already there
+      // This is important for conversations without messages that were only in requests
+      const currentIds = store.get(conversationIdsAtom);
+      if (!currentIds.includes(conversationId)) {
+        // Add at the top of the list
+        store.set(conversationIdsAtom, [conversationId, ...currentIds]);
       }
 
       // Trigger UI update
@@ -2841,8 +2945,12 @@ class XMTPStreamManager {
             store.set(unreadVersionAtom, unreadVersion + 1);
           }
 
-          // Show notification only if reaction is to your message and tab not visible
-          if (!tabVisible && isReactionToOwnMessage) {
+          // Check if this conversation is muted
+          const mutedIds = store.get(mutedConversationIdsAtom);
+          const isConversationMuted = mutedIds.includes(conversationId);
+
+          // Show notification only if reaction is to your message, tab not visible, and not muted
+          if (!tabVisible && isReactionToOwnMessage && !isConversationMuted) {
             this.hiddenTabMessageCount++;
 
             // Resolve reactor name asynchronously
