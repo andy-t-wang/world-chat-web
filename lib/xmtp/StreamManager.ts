@@ -1314,6 +1314,25 @@ class XMTPStreamManager {
       let firstOtherActivityNs = BigInt(0);
       let firstAnyPreview = '';
       let firstAnyActivityNs = BigInt(0);
+      let firstAnyIsOwn = false;
+      let firstAnySentAtNs = BigInt(0);
+
+      // Helper to get sender name for preview
+      const getSenderName = async (senderInboxId: string, isOwn: boolean): Promise<string> => {
+        if (isOwn) return 'You';
+        if (conversationType === 'dm' && peerAddress) {
+          const record = await resolveAddress(peerAddress);
+          return record?.username || `${peerAddress.slice(0, 6)}...`;
+        }
+        if (memberPreviews) {
+          const member = memberPreviews.find(m => m.inboxId === senderInboxId);
+          if (member?.address) {
+            const record = await resolveAddress(member.address);
+            return record?.username || `${member.address.slice(0, 6)}...`;
+          }
+        }
+        return 'Someone';
+      };
 
       for (const msg of messages) {
         const typeId = (msg as { contentType?: { typeId?: string } }).contentType?.typeId;
@@ -1341,26 +1360,22 @@ class XMTPStreamManager {
             encodedContent?: any;
           });
           if (reactionContent) {
-            let reactorName = 'Someone';
-            if (isOwnMessage) {
-              reactorName = 'You';
-            } else if (conversationType === 'dm' && peerAddress) {
-              const record = await resolveAddress(peerAddress);
-              reactorName = record?.username || `${peerAddress.slice(0, 6)}...`;
-            } else if (memberPreviews) {
-              const member = memberPreviews.find(m => m.inboxId === msg.senderInboxId);
-              if (member?.address) {
-                const record = await resolveAddress(member.address);
-                reactorName = record?.username || `${member.address.slice(0, 6)}...`;
-              }
-            }
+            const reactorName = await getSenderName(msg.senderInboxId, isOwnMessage);
             previewText = `${reactorName} reacted ${reactionContent.content}`;
             previewActivityNs = msg.sentAtNs;
           }
         } else {
           const content = extractMessageContent(msg);
           if (content) {
-            previewText = content;
+            // Format image/multi-image previews with sender name
+            if (content === 'Image' || content === 'Multiple images' || content.startsWith('Image:')) {
+              const senderName = await getSenderName(msg.senderInboxId, isOwnMessage);
+              previewText = content === 'Multiple images'
+                ? `${senderName} sent images`
+                : `${senderName} sent an image`;
+            } else {
+              previewText = content;
+            }
             previewActivityNs = msg.sentAtNs;
           }
         }
@@ -1375,11 +1390,23 @@ class XMTPStreamManager {
         if (previewText && !firstAnyPreview) {
           firstAnyPreview = previewText;
           firstAnyActivityNs = previewActivityNs;
+          firstAnyIsOwn = isOwnMessage;
+          firstAnySentAtNs = msg.sentAtNs;
         }
 
         // Track activity time even without displayable content
         if (previewActivityNs > lastActivityNs) {
           lastActivityNs = previewActivityNs;
+        }
+      }
+
+      // If the most recent message is our own (sent from any device), mark conversation as read
+      // This handles the case where we sent a message from another installation
+      if (firstAnyIsOwn && firstAnySentAtNs > BigInt(0)) {
+        unreadCount = 0;
+        // Update lastReadTs so future calculations are correct
+        if (firstAnySentAtNs > lastReadTs) {
+          this.lastReadTimestamps.set(conv.id, firstAnySentAtNs);
         }
       }
 
@@ -2048,7 +2075,28 @@ class XMTPStreamManager {
             // This prevents sync'd older messages from overwriting newer previews
             if (msg.sentAtNs >= metadata.lastActivityNs) {
               if (content) {
-                metadata.lastMessagePreview = content;
+                // Format image previews with sender name
+                if (content === 'Image' || content === 'Multiple images' || content.startsWith('Image:')) {
+                  const isOwnMsg = msg.senderInboxId === this.client?.inboxId;
+                  let senderName = 'Someone';
+                  if (isOwnMsg) {
+                    senderName = 'You';
+                  } else if (metadata.conversationType === 'dm' && metadata.peerAddress) {
+                    const cached = getCachedUsername(metadata.peerAddress);
+                    senderName = cached?.username || `${metadata.peerAddress.slice(0, 6)}...`;
+                  } else if (metadata.memberPreviews) {
+                    const member = metadata.memberPreviews.find(m => m.inboxId === msg.senderInboxId);
+                    if (member?.address) {
+                      const cached = getCachedUsername(member.address);
+                      senderName = cached?.username || `${member.address.slice(0, 6)}...`;
+                    }
+                  }
+                  metadata.lastMessagePreview = content === 'Multiple images'
+                    ? `${senderName} sent images`
+                    : `${senderName} sent an image`;
+                } else {
+                  metadata.lastMessagePreview = content;
+                }
               }
               metadata.lastActivityNs = msg.sentAtNs;
             }
