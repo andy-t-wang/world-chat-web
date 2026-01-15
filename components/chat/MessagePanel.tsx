@@ -2025,85 +2025,26 @@ export function MessagePanel({
 
                   // For image messages, render ImageMessage or ImageGrid component
                   // Check for various attachment formats
-                  const attachmentContent = msg.content;
+                  let attachmentContent = msg.content;
 
-                  // For multi-attachment types, show placeholder (SDK doesn't export codec yet)
+                  // For multi-attachment types, try to extract and render the images
                   const isMultiType =
                     typeId === "multiRemoteStaticAttachment" ||
                     typeId === "multiRemoteAttachment";
-                  if (isMultiType) {
-                    return (
-                      <div
-                        key={item.id}
-                        className={`flex ${
-                          isOwnMessage ? "justify-end" : "items-start gap-3"
-                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
-                      >
-                        {!isOwnMessage && (
-                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
-                            {isLastInGroup && (
-                              <Avatar
-                                address={
-                                  conversationType === "group"
-                                    ? memberPreviews?.find(
-                                        (m) => m.inboxId === msg.senderInboxId
-                                      )?.address
-                                    : peerAddress
-                                }
-                                size="sm"
-                              />
-                            )}
-                          </div>
-                        )}
-                        <div className="flex flex-col">
-                          {!isOwnMessage && isFirstInGroup && (
-                            <SenderName
-                              address={
-                                conversationType === "group"
-                                  ? memberPreviews?.find(
-                                      (m) => m.inboxId === msg.senderInboxId
-                                    )?.address
-                                  : peerAddress
-                              }
-                            />
-                          )}
-                          <div
-                            onContextMenu={(e) =>
-                              handleMessageContextMenu(
-                                e,
-                                item.id,
-                                "[Images]",
-                                isOwnMessage
-                                  ? ""
-                                  : conversationType === "group"
-                                    ? memberPreviews?.find(
-                                        (m) => m.inboxId === msg.senderInboxId
-                                      )?.address || ""
-                                    : peerAddress || ""
-                              )
-                            }
-                          >
-                            <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
-                          </div>
-                          <MessageReactions
-                            messageId={item.id}
-                            conversationId={conversationId}
-                            isOwnMessage={isOwnMessage}
-                            memberPreviews={memberPreviews}
-                            peerAddress={peerAddress}
-                            ownInboxId={ownInboxId}
-                          />
-                          {isLastInGroup && (
-                            <MessageTimestamp
-                              timeString={formatTime(msg.sentAtNs)}
-                              isOwnMessage={isOwnMessage}
-                              hasTimer={!!msg.expiresAtNs}
-                              className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
-                            />
-                          )}
-                        </div>
-                      </div>
-                    );
+
+                  // If content is undefined but we have a multi-attachment type, try to decode from encodedContent
+                  if (isMultiType && (!attachmentContent || Object.keys(attachmentContent).length === 0)) {
+                    const encodedContent = (
+                      msg as { encodedContent?: { content?: Uint8Array } }
+                    ).encodedContent;
+                    if (encodedContent?.content) {
+                      try {
+                        const decoded = new TextDecoder().decode(encodedContent.content);
+                        attachmentContent = JSON.parse(decoded);
+                      } catch {
+                        // Decode failed - will show placeholder
+                      }
+                    }
                   }
 
                   const hasMultiAttachments =
@@ -2125,12 +2066,13 @@ export function MessagePanel({
                     hasSingleAttachment ||
                     hasMultiAttachments ||
                     hasMultiWrapper;
-                  // Handle single attachment types (multi-attachment types are handled above)
+                  // Handle single and multi attachment types
                   const isAttachmentType =
                     typeId === "remoteAttachment" ||
                     typeId === "remoteStaticAttachment";
+                  // Consider it an image if: type indicates attachment OR content has attachment structure
                   const isImage =
-                    (isAttachmentType || hasAnyAttachment) && attachmentContent;
+                    (isAttachmentType || isMultiType || hasAnyAttachment) && attachmentContent;
                   const isRawImageData =
                     isAttachmentType && hasRawCdnUrl && !hasAnyAttachment;
 
@@ -2255,6 +2197,9 @@ export function MessagePanel({
                                 remoteAttachment={attachments[0]}
                                 isOwnMessage={isOwnMessage}
                               />
+                            ) : isMultiType ? (
+                              // Multi-attachment type but couldn't extract - show placeholder
+                              <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
                             ) : (
                               <ImageMessage
                                 remoteAttachment={
