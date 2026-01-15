@@ -111,15 +111,15 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   const baseUrl = 'https://api.massive.com';
   let currentApiKey = apiKey;
 
-  // Calculate date range for 30-day data
+  // Calculate date range for 7-day hourly data (more precise than daily)
   const today = new Date();
   const toDate = today.toISOString().split('T')[0];
-  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const fromDate = thirtyDaysAgo.toISOString().split('T')[0];
+  const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fromDate = sevenDaysAgo.toISOString().split('T')[0];
 
-  // Single API call: fetch 30-day aggregates for price, change, AND sparkline
+  // Single API call: fetch 7-day hourly aggregates for price, change, AND sparkline
   let aggsResponse = await fetch(
-    `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
+    `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/hour/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
     {
       headers: { Accept: 'application/json' },
       cache: 'no-store',
@@ -134,7 +134,7 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
       if (newKey && newKey !== currentApiKey) {
         currentApiKey = newKey;
         aggsResponse = await fetch(
-          `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/day/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
+          `${baseUrl}/v2/aggs/ticker/${config.id}/range/1/hour/${fromDate}/${toDate}?adjusted=true&sort=asc&apiKey=${currentApiKey}`,
           {
             headers: { Accept: 'application/json' },
             cache: 'no-store',
@@ -166,14 +166,16 @@ async function fetchStockPrice(symbol: string, config: TickerConfig): Promise<Ti
   // Extract data from aggregates
   const bars = aggsData.results as Array<{ c: number; o: number; h: number; l: number }>;
   const latestBar = bars[bars.length - 1];
-  const previousBar = bars.length > 1 ? bars[bars.length - 2] : latestBar;
+  // For 24h change, compare with bar from ~24 hours ago (24 bars back with hourly data)
+  const twentyFourHoursAgoIndex = Math.max(0, bars.length - 25);
+  const previousBar = bars[twentyFourHoursAgoIndex];
 
   const currentPrice = latestBar.c;
   const previousClose = previousBar.c;
   const priceChange = currentPrice - previousClose;
   const priceChangePercent = previousClose > 0 ? (priceChange / previousClose) * 100 : 0;
 
-  // Sparkline from all closing prices
+  // Sparkline from all closing prices (7 days of hourly data)
   const sparkline7d = bars.map((bar) => bar.c);
 
   // Fetch ticker details for name, branding, and market cap
