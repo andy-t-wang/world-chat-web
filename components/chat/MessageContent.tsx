@@ -16,7 +16,7 @@ interface MessageTextProps {
 
 // Regex patterns
 const URL_PATTERN = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
-const TICKER_PATTERN = /([#$])([A-Za-z]{1,5})\b/g; // $ for crypto, # for stocks
+const TICKER_PATTERN = /([#$])([A-Za-z]{1,10})\b/g; // $ for crypto, # for stocks/commodities
 const MENTION_PATTERN = /@([A-Za-z0-9_\.]+)/g; // @username mentions
 
 // Component to render just the text content with clickable links and tickers

@@ -21,8 +21,8 @@ export interface HighlightedInputRef {
 
 // Regex to match tickers ($ for crypto, # for stocks)
 // Note: Use separate regex for test vs exec to avoid lastIndex issues with global flag
-const TICKER_PATTERN = /([#$])([A-Za-z]{1,5})\b/g;
-const TICKER_TEST_PATTERN = /([#$])([A-Za-z]{1,5})\b/;
+const TICKER_PATTERN = /([#$])([A-Za-z]{1,10})\b/g;
+const TICKER_TEST_PATTERN = /([#$])([A-Za-z]{1,10})\b/;
 
 /**
  * Textarea with highlighted ticker symbols

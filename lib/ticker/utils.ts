@@ -8,9 +8,9 @@
 export type TickerType = 'crypto' | 'stock';
 
 // Regex to match ticker symbols:
-// $ followed by 1-5 letters = crypto
-// # followed by 1-5 letters = stock
-const TICKER_REGEX = /([#$])([A-Za-z]{1,5})\b/g;
+// $ followed by 1-10 letters = crypto
+// # followed by 1-10 letters = stock/commodity (e.g., #PALLADIUM)
+const TICKER_REGEX = /([#$])([A-Za-z]{1,10})\b/g;
 
 export interface TickerMatch {
   /** Symbol without prefix, normalized to uppercase (e.g., "WLD", "AAPL") */
