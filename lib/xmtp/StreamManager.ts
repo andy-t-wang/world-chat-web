@@ -618,10 +618,9 @@ class XMTPStreamManager {
    */
   private updateTabTitle(): void {
     queueMicrotask(() => {
-      // Use the greater of: total unread OR messages received while hidden
+      // Use actual unread count from metadata (source of truth)
       const totalUnread = this.getTotalUnreadCount();
-      const count = Math.max(totalUnread, this.hiddenTabMessageCount);
-      updateTitleWithUnreadCount(count);
+      updateTitleWithUnreadCount(totalUnread);
     });
   }
 
