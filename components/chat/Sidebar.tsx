@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom, useSetAtom } from 'jotai';
-import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw, Sun, Moon, Monitor, Share2, Check } from 'lucide-react';
+import { Search, SquarePen, X, Settings, Link2, Link2Off, Volume2, VolumeX, MessageSquare, MessageSquareOff, LogOut, RefreshCw, Sun, Moon, Monitor, Share2, Check, UserPlus, UserX } from 'lucide-react';
 import { clearSession } from '@/lib/auth/session';
 import { clearSessionCache } from '@/lib/storage';
 import { streamManager } from '@/lib/xmtp/StreamManager';
@@ -10,7 +10,7 @@ import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
 import { NotificationBanner } from './NotificationBanner';
 import { UpdateBanner } from './UpdateBanner';
-import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom, themePreferenceAtom, type ThemePreference } from '@/stores/settings';
+import { linkPreviewEnabledAtom, soundMutedAtom, hideEmptyConversationsAtom, themePreferenceAtom, messageRequestNotificationsAtom, type ThemePreference } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
 
@@ -21,6 +21,7 @@ function GlobalSettingsDropdown() {
   const [soundMuted, setSoundMuted] = useAtom(soundMutedAtom);
   const [hideEmptyConversations, setHideEmptyConversations] = useAtom(hideEmptyConversationsAtom);
   const [themePreference, setThemePreference] = useAtom(themePreferenceAtom);
+  const [messageRequestNotifications, setMessageRequestNotifications] = useAtom(messageRequestNotificationsAtom);
   const [version, setVersion] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
@@ -211,6 +212,33 @@ function GlobalSettingsDropdown() {
               <div
                 className={`w-5 h-5 rounded-full bg-[var(--bg-primary)] shadow transition-transform ${
                   !soundMuted ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </div>
+          </button>
+          <button
+            onClick={() => setMessageRequestNotifications(!messageRequestNotifications)}
+            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-hover)] transition-colors"
+          >
+            {messageRequestNotifications ? (
+              <UserPlus className="w-5 h-5 text-[var(--accent-green)]" />
+            ) : (
+              <UserX className="w-5 h-5 text-[var(--text-tertiary)]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[var(--text-primary)]">Request Notifications</p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
+                {messageRequestNotifications ? 'Notify for new message requests' : 'No request notifications'}
+              </p>
+            </div>
+            <div
+              className={`w-10 h-6 rounded-full p-0.5 transition-colors ${
+                messageRequestNotifications ? 'bg-[var(--toggle-bg-on)]' : 'bg-[var(--toggle-bg-off)]'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-[var(--bg-primary)] shadow transition-transform ${
+                  messageRequestNotifications ? 'translate-x-4' : 'translate-x-0'
                 }`}
               />
             </div>

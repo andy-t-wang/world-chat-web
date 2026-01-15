@@ -36,7 +36,7 @@ import { showMessageNotification, requestNotificationPermission, updateTitleWith
 import { getCachedUsername, getAvatarUrl, resolveAddress } from '@/lib/username/service';
 import { isMentioned } from '@/lib/mentions/utils';
 import { getSessionCache } from '@/lib/storage';
-import { mutedConversationIdsAtom } from '@/stores/settings';
+import { mutedConversationIdsAtom, messageRequestNotificationsAtom } from '@/stores/settings';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -2120,9 +2120,16 @@ class XMTPStreamManager {
               const mutedIds = store.get(mutedConversationIdsAtom);
               const isConversationMuted = mutedIds.includes(conversationId);
 
+              // Check if this is a message request and if request notifications are enabled
+              const isMessageRequest = metadata.consentState === 'unknown';
+              const requestNotificationsEnabled = store.get(messageRequestNotificationsAtom);
+
               // Show notification and update title if tab not visible
               // @mentions bypass conversation mute to ensure users don't miss direct mentions
-              const shouldNotify = (!tabVisible || wasMentioned) && (!isConversationMuted || wasMentioned);
+              // Message requests only notify if the setting is enabled
+              const shouldNotify = (!tabVisible || wasMentioned)
+                && (!isConversationMuted || wasMentioned)
+                && (!isMessageRequest || requestNotificationsEnabled);
 
               if (shouldNotify) {
                 // Track messages received while tab is hidden

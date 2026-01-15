@@ -27,3 +27,7 @@ export const pinnedConversationIdsAtom = atomWithStorage<string[]>('pinned-conve
 // Muted conversation IDs - persisted to localStorage
 // Muted conversations don't show notifications (except @mentions which bypass mute)
 export const mutedConversationIdsAtom = atomWithStorage<string[]>('muted-conversations', []);
+
+// Message request notifications - persisted to localStorage (default: true)
+// When enabled, shows notifications for new messages from unknown contacts
+export const messageRequestNotificationsAtom = atomWithStorage('message-request-notifications', true);
