@@ -2067,7 +2067,24 @@ export function MessagePanel({
                               }
                             />
                           )}
-                          <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
+                          <div
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(
+                                e,
+                                item.id,
+                                "[Images]",
+                                isOwnMessage
+                                  ? ""
+                                  : conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address || ""
+                                    : peerAddress || ""
+                              )
+                            }
+                          >
+                            <MultiAttachmentMessage isOwnMessage={isOwnMessage} />
+                          </div>
                           <MessageReactions
                             messageId={item.id}
                             conversationId={conversationId}
@@ -2212,24 +2229,41 @@ export function MessagePanel({
                             />
                           )}
                           {/* Render ImageGrid for multiple attachments, ImageMessage for single */}
-                          {attachments && attachments.length > 1 ? (
-                            <ImageGrid
-                              attachments={attachments}
-                              isOwnMessage={isOwnMessage}
-                            />
-                          ) : attachments && attachments.length === 1 ? (
-                            <ImageMessage
-                              remoteAttachment={attachments[0]}
-                              isOwnMessage={isOwnMessage}
-                            />
-                          ) : (
-                            <ImageMessage
-                              remoteAttachment={
-                                attachmentContent as RemoteAttachmentContent
-                              }
-                              isOwnMessage={isOwnMessage}
-                            />
-                          )}
+                          <div
+                            onContextMenu={(e) =>
+                              handleMessageContextMenu(
+                                e,
+                                item.id,
+                                "[Image]",
+                                isOwnMessage
+                                  ? ""
+                                  : conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address || ""
+                                    : peerAddress || ""
+                              )
+                            }
+                          >
+                            {attachments && attachments.length > 1 ? (
+                              <ImageGrid
+                                attachments={attachments}
+                                isOwnMessage={isOwnMessage}
+                              />
+                            ) : attachments && attachments.length === 1 ? (
+                              <ImageMessage
+                                remoteAttachment={attachments[0]}
+                                isOwnMessage={isOwnMessage}
+                              />
+                            ) : (
+                              <ImageMessage
+                                remoteAttachment={
+                                  attachmentContent as RemoteAttachmentContent
+                                }
+                                isOwnMessage={isOwnMessage}
+                              />
+                            )}
+                          </div>
                           <MessageReactions
                             messageId={item.id}
                             conversationId={conversationId}
