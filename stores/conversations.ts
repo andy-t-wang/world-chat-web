@@ -54,6 +54,13 @@ export const conversationIdsAtom = atom<string[]>([]);
 export const isLoadingConversationsAtom = atom<boolean>(false);
 
 /**
+ * Whether initial network sync is in progress
+ * This is separate from isLoading - we show local cache immediately,
+ * then sync with network in background
+ */
+export const isSyncingConversationsAtom = atom<boolean>(false);
+
+/**
  * Version counter for conversation metadata - increments when any metadata changes
  * Used to trigger re-renders in components that depend on metadata
  */

@@ -16,6 +16,7 @@ import {
   store,
   conversationIdsAtom,
   isLoadingConversationsAtom,
+  isSyncingConversationsAtom,
   conversationsErrorAtom,
   conversationMetadataVersionAtom,
   allConversationMessageIdsAtom,
@@ -834,6 +835,7 @@ class XMTPStreamManager {
     if (!this.client || this.initialSyncDone) return;
 
     this.initialSyncDone = true;
+    store.set(isSyncingConversationsAtom, true);
 
     try {
       // Request message history from other devices (cross-device sync)
@@ -918,9 +920,13 @@ class XMTPStreamManager {
       setTimeout(() => {
         this.incrementMetadataVersion();
       }, 1000);
+
+      // Mark sync as complete
+      store.set(isSyncingConversationsAtom, false);
     } catch (error) {
       console.error('[StreamManager] Initial sync error:', error);
       store.set(isLoadingConversationsAtom, false);
+      store.set(isSyncingConversationsAtom, false);
     }
   }
 

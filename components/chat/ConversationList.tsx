@@ -6,6 +6,7 @@ import { useAtomValue, useSetAtom, useAtom } from 'jotai';
 import { ConversationItem, type ConversationItemProps } from './ConversationItem';
 import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
+import { isSyncingConversationsAtom } from '@/stores/conversations';
 import { hideEmptyConversationsAtom, pinnedConversationIdsAtom, mutedConversationIdsAtom } from '@/stores/settings';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
@@ -31,6 +32,7 @@ export function ConversationList({
   const selectedId = useAtomValue(selectedConversationIdAtom);
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
   const hideEmptyConversations = useAtomValue(hideEmptyConversationsAtom);
+  const isSyncing = useAtomValue(isSyncingConversationsAtom);
   const [pinnedIds, setPinnedIds] = useAtom(pinnedConversationIdsAtom);
   const [mutedIds, setMutedIds] = useAtom(mutedConversationIdsAtom);
 
@@ -265,6 +267,16 @@ export function ConversationList({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Syncing Indicator */}
+      {isSyncing && (
+        <div className="flex justify-center py-2 shrink-0">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[var(--bg-tertiary)] rounded-full">
+            <Loader2 className="w-3 h-3 text-[var(--text-secondary)] animate-spin" />
+            <span className="text-xs text-[var(--text-secondary)] font-medium">Syncing</span>
+          </div>
+        </div>
+      )}
+
       {/* Chat Requests Banner */}
       {requestCount > 0 && (
         <div className="shrink-0 border-b border-[var(--border-subtle)]">

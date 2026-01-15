@@ -57,6 +57,7 @@ export {
   conversationMetadataAtom,
   conversationIdsAtom,
   isLoadingConversationsAtom,
+  isSyncingConversationsAtom,
   conversationMetadataVersionAtom,
   conversationsErrorAtom,
   sortedConversationIdsAtom,
