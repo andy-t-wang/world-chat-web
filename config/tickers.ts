@@ -197,13 +197,50 @@ export async function getCryptoConfig(symbol: string): Promise<TickerConfig | nu
 }
 
 /**
+ * Common commodity symbol mappings → Polygon/Massive API format
+ * Users can type friendly names like #SILVER or use raw tickers like #C:XAGUSD
+ */
+const COMMODITY_MAPPINGS: Record<string, { id: string; name: string }> = {
+  // Precious metals
+  SILVER: { id: 'C:XAGUSD', name: 'Silver' },
+  XAG: { id: 'C:XAGUSD', name: 'Silver' },
+  GOLD: { id: 'C:XAUUSD', name: 'Gold' },
+  XAU: { id: 'C:XAUUSD', name: 'Gold' },
+  PLATINUM: { id: 'C:XPTUSD', name: 'Platinum' },
+  XPT: { id: 'C:XPTUSD', name: 'Platinum' },
+  PALLADIUM: { id: 'C:XPDUSD', name: 'Palladium' },
+  XPD: { id: 'C:XPDUSD', name: 'Palladium' },
+  // Oil & Energy
+  OIL: { id: 'C:CLUSD', name: 'Crude Oil' },
+  BRENT: { id: 'C:BZUSD', name: 'Brent Crude' },
+  NATGAS: { id: 'C:NGUSD', name: 'Natural Gas' },
+  // Agriculture
+  WHEAT: { id: 'C:ZWUSD', name: 'Wheat' },
+  CORN: { id: 'C:ZCUSD', name: 'Corn' },
+  COFFEE: { id: 'C:KCUSD', name: 'Coffee' },
+};
+
+/**
  * Get ticker configuration for stock
  * Always returns a config - Massive API will validate
+ * Also supports commodities via friendly names or raw C: format
  */
 export function getStockConfig(symbol: string): TickerConfig {
+  const upperSymbol = symbol.toUpperCase();
+
+  // Check commodity mappings first
+  if (upperSymbol in COMMODITY_MAPPINGS) {
+    return {
+      type: 'stock',
+      id: COMMODITY_MAPPINGS[upperSymbol].id,
+      name: COMMODITY_MAPPINGS[upperSymbol].name,
+    };
+  }
+
+  // Pass through raw tickers (including C:XAGUSD format)
   return {
     type: 'stock',
-    id: symbol.toUpperCase(),
+    id: upperSymbol,
   };
 }
 
