@@ -210,9 +210,7 @@ const COMMODITY_MAPPINGS: Record<string, { id: string; name: string }> = {
   XPT: { id: 'C:XPTUSD', name: 'Platinum' },
   PALLADIUM: { id: 'C:XPDUSD', name: 'Palladium' },
   XPD: { id: 'C:XPDUSD', name: 'Palladium' },
-  // Industrial metals
-  COPPER: { id: 'C:HGUSD', name: 'Copper' },
-  HG: { id: 'C:HGUSD', name: 'Copper' },
+  // Note: Copper (HG) is not available as a forex pair - it's futures only
   // Oil & Energy
   OIL: { id: 'C:CLUSD', name: 'Crude Oil' },
   BRENT: { id: 'C:BZUSD', name: 'Brent Crude' },
