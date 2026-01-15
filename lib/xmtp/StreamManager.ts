@@ -1276,20 +1276,34 @@ class XMTPStreamManager {
         const lastReadTimes = await conv.lastReadTimes();
         const sdkLastRead = ownInboxId ? lastReadTimes.get(ownInboxId) : undefined;
 
-        if (sdkLastRead && sdkLastRead > BigInt(0)) {
-          lastReadTs = sdkLastRead;
-          // Also update our local cache for consistency
-          this.lastReadTimestamps.set(conv.id, sdkLastRead);
-        } else {
-          // Fall back to local timestamp if SDK doesn't have one
-          const localTs = this.lastReadTimestamps.get(conv.id);
-          if (localTs) {
-            lastReadTs = localTs;
-          } else {
-            // First time seeing this conversation - mark as read up to now
-            lastReadTs = nowNs;
-            this.lastReadTimestamps.set(conv.id, nowNs);
+        // Also find our most recent sent message - if we sent from another device,
+        // that effectively means we've read everything up to that point
+        let ourLatestSentTs = BigInt(0);
+        if (ownInboxId) {
+          for (const msg of messages) {
+            if (msg.senderInboxId === ownInboxId && msg.sentAtNs > ourLatestSentTs) {
+              ourLatestSentTs = msg.sentAtNs;
+              break; // Messages are sorted desc, so first match is most recent
+            }
           }
+        }
+
+        // Use the most recent of: SDK read time, our latest sent message, or local cache
+        const localTs = this.lastReadTimestamps.get(conv.id);
+        const candidates = [
+          sdkLastRead ?? BigInt(0),
+          ourLatestSentTs,
+          localTs ?? BigInt(0),
+        ];
+        const maxTs = candidates.reduce((a, b) => a > b ? a : b, BigInt(0));
+
+        if (maxTs > BigInt(0)) {
+          lastReadTs = maxTs;
+          this.lastReadTimestamps.set(conv.id, maxTs);
+        } else {
+          // First time seeing this conversation - mark as read up to now
+          lastReadTs = nowNs;
+          this.lastReadTimestamps.set(conv.id, nowNs);
         }
 
         // Also update peer read receipt while we have the data
