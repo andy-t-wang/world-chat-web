@@ -201,26 +201,25 @@ export async function getCryptoConfig(symbol: string): Promise<TickerConfig | nu
  * Users can type friendly names like #SILVER or use raw tickers like #C:XAGUSD
  */
 const COMMODITY_MAPPINGS: Record<string, { id: string; name: string }> = {
-  // Precious metals
-  SILVER: { id: 'C:XAGUSD', name: 'Silver' },
-  XAG: { id: 'C:XAGUSD', name: 'Silver' },
-  GOLD: { id: 'C:XAUUSD', name: 'Gold' },
-  XAU: { id: 'C:XAUUSD', name: 'Gold' },
-  PLATINUM: { id: 'C:XPTUSD', name: 'Platinum' },
-  XPT: { id: 'C:XPTUSD', name: 'Platinum' },
-  PALLADIUM: { id: 'C:XPDUSD', name: 'Palladium' },
-  XPD: { id: 'C:XPDUSD', name: 'Palladium' },
+  // Precious metals (ETFs)
+  SILVER: { id: 'SLV', name: 'iShares Silver Trust' },
+  SLV: { id: 'SLV', name: 'iShares Silver Trust' },
+  GOLD: { id: 'GLD', name: 'SPDR Gold Trust' },
+  GLD: { id: 'GLD', name: 'SPDR Gold Trust' },
+  PLATINUM: { id: 'PPLT', name: 'Physical Platinum Shares' },
+  PPLT: { id: 'PPLT', name: 'Physical Platinum Shares' },
+  PALLADIUM: { id: 'PALL', name: 'Physical Palladium Shares' },
+  PALL: { id: 'PALL', name: 'Physical Palladium Shares' },
   // Industrial metals (ETFs)
   COPPER: { id: 'COPX', name: 'Copper Miners ETF' },
   COPX: { id: 'COPX', name: 'Copper Miners ETF' },
-  // Oil & Energy
-  OIL: { id: 'C:CLUSD', name: 'Crude Oil' },
-  BRENT: { id: 'C:BZUSD', name: 'Brent Crude' },
-  NATGAS: { id: 'C:NGUSD', name: 'Natural Gas' },
-  // Agriculture
-  WHEAT: { id: 'C:ZWUSD', name: 'Wheat' },
-  CORN: { id: 'C:ZCUSD', name: 'Corn' },
-  COFFEE: { id: 'C:KCUSD', name: 'Coffee' },
+  // Oil & Energy (ETFs)
+  OIL: { id: 'USO', name: 'United States Oil Fund' },
+  USO: { id: 'USO', name: 'United States Oil Fund' },
+  CRUDE: { id: 'USO', name: 'United States Oil Fund' },
+  NATGAS: { id: 'UNG', name: 'United States Natural Gas Fund' },
+  UNG: { id: 'UNG', name: 'United States Natural Gas Fund' },
+  GAS: { id: 'UNG', name: 'United States Natural Gas Fund' },
 };
 
 /**
