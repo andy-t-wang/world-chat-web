@@ -266,11 +266,11 @@ export function ConversationList({
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Syncing Indicator */}
+    <div className="relative flex flex-col h-full">
+      {/* Syncing Indicator - floats on top of conversation list */}
       {isSyncing && (
-        <div className="flex justify-center py-2 shrink-0">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-[var(--bg-tertiary)] rounded-full">
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[var(--bg-primary)] border border-[var(--border-subtle)] rounded-full shadow-sm">
             <Loader2 className="w-3 h-3 text-[var(--text-secondary)] animate-spin" />
             <span className="text-xs text-[var(--text-secondary)] font-medium">Syncing</span>
           </div>
