@@ -88,6 +88,50 @@ function decodeHTMLEntities(text: string): string {
     .replace(/&#x([a-fA-F0-9]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }
 
+// Check if URL is a YouTube video
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname.replace(/^www\./, '');
+    return hostname === 'youtube.com' || hostname === 'youtu.be' || hostname === 'm.youtube.com';
+  } catch {
+    return false;
+  }
+}
+
+// Fetch YouTube metadata using oEmbed API
+async function fetchYouTubeMetadata(url: string): Promise<LinkMetadata> {
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+    const response = await fetch(oembedUrl, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`YouTube oEmbed failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    return {
+      url,
+      domain: 'youtube.com',
+      title: data.title,
+      description: data.author_name ? `by ${data.author_name}` : undefined,
+      image: data.thumbnail_url,
+    };
+  } catch (error) {
+    console.error('YouTube oEmbed error:', error);
+    return {
+      url,
+      domain: 'youtube.com',
+      title: 'YouTube Video',
+    };
+  }
+}
+
 // Check if URL is a Twitter/X post (tweet)
 function isTwitterTweetUrl(url: string): boolean {
   try {
@@ -199,6 +243,16 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Handle YouTube URLs specially using oEmbed
+    if (isYouTubeUrl(url)) {
+      const metadata = await fetchYouTubeMetadata(url);
+      return NextResponse.json(metadata, {
+        headers: {
+          'Cache-Control': 'public, max-age=604800, s-maxage=604800',
+        },
+      });
+    }
+
     // Handle Twitter/X tweet URLs specially using oEmbed
     if (isTwitterTweetUrl(url)) {
       const metadata = await fetchTwitterMetadata(url);
