@@ -9,6 +9,8 @@ import { customNicknamesAtom } from '@/stores/nicknames';
 import { getCachedUsername } from '@/lib/username/service';
 import { useUsername } from '@/hooks/useUsername';
 import { Avatar } from '@/components/ui/Avatar';
+import { searchEmojis, findEmojiByShortcode, type EmojiMatch } from '@/lib/emoji/utils';
+import { EmojiSuggestion } from './EmojiSuggestion';
 
 export interface MemberPreview {
   inboxId: string;
@@ -98,16 +100,20 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
       position: { x: number; y: number };
     } | null>(null);
 
-    // @mention autocomplete state
-    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
-    const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
-    const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+    // Unified autocomplete state (only one can be active at a time)
+    type AutocompleteState = {
+      type: 'mention' | 'emoji';
+      query: string;
+      startIndex: number;
+      selectedIndex: number;
+    } | null;
+    const [autocomplete, setAutocomplete] = useState<AutocompleteState>(null);
 
     // Filter members based on mention query (excluding self)
     const filteredMembers = useMemo(() => {
-      if (mentionQuery === null || !members) return [];
+      if (autocomplete?.type !== 'mention' || !members) return [];
 
-      const query = mentionQuery.toLowerCase();
+      const query = autocomplete.query.toLowerCase();
       return members
         .filter((m) => m.inboxId !== currentInboxId) // Exclude self
         .filter((m) => {
@@ -127,12 +133,13 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
           return false;
         })
         .slice(0, 5); // Limit to 5 suggestions
-    }, [members, mentionQuery, currentInboxId, customNicknames]);
+    }, [members, autocomplete, currentInboxId, customNicknames]);
 
-    // Reset selected index when filtered results change
-    useEffect(() => {
-      setSelectedMentionIndex(0);
-    }, [filteredMembers.length]);
+    // Filter emojis based on emoji query
+    const filteredEmojis = useMemo(() => {
+      if (autocomplete?.type !== 'emoji' || autocomplete.query.length < 2) return [];
+      return searchEmojis(autocomplete.query, 5);
+    }, [autocomplete]);
 
     // Detect @ trigger while typing
     const detectMention = useCallback((text: string, cursorPos: number) => {
@@ -155,30 +162,29 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
         const query = text.slice(atIndex + 1, cursorPos);
         // Only show if query doesn't contain spaces
         if (!query.includes(' ')) {
-          setMentionQuery(query);
-          setMentionStartIndex(atIndex);
+          setAutocomplete({ type: 'mention', query, startIndex: atIndex, selectedIndex: 0 });
           return;
         }
       }
 
-      // No valid mention trigger
-      setMentionQuery(null);
-      setMentionStartIndex(-1);
+      // No valid mention trigger - only clear if we were showing mention
+      setAutocomplete((prev) => prev?.type === 'mention' ? null : prev);
     }, []);
 
     // Handle mention selection
     const handleMentionSelect = useCallback((member: MemberPreview) => {
+      if (autocomplete?.type !== 'mention') return;
+
       const cached = getCachedUsername(member.address);
       const username = cached?.username || member.address.slice(0, 10);
 
       // Replace @query with @username
-      const before = value.slice(0, mentionStartIndex);
-      const after = value.slice(mentionStartIndex + 1 + (mentionQuery?.length || 0));
+      const before = value.slice(0, autocomplete.startIndex);
+      const after = value.slice(autocomplete.startIndex + 1 + autocomplete.query.length);
       const newValue = `${before}@${username} ${after}`;
 
       onChange(newValue);
-      setMentionQuery(null);
-      setMentionStartIndex(-1);
+      setAutocomplete(null);
 
       // Focus and set cursor after the inserted mention
       setTimeout(() => {
@@ -188,7 +194,73 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
           textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
         }
       }, 0);
-    }, [value, mentionStartIndex, mentionQuery, onChange]);
+    }, [value, autocomplete, onChange]);
+
+    // Detect :emoji trigger while typing
+    const detectEmoji = useCallback((text: string, cursorPos: number) => {
+      // Look backwards from cursor to find :
+      let colonIndex = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        const char = text[i];
+        if (char === ':') {
+          // Valid if at start or preceded by whitespace
+          if (i === 0 || /\s/.test(text[i - 1])) {
+            colonIndex = i;
+            break;
+          }
+        }
+        // Stop if we hit whitespace or another colon (no : in this word)
+        if (/\s/.test(char)) break;
+      }
+
+      if (colonIndex >= 0) {
+        const query = text.slice(colonIndex + 1, cursorPos);
+        // Only show if query is alphanumeric/underscore and no spaces
+        if (/^[A-Za-z0-9_+-]+$/.test(query) && query.length >= 2) {
+          setAutocomplete({ type: 'emoji', query, startIndex: colonIndex, selectedIndex: 0 });
+          return;
+        }
+      }
+
+      // No valid emoji trigger - only clear if we were showing emoji
+      setAutocomplete((prev) => prev?.type === 'emoji' ? null : prev);
+    }, []);
+
+    // Handle emoji selection
+    const handleEmojiSelect = useCallback((emoji: EmojiMatch) => {
+      if (autocomplete?.type !== 'emoji') return;
+
+      // Replace :query with emoji character
+      const before = value.slice(0, autocomplete.startIndex);
+      const after = value.slice(autocomplete.startIndex + 1 + autocomplete.query.length);
+      const newValue = `${before}${emoji.native}${after}`;
+
+      onChange(newValue);
+      setAutocomplete(null);
+
+      // Focus and set cursor after the inserted emoji
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const newCursorPos = before.length + emoji.native.length;
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
+    }, [value, autocomplete, onChange]);
+
+    // Auto-convert complete :shortcode: to emoji
+    const autoConvertEmoji = useCallback((text: string): string | null => {
+      // Match :shortcode: pattern (with closing colon)
+      const match = text.match(/:([A-Za-z0-9_+-]+):$/);
+      if (!match) return null;
+
+      const shortcode = match[1];
+      const emoji = findEmojiByShortcode(shortcode);
+      if (!emoji) return null;
+
+      // Replace the :shortcode: with the emoji
+      return text.slice(0, -match[0].length) + emoji.native;
+    }, []);
 
     // Expose focus/blur methods
     useImperativeHandle(ref, () => ({
@@ -307,40 +379,61 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
           ref={textareaRef}
           value={value}
           onChange={(e) => {
-            const newValue = e.target.value;
+            let newValue = e.target.value;
+            const cursorPos = e.target.selectionStart;
+
+            // Check for auto-convert :shortcode: to emoji
+            const converted = autoConvertEmoji(newValue);
+            if (converted !== null) {
+              newValue = converted;
+              setAutocomplete(null);
+            }
+
             onChange(newValue);
             autoResize();
+
             // Detect @mention trigger
             if (members && members.length > 0) {
-              detectMention(newValue, e.target.selectionStart);
+              detectMention(newValue, cursorPos);
+            }
+
+            // Detect :emoji trigger (only if not auto-converted)
+            if (converted === null) {
+              detectEmoji(newValue, cursorPos);
             }
           }}
           onKeyDown={(e) => {
-            // Handle mention autocomplete keyboard navigation
-            if (mentionQuery !== null && filteredMembers.length > 0) {
+            // Handle autocomplete keyboard navigation
+            const items = autocomplete?.type === 'emoji' ? filteredEmojis : filteredMembers;
+            if (autocomplete && items.length > 0) {
               if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                setSelectedMentionIndex((prev) =>
-                  prev < filteredMembers.length - 1 ? prev + 1 : 0
-                );
+                setAutocomplete((prev) => prev ? {
+                  ...prev,
+                  selectedIndex: prev.selectedIndex < items.length - 1 ? prev.selectedIndex + 1 : 0,
+                } : null);
                 return;
               }
               if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                setSelectedMentionIndex((prev) =>
-                  prev > 0 ? prev - 1 : filteredMembers.length - 1
-                );
+                setAutocomplete((prev) => prev ? {
+                  ...prev,
+                  selectedIndex: prev.selectedIndex > 0 ? prev.selectedIndex - 1 : items.length - 1,
+                } : null);
                 return;
               }
               if (e.key === 'Enter' || e.key === 'Tab') {
                 e.preventDefault();
-                handleMentionSelect(filteredMembers[selectedMentionIndex]);
+                if (autocomplete.type === 'emoji') {
+                  handleEmojiSelect(filteredEmojis[autocomplete.selectedIndex]);
+                } else {
+                  handleMentionSelect(filteredMembers[autocomplete.selectedIndex]);
+                }
                 return;
               }
               if (e.key === 'Escape') {
                 e.preventDefault();
-                setMentionQuery(null);
-                setMentionStartIndex(-1);
+                setAutocomplete(null);
                 return;
               }
             }
@@ -394,7 +487,7 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
         )}
 
         {/* @mention autocomplete dropdown */}
-        {mentionQuery !== null && filteredMembers.length > 0 && (
+        {autocomplete?.type === 'mention' && filteredMembers.length > 0 && (
           <div
             className="absolute left-0 right-0 z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-1 max-h-[200px] overflow-y-auto"
             style={{
@@ -407,8 +500,29 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
                 key={member.inboxId}
                 member={member}
                 nickname={customNicknames[member.address.toLowerCase()]}
-                isSelected={index === selectedMentionIndex}
+                isSelected={index === autocomplete.selectedIndex}
                 onClick={() => handleMentionSelect(member)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* :emoji autocomplete dropdown */}
+        {autocomplete?.type === 'emoji' && filteredEmojis.length > 0 && (
+          <div
+            className="absolute left-0 right-0 z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-1 max-h-[200px] overflow-y-auto"
+            style={{
+              bottom: '100%',
+              marginBottom: '8px',
+            }}
+          >
+            {filteredEmojis.map((emoji, index) => (
+              <EmojiSuggestion
+                key={emoji.id}
+                emoji={emoji}
+                query={autocomplete.query}
+                isSelected={index === autocomplete.selectedIndex}
+                onClick={() => handleEmojiSelect(emoji)}
               />
             ))}
           </div>
