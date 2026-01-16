@@ -50,11 +50,14 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
     >
       {/* Close button */}
       <button
-        onClick={onClose}
-        className="absolute top-4 right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
+        className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
         aria-label="Close"
       >
-        <X className="w-6 h-6 text-white" />
+        <X className="w-6 h-6 text-white pointer-events-none" />
       </button>
 
       {/* Download button */}
@@ -63,10 +66,10 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
           e.stopPropagation();
           handleDownload();
         }}
-        className="absolute top-4 right-16 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+        className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
         aria-label="Download"
       >
-        <Download className="w-6 h-6 text-white" />
+        <Download className="w-6 h-6 text-white pointer-events-none" />
       </button>
 
       {/* Image */}
