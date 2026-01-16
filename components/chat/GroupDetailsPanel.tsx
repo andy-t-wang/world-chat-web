@@ -409,6 +409,9 @@ export function GroupDetailsPanel({
       await onMemberRemoved(inboxId, address, displayName);
     } catch (error) {
       console.error('Failed to remove member:', error);
+      // Show error to user
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Failed to remove member: ${errorMessage}`);
     } finally {
       // Remove from removing set
       setRemovingMembers(prev => {

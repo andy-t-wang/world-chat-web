@@ -173,7 +173,11 @@ export default function ChatPage() {
 
       const group = conversation as unknown as {
         removeMembers: (inboxIds: string[]) => Promise<void>;
+        sync: () => Promise<void>;
       };
+
+      // Sync the group first to ensure we have the latest state
+      await group.sync();
 
       // Remove the member
       await group.removeMembers([inboxId]);
