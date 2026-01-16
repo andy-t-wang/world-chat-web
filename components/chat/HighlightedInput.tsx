@@ -1,9 +1,19 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle, useMemo } from 'react';
+import { useAtomValue } from 'jotai';
 import { extractTickers, type TickerType } from '@/lib/ticker/utils';
 import { TickerPreview } from './TickerPreview';
 import type { TickerPriceData } from '@/app/api/ticker-price/route';
+import { customNicknamesAtom } from '@/stores/nicknames';
+import { getCachedUsername } from '@/lib/username/service';
+import { useUsername } from '@/hooks/useUsername';
+import { Avatar } from '@/components/ui/Avatar';
+
+export interface MemberPreview {
+  inboxId: string;
+  address: string;
+}
 
 interface HighlightedInputProps {
   value: string;
@@ -12,6 +22,10 @@ interface HighlightedInputProps {
   placeholder?: string;
   disabled?: boolean;
   onTickerClick?: (symbol: string, type: TickerType, data: TickerPriceData) => void;
+  /** Members for @mention autocomplete (group chats) */
+  members?: MemberPreview[];
+  /** Current user's inbox ID (to exclude from suggestions) */
+  currentInboxId?: string;
 }
 
 export interface HighlightedInputRef {
@@ -24,15 +38,58 @@ export interface HighlightedInputRef {
 const TICKER_PATTERN = /([#$])([A-Za-z]{1,10})\b/g;
 const TICKER_TEST_PATTERN = /([#$])([A-Za-z]{1,10})\b/;
 
+// Single member suggestion row
+function MemberSuggestion({
+  member,
+  nickname,
+  isSelected,
+  onClick,
+}: {
+  member: MemberPreview;
+  nickname?: string;
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const { displayName: username, profilePicture } = useUsername(member.address);
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${
+        isSelected ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'
+      }`}
+    >
+      <Avatar
+        address={member.address}
+        size="sm"
+        className="w-8 h-8"
+        imageUrl={profilePicture || undefined}
+      />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium text-[var(--text-primary)] truncate">
+          {nickname || username}
+        </div>
+        {nickname && (
+          <div className="text-xs text-[var(--text-tertiary)] truncate">
+            @{username}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
 /**
  * Textarea with highlighted ticker symbols
  * Uses overlay technique: invisible text in textarea, visible highlighted text behind
  */
 export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInputProps>(
-  ({ value, onChange, onKeyDown, placeholder, disabled, onTickerClick }, ref) => {
+  ({ value, onChange, onKeyDown, placeholder, disabled, onTickerClick, members, currentInboxId }, ref) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const overlayRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
+    const customNicknames = useAtomValue(customNicknamesAtom);
 
     // Ticker preview popup state
     const [tickerPopup, setTickerPopup] = useState<{
@@ -40,6 +97,98 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
       type: TickerType;
       position: { x: number; y: number };
     } | null>(null);
+
+    // @mention autocomplete state
+    const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+    const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1);
+    const [selectedMentionIndex, setSelectedMentionIndex] = useState(0);
+
+    // Filter members based on mention query (excluding self)
+    const filteredMembers = useMemo(() => {
+      if (mentionQuery === null || !members) return [];
+
+      const query = mentionQuery.toLowerCase();
+      return members
+        .filter((m) => m.inboxId !== currentInboxId) // Exclude self
+        .filter((m) => {
+          if (!query) return true; // Show all if just "@"
+
+          // Check nickname
+          const nickname = customNicknames[m.address.toLowerCase()];
+          if (nickname?.toLowerCase().includes(query)) return true;
+
+          // Check cached username
+          const cached = getCachedUsername(m.address);
+          if (cached?.username?.toLowerCase().includes(query)) return true;
+
+          // Check address
+          if (m.address.toLowerCase().includes(query)) return true;
+
+          return false;
+        })
+        .slice(0, 5); // Limit to 5 suggestions
+    }, [members, mentionQuery, currentInboxId, customNicknames]);
+
+    // Reset selected index when filtered results change
+    useEffect(() => {
+      setSelectedMentionIndex(0);
+    }, [filteredMembers.length]);
+
+    // Detect @ trigger while typing
+    const detectMention = useCallback((text: string, cursorPos: number) => {
+      // Look backwards from cursor to find @
+      let atIndex = -1;
+      for (let i = cursorPos - 1; i >= 0; i--) {
+        const char = text[i];
+        if (char === '@') {
+          // Check if this @ is at start or preceded by whitespace
+          if (i === 0 || /\s/.test(text[i - 1])) {
+            atIndex = i;
+            break;
+          }
+        }
+        // Stop if we hit whitespace (no @ in this word)
+        if (/\s/.test(char)) break;
+      }
+
+      if (atIndex >= 0) {
+        const query = text.slice(atIndex + 1, cursorPos);
+        // Only show if query doesn't contain spaces
+        if (!query.includes(' ')) {
+          setMentionQuery(query);
+          setMentionStartIndex(atIndex);
+          return;
+        }
+      }
+
+      // No valid mention trigger
+      setMentionQuery(null);
+      setMentionStartIndex(-1);
+    }, []);
+
+    // Handle mention selection
+    const handleMentionSelect = useCallback((member: MemberPreview) => {
+      const cached = getCachedUsername(member.address);
+      const username = cached?.username || member.address.slice(0, 10);
+
+      // Replace @query with @username
+      const before = value.slice(0, mentionStartIndex);
+      const after = value.slice(mentionStartIndex + 1 + (mentionQuery?.length || 0));
+      const newValue = `${before}@${username} ${after}`;
+
+      onChange(newValue);
+      setMentionQuery(null);
+      setMentionStartIndex(-1);
+
+      // Focus and set cursor after the inserted mention
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const newCursorPos = before.length + username.length + 2; // +2 for @ and space
+          textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
+    }, [value, mentionStartIndex, mentionQuery, onChange]);
 
     // Expose focus/blur methods
     useImperativeHandle(ref, () => ({
@@ -158,10 +307,46 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
           ref={textareaRef}
           value={value}
           onChange={(e) => {
-            onChange(e.target.value);
+            const newValue = e.target.value;
+            onChange(newValue);
             autoResize();
+            // Detect @mention trigger
+            if (members && members.length > 0) {
+              detectMention(newValue, e.target.selectionStart);
+            }
           }}
-          onKeyDown={onKeyDown}
+          onKeyDown={(e) => {
+            // Handle mention autocomplete keyboard navigation
+            if (mentionQuery !== null && filteredMembers.length > 0) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedMentionIndex((prev) =>
+                  prev < filteredMembers.length - 1 ? prev + 1 : 0
+                );
+                return;
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedMentionIndex((prev) =>
+                  prev > 0 ? prev - 1 : filteredMembers.length - 1
+                );
+                return;
+              }
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                handleMentionSelect(filteredMembers[selectedMentionIndex]);
+                return;
+              }
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                setMentionQuery(null);
+                setMentionStartIndex(-1);
+                return;
+              }
+            }
+            // Pass through to parent handler
+            onKeyDown(e);
+          }}
           onScroll={syncScroll}
           placeholder={hasTickers ? '' : placeholder}
           rows={1}
@@ -205,6 +390,27 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
                 onTickerClick?.(symbol, type, data);
               }}
             />
+          </div>
+        )}
+
+        {/* @mention autocomplete dropdown */}
+        {mentionQuery !== null && filteredMembers.length > 0 && (
+          <div
+            className="absolute left-0 right-0 z-50 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-subtle)] py-1 max-h-[200px] overflow-y-auto"
+            style={{
+              bottom: '100%',
+              marginBottom: '8px',
+            }}
+          >
+            {filteredMembers.map((member, index) => (
+              <MemberSuggestion
+                key={member.inboxId}
+                member={member}
+                nickname={customNicknames[member.address.toLowerCase()]}
+                isSelected={index === selectedMentionIndex}
+                onClick={() => handleMentionSelect(member)}
+              />
+            ))}
           </div>
         )}
       </div>

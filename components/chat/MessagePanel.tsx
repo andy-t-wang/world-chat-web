@@ -2805,6 +2805,8 @@ export function MessagePanel({
               onKeyDown={handleKeyDown}
               placeholder="Write a message..."
               onTickerClick={handleTickerClick}
+              members={memberPreviews}
+              currentInboxId={client?.inboxId}
             />
             <button
               onClick={handleSend}
