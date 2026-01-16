@@ -265,14 +265,27 @@ function GroupedMembershipChangeMessage({
 
 // Format disappearing messages duration for display
 function formatDisappearingDuration(durationNs: bigint): string {
-  const hours = Number(durationNs / BigInt(1_000_000_000) / BigInt(3600));
+  const totalSeconds = Number(durationNs / BigInt(1_000_000_000));
+
+  if (totalSeconds < 60) {
+    return `${totalSeconds} second${totalSeconds === 1 ? '' : 's'}`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  }
+
+  const hours = Math.floor(minutes / 60);
   if (hours < 24) {
     return `${hours} hour${hours === 1 ? '' : 's'}`;
   }
+
   const days = Math.floor(hours / 24);
   if (days < 7) {
     return `${days} day${days === 1 ? '' : 's'}`;
   }
+
   const weeks = Math.floor(days / 7);
   return `${weeks} week${weeks === 1 ? '' : 's'}`;
 }
