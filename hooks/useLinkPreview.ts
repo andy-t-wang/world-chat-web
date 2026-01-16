@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { LinkMetadata } from '@/components/chat/LinkPreview';
-import { getDomainFromUrl } from '@/components/chat/LinkPreview';
+import { getDomainFromUrl, isWorldAppUrl, parseWorldAppUrl } from '@/components/chat/LinkPreview';
 
 // In-memory cache for link previews (persists across component mounts)
 const linkPreviewCache = new Map<string, LinkMetadata>();
@@ -26,6 +26,17 @@ export function useLinkPreview(url: string | null): UseLinkPreviewResult {
       setIsLoading(false);
       setError(null);
       return;
+    }
+
+    // Handle World App URLs locally (no network request needed)
+    if (isWorldAppUrl(url)) {
+      const worldAppMetadata = parseWorldAppUrl(url);
+      if (worldAppMetadata) {
+        linkPreviewCache.set(url, worldAppMetadata);
+        setMetadata(worldAppMetadata);
+        setIsLoading(false);
+        return;
+      }
     }
 
     // Check cache first
@@ -101,6 +112,16 @@ export function useLinkPreviews(urls: string[]): Map<string, UseLinkPreviewResul
     const urlsToFetch: string[] = [];
 
     for (const url of urls) {
+      // Handle World App URLs locally
+      if (isWorldAppUrl(url)) {
+        const worldAppMetadata = parseWorldAppUrl(url);
+        if (worldAppMetadata) {
+          linkPreviewCache.set(url, worldAppMetadata);
+          initialResults.set(url, { metadata: worldAppMetadata, isLoading: false, error: null });
+          continue;
+        }
+      }
+
       const cached = linkPreviewCache.get(url);
       if (cached) {
         initialResults.set(url, { metadata: cached, isLoading: false, error: null });
