@@ -72,7 +72,7 @@ export function SparklineChart({
 
   return (
     <div style={{ width, height }} className="overflow-hidden rounded-lg [&_*]:outline-none" tabIndex={-1}>
-      <ResponsiveContainer width="100%" height="100%">
+      <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
         <AreaChart
           data={chartData}
           margin={{ top: 4, right: 0, bottom: 0, left: 0 }}

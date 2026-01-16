@@ -38,6 +38,9 @@ import { getCachedUsername, getAvatarUrl, resolveAddress } from '@/lib/username/
 import { isMentioned } from '@/lib/mentions/utils';
 import { getSessionCache } from '@/lib/storage';
 import { mutedConversationIdsAtom, messageRequestNotificationsAtom } from '@/stores/settings';
+import { isPaymentRequest, type PaymentRequest } from '@/lib/xmtp/PaymentRequestCodec';
+import { isPaymentFulfillment, type PaymentFulfillment } from '@/lib/xmtp/PaymentFulfillmentCodec';
+import { formatTokenAmount } from '@/lib/xmtp/TransactionReferenceCodec';
 
 // Conversation type
 type Conversation = Dm | Group;
@@ -364,6 +367,30 @@ function extractMessageContent(message: { content: unknown; contentType?: { type
       }
       return 'Payment';
     }
+  }
+
+  // If content is undefined but we have a payment type, try to decode from encodedContent
+  if ((typeId === 'paymentRequest' || typeId === 'paymentFulfillment') && !content && message.encodedContent?.content) {
+    try {
+      const decoded = new TextDecoder().decode(message.encodedContent.content);
+      content = JSON.parse(decoded);
+    } catch {
+      // Failed to decode, continue with undefined content
+    }
+  }
+
+  // Handle payment requests
+  if (typeId === 'paymentRequest' && isPaymentRequest(content)) {
+    const request = content as PaymentRequest;
+    const formatted = formatTokenAmount(request.metadata.amount, request.metadata.decimals);
+    return `Requested $${formatted}`;
+  }
+
+  // Handle payment fulfillments
+  if (typeId === 'paymentFulfillment' && isPaymentFulfillment(content)) {
+    const fulfillment = content as PaymentFulfillment;
+    const formatted = formatTokenAmount(fulfillment.metadata.amount, fulfillment.metadata.decimals);
+    return `Sent $${formatted}`;
   }
 
   if (typeof content === 'string') return content;

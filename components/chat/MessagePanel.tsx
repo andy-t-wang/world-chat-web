@@ -50,6 +50,9 @@ import {
   normalizeTransactionReference,
   type TransactionReference,
 } from "@/lib/xmtp/TransactionReferenceCodec";
+import { isPaymentRequest, type PaymentRequest } from "@/lib/xmtp/PaymentRequestCodec";
+import { isPaymentFulfillment, type PaymentFulfillment } from "@/lib/xmtp/PaymentFulfillmentCodec";
+import { PaymentRequestMessage, PaymentFulfillmentMessage } from "./PaymentRequestMessage";
 import type { RemoteAttachmentContent } from "@/types/attachments";
 import {
   isMultiAttachment,
@@ -1020,6 +1023,8 @@ export function MessagePanel({
     if (typeId === "readReceipt") return false;
     // Transaction references are displayed as payment cards
     if (typeId === "transactionReference") return true;
+    // Payment requests and fulfillments are displayed as cards
+    if (typeId === "paymentRequest" || typeId === "paymentFulfillment") return true;
     // Remote attachments (images) are displayed as image cards - single or multi
     // Handle both old and new naming conventions
     if (
@@ -1038,6 +1043,8 @@ export function MessagePanel({
     if (typeId === "readReceipt") return null;
     // Transaction references render as payment cards, not text
     if (typeId === "transactionReference") return null;
+    // Payment requests and fulfillments render as cards, not text
+    if (typeId === "paymentRequest" || typeId === "paymentFulfillment") return null;
     // Remote attachments render as image cards, not text (handle both old and new naming)
     if (
       typeId === "remoteAttachment" ||
@@ -1171,6 +1178,12 @@ export function MessagePanel({
       if (!msg) continue;
 
       const typeId = (msg.contentType as { typeId?: string })?.typeId;
+
+      // Debug: log all message types to see what's coming through
+      if (typeId && typeId !== "text" && typeId !== "readReceipt") {
+        console.log('[MessageProcessing] typeId:', typeId, 'contentType:', msg.contentType, 'content keys:', msg.content ? Object.keys(msg.content as object) : 'null');
+      }
+
       if (typeId === "readReceipt") continue;
 
       // Check if has displayable content
@@ -1214,9 +1227,10 @@ export function MessagePanel({
           hasDisplayableContent = true;
       }
 
-      // Always show reactions, transaction references, and images by typeId
+      // Always show reactions, transaction references, payments, and images by typeId
       if (typeId === "reaction") hasDisplayableContent = true;
       if (typeId === "transactionReference") hasDisplayableContent = true;
+      if (typeId === "paymentRequest" || typeId === "paymentFulfillment") hasDisplayableContent = true;
       // Handle both old and new attachment type naming
       if (
         typeId === "remoteAttachment" ||
@@ -1937,6 +1951,11 @@ export function MessagePanel({
                   const typeId = (msg.contentType as { typeId?: string })
                     ?.typeId;
 
+                  // Debug: log all non-text message types being rendered
+                  if (typeId && typeId !== "text") {
+                    console.log('[Render] typeId:', typeId, 'msgId:', item.id, 'content:', msg.content ? Object.keys(msg.content as object) : 'null');
+                  }
+
                   // Try to get transaction content - may need to decode from fallback
                   let txContent = msg.content;
 
@@ -2018,6 +2037,138 @@ export function MessagePanel({
                               className={`mt-1 ${isOwnMessage ? "text-right pr-1" : "ml-1"}`}
                             />
                           )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Check for payment request/fulfillment content
+                  let paymentContent = msg.content;
+
+                  // Debug logging for payment messages
+                  if (typeId === "paymentRequest" || typeId === "paymentFulfillment") {
+                    console.log('[PYMT-DBG] typeId:', typeId);
+                    console.log('[PYMT-DBG] content:', msg.content);
+                    console.log('[PYMT-DBG] contentType:', msg.contentType);
+                    // Log detailed metadata to see what fields are present
+                    const c = msg.content as Record<string, unknown> | null;
+                    if (c?.metadata) {
+                      console.log('[PYMT-DBG] metadata:', c.metadata);
+                      const m = c.metadata as Record<string, unknown>;
+                      console.log('[PYMT-DBG] metadata fields:', {
+                        tokenSymbol: m?.tokenSymbol,
+                        tokenSymbolType: typeof m?.tokenSymbol,
+                        amount: m?.amount,
+                        amountType: typeof m?.amount,
+                        toAddress: m?.toAddress,
+                        toAddressType: typeof m?.toAddress,
+                      });
+                    }
+                    console.log('[PYMT-DBG] isPaymentRequest:', isPaymentRequest(msg.content));
+                    console.log('[PYMT-DBG] isPaymentFulfillment:', isPaymentFulfillment(msg.content));
+                  }
+
+                  if ((typeId === "paymentRequest" || typeId === "paymentFulfillment") && !paymentContent) {
+                    const encodedContent = (
+                      msg as { encodedContent?: { content?: Uint8Array } }
+                    ).encodedContent;
+                    if (encodedContent?.content) {
+                      try {
+                        const decoded = new TextDecoder().decode(encodedContent.content);
+                        paymentContent = JSON.parse(decoded);
+                      } catch {
+                        // Decode failed
+                      }
+                    }
+                  }
+
+                  // For payment request messages
+                  if (typeId === "paymentRequest" && isPaymentRequest(paymentContent)) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className={`flex flex-col ${isOwnMessage ? "items-end" : ""}`}>
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          <PaymentRequestMessage
+                            request={paymentContent as PaymentRequest}
+                            isOwnMessage={isOwnMessage}
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // For payment fulfillment messages
+                  if (typeId === "paymentFulfillment" && isPaymentFulfillment(paymentContent)) {
+                    return (
+                      <div
+                        key={item.id}
+                        className={`flex ${
+                          isOwnMessage ? "justify-end" : "items-start gap-3"
+                        } ${isFirstInGroup ? "mt-3" : "mt-0.5"}`}
+                      >
+                        {!isOwnMessage && (
+                          <div className="w-8 h-8 shrink-0 flex items-end mt-auto">
+                            {isLastInGroup && (
+                              <Avatar
+                                address={
+                                  conversationType === "group"
+                                    ? memberPreviews?.find(
+                                        (m) => m.inboxId === msg.senderInboxId
+                                      )?.address
+                                    : peerAddress
+                                }
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className={`flex flex-col ${isOwnMessage ? "items-end" : ""}`}>
+                          {!isOwnMessage && isFirstInGroup && (
+                            <SenderName
+                              address={
+                                conversationType === "group"
+                                  ? memberPreviews?.find(
+                                      (m) => m.inboxId === msg.senderInboxId
+                                    )?.address
+                                  : peerAddress
+                              }
+                            />
+                          )}
+                          <PaymentFulfillmentMessage
+                            fulfillment={paymentContent as PaymentFulfillment}
+                            isOwnMessage={isOwnMessage}
+                          />
                         </div>
                       </div>
                     );

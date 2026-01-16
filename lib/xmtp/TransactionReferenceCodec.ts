@@ -116,16 +116,24 @@ export class TransactionReferenceCodec implements ContentCodec<TransactionRefere
 
 /**
  * Format token amount from smallest unit to human readable
+ * Accepts both string and number (World App sends numbers)
  */
-export function formatTokenAmount(amount: string, decimals: number): string {
-  // Handle scientific notation in amount string
-  let amountStr = amount;
-  if (amount.includes('e') || amount.includes('E')) {
-    const num = parseFloat(amount);
-    if (Number.isFinite(num)) {
-      amountStr = num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
-    } else {
-      return '0';
+export function formatTokenAmount(amount: string | number, decimals: number): string {
+  // Convert number to string, handling large integers
+  let amountStr: string;
+  if (typeof amount === 'number') {
+    // Use toLocaleString to avoid scientific notation for large numbers
+    amountStr = amount.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+  } else {
+    amountStr = amount;
+    // Handle scientific notation in amount string
+    if (amount.includes('e') || amount.includes('E')) {
+      const num = parseFloat(amount);
+      if (Number.isFinite(num)) {
+        amountStr = num.toLocaleString('fullwide', { useGrouping: false, maximumFractionDigits: 0 });
+      } else {
+        return '0';
+      }
     }
   }
 

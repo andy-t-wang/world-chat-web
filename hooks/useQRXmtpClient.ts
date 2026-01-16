@@ -27,11 +27,13 @@ let moduleLoadPromise: Promise<
 async function loadAllModules() {
   // v6 has built-in send methods (sendText, sendReaction, sendReply, sendReadReceipt)
   // so we only need codecs for custom types and attachments
-  const [xmtpModule, remoteAttachmentModule, transactionRefModule] =
+  const [xmtpModule, remoteAttachmentModule, transactionRefModule, paymentReqModule, paymentFulfillModule] =
     await Promise.all([
       import("@xmtp/browser-sdk"),
       import("@xmtp/content-type-remote-attachment"),
       import("@/lib/xmtp/TransactionReferenceCodec"),
+      import("@/lib/xmtp/PaymentRequestCodec"),
+      import("@/lib/xmtp/PaymentFulfillmentCodec"),
     ]);
 
   return {
@@ -41,6 +43,8 @@ async function loadAllModules() {
     RemoteAttachmentCodec: remoteAttachmentModule.RemoteAttachmentCodec,
     AttachmentCodec: remoteAttachmentModule.AttachmentCodec,
     TransactionReferenceCodec: transactionRefModule.TransactionReferenceCodec,
+    PaymentRequestCodec: paymentReqModule.PaymentRequestCodec,
+    PaymentFulfillmentCodec: paymentFulfillModule.PaymentFulfillmentCodec,
   };
 }
 
@@ -140,6 +144,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         RemoteAttachmentCodec,
         AttachmentCodec,
         TransactionReferenceCodec,
+        PaymentRequestCodec,
+        PaymentFulfillmentCodec,
       } = await getModules();
 
       // Use Client.build() for faster session restoration
@@ -160,6 +166,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new AttachmentCodec(),
             new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
+            new PaymentRequestCodec(),
+            new PaymentFulfillmentCodec(),
           ],
         }
       );
@@ -243,6 +251,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           RemoteAttachmentCodec,
           AttachmentCodec,
           TransactionReferenceCodec,
+          PaymentRequestCodec,
+          PaymentFulfillmentCodec,
         } = await getModules();
 
         const xmtpClient = await Client.create(signer, {
@@ -256,6 +266,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new AttachmentCodec(),
             new RemoteAttachmentCodec(),
             new TransactionReferenceCodec(),
+            new PaymentRequestCodec(),
+            new PaymentFulfillmentCodec(),
           ],
         });
 
