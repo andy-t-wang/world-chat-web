@@ -1521,7 +1521,13 @@ class XMTPStreamManager {
           this.conversations.set(conv.id, conv);
           // New streamed conversations - sync to get initial messages
           const metadata = await this.buildConversationMetadata(conv, true);
+          const isNewConversation = !this.conversationMetadata.has(conv.id);
           this.conversationMetadata.set(conv.id, metadata);
+
+          // Always increment version for new conversations so message requests get picked up
+          if (isNewConversation) {
+            this.incrementMetadataVersion();
+          }
 
           // Check for existing DM with same peer address
           if (metadata.conversationType === 'dm') {
@@ -2106,6 +2112,9 @@ class XMTPStreamManager {
               };
               this.conversationMetadata.set(conversationId, metadata);
             }
+
+            // Always increment version for new conversations so message requests get picked up
+            this.incrementMetadataVersion();
           }
 
           // Extract message content for preview
