@@ -34,51 +34,65 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
     };
   }, []);
 
-  const handleDownload = useCallback(() => {
-    const link = document.createElement('a');
-    link.href = src;
-    link.download = alt || 'image';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = useCallback(async () => {
+    try {
+      // Fetch the image as blob to handle CORS and Electron
+      const response = await fetch(src);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = alt || 'image.jpg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      // Fallback: open in new tab
+      window.open(src, '_blank');
+    }
   }, [src, alt]);
 
   const content = (
-    <div
-      className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center"
-      onClick={onClose}
-    >
-      {/* Close button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
-        aria-label="Close"
-      >
-        <X className="w-6 h-6 text-white pointer-events-none" />
-      </button>
-
-      {/* Download button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleDownload();
-        }}
-        className="absolute top-4 right-16 z-10 p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
-        aria-label="Download"
-      >
-        <Download className="w-6 h-6 text-white pointer-events-none" />
-      </button>
-
-      {/* Image */}
-      <img
-        src={src}
-        alt={alt || 'Full size image'}
-        className="max-w-[90vw] max-h-[90vh] object-contain"
-        onClick={(e) => e.stopPropagation()}
+    <div className="fixed inset-0 z-[9999]">
+      {/* Backdrop - click to close */}
+      <div
+        className="absolute inset-0 bg-black/90"
+        onClick={onClose}
       />
+
+      {/* Controls - separate from backdrop */}
+      <div className="absolute top-4 right-4 flex gap-2 z-[10001]">
+        {/* Download button */}
+        <button
+          type="button"
+          onClick={handleDownload}
+          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+          aria-label="Download"
+        >
+          <Download className="w-6 h-6 text-white" />
+        </button>
+
+        {/* Close button */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-6 h-6 text-white" />
+        </button>
+      </div>
+
+      {/* Image - centered */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <img
+          src={src}
+          alt={alt || 'Full size image'}
+          className="max-w-[90vw] max-h-[90vh] object-contain pointer-events-auto"
+        />
+      </div>
     </div>
   );
 
