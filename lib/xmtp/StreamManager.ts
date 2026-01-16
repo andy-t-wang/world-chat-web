@@ -1502,6 +1502,8 @@ class XMTPStreamManager {
         for await (const conv of streamProxy as AsyncIterable<Conversation>) {
           if (signal.aborted) break;
 
+          console.log('[StreamManager] Conversation stream received:', conv.id, isDm(conv) ? 'DM' : 'Group');
+
           // Check consent state - only show Allowed conversations in the list
           // But sync Unknown ones too in case consent changed on another device
           // Use timeout to prevent hanging on problematic conversations
@@ -1549,9 +1551,19 @@ class XMTPStreamManager {
           const shouldShow = hasValidConsent &&
             (metadata.lastMessagePreview || conv.id === selectedId);
 
+          console.log('[StreamManager] Conversation stream decision:', {
+            id: conv.id,
+            hasValidConsent,
+            lastMessagePreview: metadata.lastMessagePreview?.slice(0, 50),
+            isSelected: conv.id === selectedId,
+            shouldShow,
+            isNewConversation,
+          });
+
           if (shouldShow) {
             const currentIds = store.get(conversationIdsAtom);
             if (!currentIds.includes(conv.id)) {
+              console.log('[StreamManager] Adding conversation to list:', conv.id);
               store.set(conversationIdsAtom, [conv.id, ...currentIds]);
               this.incrementMetadataVersion();
             }
@@ -2000,6 +2012,13 @@ class XMTPStreamManager {
           if (signal.aborted) break;
 
           const conversationId = msg.conversationId;
+          const hasMetadata = this.conversationMetadata.has(conversationId);
+          console.log('[StreamManager] Message stream received:', {
+            msgId: msg.id.slice(0, 20),
+            conversationId: conversationId.slice(0, 20),
+            hasExistingMetadata: hasMetadata,
+            isOwnMessage: msg.senderInboxId === this.client?.inboxId,
+          });
 
           // Handle read receipts
           const typeId = msg.contentType?.typeId;
@@ -3265,58 +3284,24 @@ class XMTPStreamManager {
   }
 
   /**
-   * Start periodic sync to discover new conversations from other devices
-   * and sync message history
+   * Start periodic history sync to respond to sync requests from other installations
+   * This is minimal - the streams should handle real-time updates
    */
   private startPeriodicHistorySync(): void {
     if (this.historySyncInterval) {
       clearInterval(this.historySyncInterval);
     }
 
-    // Sync every 1 minute to catch cross-device conversations faster
-    const SYNC_INTERVAL_MS = 60 * 1000;
+    // Sync every 5 minutes - just to respond to history sync requests
+    const SYNC_INTERVAL_MS = 5 * 60 * 1000;
 
     this.historySyncInterval = setInterval(async () => {
       if (!this.client) return;
 
       try {
-        // First sync conversation list to discover new conversations from other devices
-        await this.client.conversations.sync();
-
-        // Then sync all conversations to get new messages
         await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
-
-        // Re-list conversations to find any new ones
-        const conversations = await this.client.conversations.list({
-          consentStates: [ConsentState.Allowed, ConsentState.Unknown],
-        });
-
-        // Check for new conversations not in our list
-        const currentIds = store.get(conversationIdsAtom);
-        const currentIdSet = new Set(currentIds);
-        let hasNewConversations = false;
-
-        for (const conv of conversations) {
-          if (!currentIdSet.has(conv.id) && !this.conversationMetadata.has(conv.id)) {
-            // New conversation - store and build metadata
-            this.conversations.set(conv.id, conv);
-            const metadata = await this.buildConversationMetadata(conv, false);
-            this.conversationMetadata.set(conv.id, metadata);
-
-            // Add to visible list if it has messages
-            if (metadata.lastMessagePreview) {
-              hasNewConversations = true;
-              store.set(conversationIdsAtom, [conv.id, ...store.get(conversationIdsAtom)]);
-            }
-          }
-        }
-
-        if (hasNewConversations) {
-          this.incrementMetadataVersion();
-          this.resortConversations();
-        }
       } catch (error) {
-        console.error('[StreamManager] Periodic sync error:', error);
+        console.error('[StreamManager] Periodic history sync error:', error);
       }
     }, SYNC_INTERVAL_MS);
   }
