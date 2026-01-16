@@ -13,3 +13,4 @@ export { GroupDetailsPanel } from './GroupDetailsPanel';
 export { AddMemberModal } from './AddMemberModal';
 export { MemberProfilePanel } from './MemberProfilePanel';
 export { ResizableDivider } from './ResizableDivider';
+export { SettingsPanel } from './SettingsPanel';

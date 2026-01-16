@@ -244,15 +244,15 @@ export function parseWorldAppUrl(url: string): LinkMetadata | null {
       },
     };
 
-    const appInfo = appId && knownApps[appId];
+    const appInfo = appId ? knownApps[appId] : undefined;
 
     return {
       url,
       domain: 'worldapp',
       type: 'worldapp',
       appId,
-      title: appInfo?.title || 'World App Mini-App',
-      description: appInfo?.description || 'Open in World App',
+      title: appInfo?.title ?? 'World App Mini-App',
+      description: appInfo?.description ?? 'Open in World App',
     };
   } catch {
     return {
