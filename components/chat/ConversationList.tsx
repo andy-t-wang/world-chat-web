@@ -8,6 +8,7 @@ import { ChatRequestsBanner } from './ChatRequestsBanner';
 import { selectedConversationIdAtom } from '@/stores/ui';
 import { isSyncingConversationsAtom } from '@/stores/conversations';
 import { hideEmptyConversationsAtom, pinnedConversationIdsAtom, mutedConversationIdsAtom } from '@/stores/settings';
+import { customNicknamesAtom } from '@/stores/nicknames';
 import { VIRTUALIZATION } from '@/config/constants';
 import { useConversations } from '@/hooks/useConversations';
 import { Loader2, SearchX, Pin, PinOff, Bell, BellOff } from 'lucide-react';
@@ -33,6 +34,7 @@ export function ConversationList({
   const setSelectedId = useSetAtom(selectedConversationIdAtom);
   const hideEmptyConversations = useAtomValue(hideEmptyConversationsAtom);
   const isSyncing = useAtomValue(isSyncingConversationsAtom);
+  const customNicknames = useAtomValue(customNicknamesAtom);
   const [pinnedIds, setPinnedIds] = useAtom(pinnedConversationIdsAtom);
   const [mutedIds, setMutedIds] = useAtom(mutedConversationIdsAtom);
 
@@ -144,11 +146,15 @@ export function ConversationList({
           return groupName.includes(query);
         }
 
-        // For DMs, search by username (from cache) or address
+        // For DMs, search by nickname, username (from cache), or address
         if (data.peerAddress) {
           const address = data.peerAddress.toLowerCase();
           // Check if address matches
           if (address.includes(query)) return true;
+
+          // Check if custom nickname matches
+          const nickname = customNicknames[address];
+          if (nickname?.toLowerCase().includes(query)) return true;
 
           // Check if cached username matches
           const cached = getCachedUsername(data.peerAddress);
@@ -167,7 +173,7 @@ export function ConversationList({
     pinned.sort((a, b) => pinnedIds.indexOf(a) - pinnedIds.indexOf(b));
 
     return [...pinned, ...unpinned];
-  }, [conversationIds, metadata, searchQuery, usernameCacheVersion, hideEmptyConversations, pinnedIds]);
+  }, [conversationIds, metadata, searchQuery, usernameCacheVersion, hideEmptyConversations, pinnedIds, customNicknames]);
 
   // Format timestamp for display using user's locale
   const formatTimestamp = (ns: bigint): string => {
