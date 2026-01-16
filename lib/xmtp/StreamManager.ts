@@ -3265,25 +3265,58 @@ class XMTPStreamManager {
   }
 
   /**
-   * Start periodic history sync to upload history for other devices
-   * This ensures we respond to history sync requests from new installations
-   * XMTP has a 30-minute debounce, so we sync every 5 minutes to be safe
+   * Start periodic sync to discover new conversations from other devices
+   * and sync message history
    */
   private startPeriodicHistorySync(): void {
     if (this.historySyncInterval) {
       clearInterval(this.historySyncInterval);
     }
 
-    // Sync every 5 minutes
-    const SYNC_INTERVAL_MS = 5 * 60 * 1000;
+    // Sync every 1 minute to catch cross-device conversations faster
+    const SYNC_INTERVAL_MS = 60 * 1000;
 
     this.historySyncInterval = setInterval(async () => {
       if (!this.client) return;
 
       try {
+        // First sync conversation list to discover new conversations from other devices
+        await this.client.conversations.sync();
+
+        // Then sync all conversations to get new messages
         await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+
+        // Re-list conversations to find any new ones
+        const conversations = await this.client.conversations.list({
+          consentStates: [ConsentState.Allowed, ConsentState.Unknown],
+        });
+
+        // Check for new conversations not in our list
+        const currentIds = store.get(conversationIdsAtom);
+        const currentIdSet = new Set(currentIds);
+        let hasNewConversations = false;
+
+        for (const conv of conversations) {
+          if (!currentIdSet.has(conv.id) && !this.conversationMetadata.has(conv.id)) {
+            // New conversation - store and build metadata
+            this.conversations.set(conv.id, conv);
+            const metadata = await this.buildConversationMetadata(conv, false);
+            this.conversationMetadata.set(conv.id, metadata);
+
+            // Add to visible list if it has messages
+            if (metadata.lastMessagePreview) {
+              hasNewConversations = true;
+              store.set(conversationIdsAtom, [conv.id, ...store.get(conversationIdsAtom)]);
+            }
+          }
+        }
+
+        if (hasNewConversations) {
+          this.incrementMetadataVersion();
+          this.resortConversations();
+        }
       } catch (error) {
-        console.error('[StreamManager] Periodic history sync error:', error);
+        console.error('[StreamManager] Periodic sync error:', error);
       }
     }, SYNC_INTERVAL_MS);
   }
