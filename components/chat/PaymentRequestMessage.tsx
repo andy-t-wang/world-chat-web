@@ -115,9 +115,9 @@ export function PaymentRequestMessage({
   const displayAmount = formatDisplayAmount(formattedAmount, request.metadata.tokenSymbol);
 
   if (isOwnMessage) {
-    // Sender view - blue card
+    // Sender view - blue card (matches outgoing bubble)
     return (
-      <div className="rounded-[16px] p-3.5 w-[200px] bg-[#005CFF]">
+      <div className="rounded-[16px] p-3.5 w-[200px] bg-[var(--bubble-outgoing)]">
         {/* Header: White pill badge with token icon + Request */}
         <div className="inline-flex items-center gap-1 bg-white rounded-full px-2 py-0.5 mb-2">
           <TokenIcon symbol={request.metadata.tokenSymbol} size="sm" />
@@ -150,9 +150,9 @@ export function PaymentRequestMessage({
     );
   }
 
-  // Recipient view - light gray card
+  // Recipient view - matches incoming bubble
   return (
-    <div className="bg-[#F0F0F0] rounded-[16px] p-3.5 w-[200px]">
+    <div className="bg-[var(--bubble-incoming)] rounded-[16px] p-3.5 w-[200px]">
       {/* Header: White pill badge with token icon + Request */}
       <div className="inline-flex items-center gap-1 bg-white rounded-full px-2 py-0.5 mb-2">
         <TokenIcon symbol={request.metadata.tokenSymbol} size="sm" />
@@ -163,38 +163,31 @@ export function PaymentRequestMessage({
 
       {/* Amount */}
       <div className="mb-1">
-        <span className="text-[20px] font-normal text-[#181818] leading-none tabular-nums">
+        <span className="text-[20px] font-normal text-[var(--bubble-incoming-text)] leading-none tabular-nums">
           {displayAmount}
         </span>
       </div>
 
       {/* Note */}
       {request.metadata.note && (
-        <p className="text-[13px] text-[#717680] leading-snug mb-1">
+        <p className="text-[13px] text-[var(--text-secondary)] leading-snug mb-1">
           {request.metadata.note}
         </p>
       )}
 
       {/* Progress */}
       {showProgress && (
-        <p className="text-[12px] text-[#9BA3AE] mb-2">
+        <p className="text-[12px] text-[var(--text-tertiary)] mb-2">
           {paidCount} of {totalRequested} paid
         </p>
       )}
 
-      {/* Action button or paid status */}
-      {hasCurrentUserPaid ? (
-        <div className="flex items-center gap-1.5 text-[#00C230]">
+      {/* Paid status */}
+      {hasCurrentUserPaid && (
+        <div className="flex items-center gap-1.5 text-[var(--accent-green)]">
           <Check className="w-3.5 h-3.5" />
           <span className="text-[12px] font-medium">Paid</span>
         </div>
-      ) : (
-        <button
-          className="w-full h-9 text-white text-[13px] font-semibold rounded-full bg-[#005CFF] cursor-default"
-          disabled
-        >
-          Send
-        </button>
       )}
     </div>
   );
@@ -232,9 +225,9 @@ export function PaymentFulfillmentMessage({
   const displayAmount = formatDisplayAmount(formattedAmount, fulfillment.metadata.tokenSymbol);
 
   if (isOwnMessage) {
-    // Sender view - blue card (Sent)
+    // Sender view - matches outgoing bubble (Sent)
     return (
-      <div className="rounded-[16px] p-3.5 w-[180px] bg-[#005CFF]">
+      <div className="rounded-[16px] p-3.5 w-[180px] bg-[var(--bubble-outgoing)]">
         {/* Header: White pill badge with token icon + Sent */}
         <div className="inline-flex items-center gap-1 bg-white rounded-full px-2 py-0.5 mb-2">
           <TokenIcon symbol={fulfillment.metadata.tokenSymbol} size="sm" />
@@ -251,9 +244,9 @@ export function PaymentFulfillmentMessage({
     );
   }
 
-  // Recipient view - light gray card (Received)
+  // Recipient view - matches incoming bubble (Received)
   return (
-    <div className="bg-[#F0F0F0] rounded-[16px] p-3.5 w-[180px]">
+    <div className="bg-[var(--bubble-incoming)] rounded-[16px] p-3.5 w-[180px]">
       {/* Header: White pill badge with token icon + Received */}
       <div className="inline-flex items-center gap-1 bg-white rounded-full px-2 py-0.5 mb-2">
         <TokenIcon symbol={fulfillment.metadata.tokenSymbol} size="sm" />
@@ -264,14 +257,14 @@ export function PaymentFulfillmentMessage({
 
       {/* Amount */}
       <div className="mb-1">
-        <span className="text-[20px] font-normal text-[#181818] leading-none tabular-nums">
+        <span className="text-[20px] font-normal text-[var(--bubble-incoming-text)] leading-none tabular-nums">
           {displayAmount}
         </span>
       </div>
 
       {/* To you indicator */}
       {isToCurrentUser && (
-        <p className="text-[12px] text-[#9BA3AE]">To you</p>
+        <p className="text-[12px] text-[var(--text-tertiary)]">To you</p>
       )}
     </div>
   );

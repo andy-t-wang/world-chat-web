@@ -2064,6 +2064,12 @@ class XMTPStreamManager {
 
           messageCache.set(msg.id, msg as unknown as DecodedMessage);
 
+          // Extract inline reactions from SDK v6.1.0 (message.reactions)
+          const msgWithReactions = msg as unknown as { reactions?: DecodedMessage<Reaction>[] };
+          if (msgWithReactions.reactions && msgWithReactions.reactions.length > 0) {
+            this.storeInlineReactions(msg.id, msgWithReactions.reactions);
+          }
+
           // Prepend to list
           const currentIds = this.getMessageIds(conversationId);
           if (!currentIds.includes(msg.id)) {
@@ -2968,6 +2974,8 @@ class XMTPStreamManager {
       const newMap = new Map(currentReactions);
       newMap.set(messageId, merged);
       store.set(reactionsAtom, newMap);
+      // Trigger re-render for reactions
+      store.set(reactionsVersionAtom, store.get(reactionsVersionAtom) + 1);
     }
   }
 

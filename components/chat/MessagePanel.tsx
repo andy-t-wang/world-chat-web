@@ -61,6 +61,7 @@ import {
   extractAttachments,
 } from "@/types/attachments";
 import { useDisplayName } from "@/hooks/useDisplayName";
+import { resolveUsername } from "@/lib/username/service";
 import { useMessages } from "@/hooks/useMessages";
 import { xmtpClientAtom } from "@/stores/client";
 import {
@@ -961,6 +962,38 @@ export function MessagePanel({
       }
     }
   }, []);
+
+  // Handler for @mention clicks - opens the user's profile
+  const handleMentionClick = useCallback(async (username: string) => {
+    if (!onMemberAvatarClick) return;
+
+    try {
+      // Remove @ prefix if present
+      const cleanUsername = username.startsWith('@') ? username.slice(1) : username;
+
+      // Resolve username to get address
+      const record = await resolveUsername(cleanUsername);
+      if (!record?.address) return;
+
+      const address = record.address.toLowerCase();
+
+      // For DMs, check if it's the peer
+      if (conversationType === 'dm' && peerAddress?.toLowerCase() === address && peerInboxId) {
+        onMemberAvatarClick(address, peerInboxId);
+        return;
+      }
+
+      // For groups, find the member in memberPreviews
+      if (memberPreviews) {
+        const member = memberPreviews.find(m => m.address.toLowerCase() === address);
+        if (member) {
+          onMemberAvatarClick(member.address, member.inboxId);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to handle mention click:', error);
+    }
+  }, [onMemberAvatarClick, conversationType, peerAddress, peerInboxId, memberPreviews]);
 
   // Reply state
   const [replyingTo, setReplyingTo] = useAtom(replyingToAtom);
@@ -2692,7 +2725,7 @@ export function MessagePanel({
                                 handleMessageContextMenu(e, item.id, text, "")
                               }
                             >
-                              <MessageText text={text} isOwnMessage={true} />
+                              <MessageText text={text} isOwnMessage={true} onMentionClick={handleMentionClick} />
                             </div>
                             <MessageReactions
                               messageId={item.id}
@@ -2885,7 +2918,7 @@ export function MessagePanel({
                                 )
                               }
                             >
-                              <MessageText text={text} isOwnMessage={false} />
+                              <MessageText text={text} isOwnMessage={false} onMentionClick={handleMentionClick} />
                             </div>
                             <MessageReactions
                               messageId={item.id}

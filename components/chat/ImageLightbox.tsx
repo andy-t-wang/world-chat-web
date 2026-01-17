@@ -67,8 +67,8 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         {/* Download button */}
         <button
           type="button"
-          onClick={handleDownload}
-          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+          onClick={(e) => { e.stopPropagation(); handleDownload(); }}
+          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
           aria-label="Download"
         >
           <Download className="w-6 h-6 text-white" />
@@ -77,8 +77,8 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         {/* Close button */}
         <button
           type="button"
-          onClick={onClose}
-          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors"
+          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          className="p-2 rounded-full bg-black/50 hover:bg-black/70 transition-colors cursor-pointer"
           aria-label="Close"
         >
           <X className="w-6 h-6 text-white" />
