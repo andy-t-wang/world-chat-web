@@ -194,19 +194,21 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       // Release the tab lock on failure
       releaseTabLock();
 
-      // Clear session if the XMTP installation is not found (needs re-registration)
-      // For other errors (network, etc.), keep session so user can retry
+      // Only clear session for specific errors that mean the installation is truly gone
+      // Be VERY conservative - XMTP has a 250 change limit before lockout
+      // For other errors (network, temporary, etc.), keep session so user can retry
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      const isSessionExpired =
-        errorMessage.includes("not registered") ||
-        errorMessage.includes("installation") ||
-        errorMessage.includes("Session expired") ||
-        errorMessage.includes("scan QR") ||
-        errorMessage.includes("signature");
+      const isInstallationGone =
+        errorMessage.includes("not registered on the network") ||
+        errorMessage.includes("Uninitialized identity") ||
+        errorMessage.includes("no local database");
 
-      if (isSessionExpired) {
+      if (isInstallationGone) {
+        console.warn("[QRXmtpClient] Installation appears gone, clearing session");
         clearSession();
+      } else {
+        console.log("[QRXmtpClient] Keeping session despite error (may be temporary):", errorMessage);
       }
 
       dispatch({
