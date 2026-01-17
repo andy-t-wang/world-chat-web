@@ -20,7 +20,10 @@ import {
   Check,
   LogOut,
   Settings,
+  Globe,
+  Loader2,
 } from "lucide-react";
+import { useTranslation } from "@/hooks/useTranslation";
 import {
   linkPreviewEnabledAtom,
   soundMutedAtom,
@@ -68,6 +71,10 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
   const [isElectronEnv, setIsElectronEnv] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [translationAvailable, setTranslationAvailable] = useState(false);
+
+  // Translation hook
+  const { isAvailable, initialize, isInitializing, isInitialized, progress: translationProgress, error: translationError } = useTranslation();
 
   // Download link
   const BASE_URL = process.env.NEXT_PUBLIC_URL || "https://world-chat-web.vercel.app";
@@ -82,7 +89,9 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     if (electronAPI?.getVersion) {
       electronAPI.getVersion().then(setVersion).catch(() => {});
     }
-  }, []);
+    // Check translation availability
+    isAvailable().then(setTranslationAvailable);
+  }, [isAvailable]);
 
   // Close on Escape key
   useEffect(() => {
@@ -281,6 +290,50 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <Toggle enabled={hideEmptyConversations} />
           </button>
         </div>
+
+        {/* Translation Section - Only show in Electron */}
+        {translationAvailable && (
+          <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
+            <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+              Translation
+            </h3>
+
+            <button
+              onClick={() => !isInitialized && !isInitializing && initialize("en")}
+              disabled={isInitializing}
+              className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            >
+              {isInitializing ? (
+                <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
+              ) : (
+                <Globe className={`w-5 h-5 ${isInitialized ? "text-[var(--accent-green)]" : "text-[var(--text-tertiary)]"}`} />
+              )}
+              <div className="flex-1 text-left">
+                <p className="text-[14px] text-[var(--text-primary)]">
+                  {isInitializing ? "Downloading Models..." : "Local Translation"}
+                </p>
+                <p className="text-[12px] text-[var(--text-secondary)]">
+                  {isInitializing && translationProgress
+                    ? translationProgress.message
+                    : "Fully private · Messages never leave your device"}
+                </p>
+                {/* Progress bar */}
+                {isInitializing && translationProgress && (
+                  <div className="mt-2 w-full bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full bg-[var(--accent-blue)] transition-all duration-300 ease-out"
+                      style={{ width: `${(translationProgress.progress / translationProgress.total) * 100}%` }}
+                    />
+                  </div>
+                )}
+                {translationError && (
+                  <p className="text-[12px] text-[#FF3B30] mt-1">{translationError}</p>
+                )}
+              </div>
+              <Toggle enabled={isInitialized} />
+            </button>
+          </div>
+        )}
 
         {/* Updates Section */}
         <div className="px-4 py-3 border-t border-[var(--border-subtle)]">

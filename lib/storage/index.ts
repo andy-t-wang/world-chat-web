@@ -156,6 +156,15 @@ declare global {
       removeNickname: (address: string) => Promise<void>;
       getVersion: () => Promise<string>;
       getPlatform: () => Promise<string>;
+      // Translation API
+      translation?: {
+        isAvailable: () => Promise<boolean>;
+        initialize: (userLanguage?: string) => Promise<{ success: boolean; modelsPath: string }>;
+        onProgress: (callback: (progress: { progress: number; total: number; message: string }) => void) => () => void;
+        detectLanguage: (text: string) => Promise<{ language: string | null; confidence: number }>;
+        translate: (text: string, from: string, to: string) => Promise<{ translatedText: string; from: string; to: string }>;
+        dispose: () => Promise<void>;
+      };
     };
   }
 }

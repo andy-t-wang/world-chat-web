@@ -6,6 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { useQRXmtpClient } from "@/hooks/useQRXmtpClient";
 import { RemoteSigner, generateSessionId } from "@/lib/signing-relay";
 import { RefreshCw, Check } from "lucide-react";
+import { InstallationManager } from "@/components/auth/InstallationManager";
+import { getSessionCache } from "@/lib/storage";
 
 const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
@@ -18,7 +20,8 @@ type LoginState =
   | "initializing_xmtp"
   | "signing"
   | "success"
-  | "error";
+  | "error"
+  | "installation_limit";
 
 // Subtle pulsing loader - Apple style
 function PulseLoader() {
@@ -46,6 +49,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false); // Only true once we know we need QR login
   const [showStagingWarning, setShowStagingWarning] = useState(false);
+  const [cachedInboxId, setCachedInboxId] = useState<string | null>(null);
   const signerRef = useRef<RemoteSigner | null>(null);
   const { initializeWithRemoteSigner, restoreSession } = useQRXmtpClient();
 
@@ -107,11 +111,30 @@ export default function Home() {
         }, 500);
       } catch (xmtpError) {
         console.error("XMTP initialization failed:", xmtpError);
-        setError(
-          xmtpError instanceof Error
-            ? xmtpError.message
-            : "Failed to initialize messaging"
-        );
+        const errorMessage = xmtpError instanceof Error ? xmtpError.message : String(xmtpError);
+
+        // Check for installation limit error
+        if (errorMessage.toLowerCase().includes("installation") &&
+            (errorMessage.includes("10/10") || errorMessage.toLowerCase().includes("revoke"))) {
+          // Try to extract inboxId from error message first
+          // Error format: "...InboxID <hex_id> has already registered..."
+          const inboxIdMatch = errorMessage.match(/InboxID\s+([a-f0-9]{64})/i);
+          let inboxId = inboxIdMatch?.[1];
+
+          // Fall back to session cache if not found in error
+          if (!inboxId) {
+            const session = await getSessionCache();
+            inboxId = session?.inboxId;
+          }
+
+          if (inboxId) {
+            setCachedInboxId(inboxId);
+            setState("installation_limit");
+            return;
+          }
+        }
+
+        setError(errorMessage);
         setState("error");
       }
     } catch (err) {
@@ -123,6 +146,20 @@ export default function Home() {
   const handleRetry = () => {
     signerRef.current?.cleanup();
     startSession();
+  };
+
+  const handleInstallationRevokeComplete = () => {
+    // After revoking, restart the full QR login flow
+    // The signing session may have expired, so we need a fresh connection
+    setCachedInboxId(null);
+    signerRef.current?.cleanup();
+    startSession();
+  };
+
+  const handleInstallationCancel = () => {
+    setCachedInboxId(null);
+    setError("Installation limit reached. Please try again.");
+    setState("error");
   };
 
   useEffect(() => {
@@ -184,6 +221,8 @@ export default function Home() {
         return "Welcome";
       case "error":
         return error || "Something went wrong";
+      case "installation_limit":
+        return ""; // InstallationManager has its own UI
       default:
         return "";
     }
@@ -198,6 +237,7 @@ export default function Home() {
   ].includes(state);
 
   const showQR = state === "waiting_for_scan" && qrUrl;
+  const showInstallationManager = state === "installation_limit" && cachedInboxId;
 
   // Show minimal loading while checking session
   if (!isReady) {
@@ -264,6 +304,14 @@ export default function Home() {
       `}</style>
 
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center p-6">
+        {showInstallationManager ? (
+          <InstallationManager
+            inboxId={cachedInboxId}
+            onRevokeComplete={handleInstallationRevokeComplete}
+            onCancel={handleInstallationCancel}
+            getSigner={() => signerRef.current!.getSigner()}
+          />
+        ) : (
         <div className="w-full max-w-sm flex flex-col items-center">
           {/* Title */}
           <h1 className="text-[32px] font-semibold text-[var(--text-primary)] tracking-[-0.02em] mb-2 animate-fade-in">
@@ -389,6 +437,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+        )}
       </div>
     </>
   );
