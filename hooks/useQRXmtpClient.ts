@@ -194,21 +194,23 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
       // Release the tab lock on failure
       releaseTabLock();
 
-      // Only clear session for specific errors that mean the installation is truly gone
-      // Be VERY conservative - XMTP has a 250 change limit before lockout
-      // For other errors (network, temporary, etc.), keep session so user can retry
+      // Only clear session cache if OPFS database is truly gone
+      // Be VERY conservative - XMTP has installation limits (10 max, 250 changes)
+      // "Uninitialized identity" can be transient - don't auto-clear on that
+      // For other errors (network, temporary), keep session so user can retry
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      const isInstallationGone =
-        errorMessage.includes("not registered on the network") ||
-        errorMessage.includes("Uninitialized identity") ||
-        errorMessage.includes("no local database");
+      const isDbGone =
+        errorMessage.toLowerCase().includes("no local database") ||
+        errorMessage.toLowerCase().includes("database not found") ||
+        errorMessage.toLowerCase().includes("not found");
 
-      if (isInstallationGone) {
-        console.warn("[QRXmtpClient] Installation appears gone, clearing session");
+      if (isDbGone) {
+        console.warn("[QRXmtpClient] Local DB is gone, clearing stale session cache");
         clearSession();
       } else {
-        console.log("[QRXmtpClient] Keeping session despite error (may be temporary):", errorMessage);
+        // Keep session for other errors - user can retry or manually logout
+        console.warn("[QRXmtpClient] Keeping session despite error (may be temporary):", errorMessage);
       }
 
       dispatch({
@@ -276,10 +278,12 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
 
         let xmtpClient;
 
-        // Try Client.build() first - works if XMTP installation already exists locally
+        // Try Client.build() first - works if XMTP installation already exists in OPFS
         // This is faster and doesn't require signing
+        // IMPORTANT: Only fall back to create() if DB truly doesn't exist
+        // Creating installations burns a slot (max 10) - don't do it unnecessarily
         try {
-          console.log("[QRXmtpClient] Trying Client.build() for existing installation...");
+          console.log("[QRXmtpClient] Trying Client.build() for existing DB...");
           xmtpClient = await Client.build(
             {
               identifier: address.toLowerCase(),
@@ -289,10 +293,25 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           );
           console.log("[QRXmtpClient] Client.build() succeeded - reusing existing installation");
         } catch (buildError) {
-          // Client.build() failed - installation doesn't exist, use Client.create()
-          console.log("[QRXmtpClient] Client.build() failed, falling back to Client.create():", buildError);
-          xmtpClient = await Client.create(signer, clientOptions);
-          console.log("[QRXmtpClient] Client.create() succeeded - new installation created");
+          const buildErrorMsg = buildError instanceof Error ? buildError.message : String(buildError);
+          console.log("[QRXmtpClient] Client.build() failed:", buildErrorMsg);
+
+          // ONLY create if database truly doesn't exist
+          // Other errors (network, transient) should not trigger new installation
+          const isDbMissing =
+            buildErrorMsg.toLowerCase().includes("no local database") ||
+            buildErrorMsg.toLowerCase().includes("not found") ||
+            buildErrorMsg.toLowerCase().includes("database not found");
+
+          if (isDbMissing) {
+            console.log("[QRXmtpClient] No local DB found, using Client.create()");
+            xmtpClient = await Client.create(signer, clientOptions);
+            console.log("[QRXmtpClient] Client.create() succeeded - new installation created");
+          } else {
+            // DB exists but build failed for other reason - DON'T create new installation
+            console.error("[QRXmtpClient] Client.build() failed with unexpected error, not creating new installation");
+            throw buildError;
+          }
         }
 
         // Cache session for page reloads (async, don't await)

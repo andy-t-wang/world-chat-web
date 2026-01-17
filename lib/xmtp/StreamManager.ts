@@ -489,17 +489,10 @@ class XMTPStreamManager {
     this.startAllMessagesStream();
 
     // Phase 3: Sync preferences (including history sync from other devices)
+    // Note: We intentionally don't clear session on errors here - that's the auth layer's job
+    // StreamManager should never clear session or redirect, just log errors
     this.client.preferences.sync().catch((error: unknown) => {
       console.error('[StreamManager] Preferences sync error:', error);
-      // If identity is uninitialized, the installation was revoked - need to re-login
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('Uninitialized identity')) {
-        console.error('[StreamManager] Installation revoked, clearing session');
-        import('@/lib/auth/session').then(({ clearSession }) => {
-          clearSession();
-          window.location.href = '/';
-        });
-      }
     });
 
     // Phase 4: One-time initial sync to catch up
@@ -963,16 +956,8 @@ class XMTPStreamManager {
       console.error('[StreamManager] Initial sync error:', error);
       store.set(isLoadingConversationsAtom, false);
       store.set(isSyncingConversationsAtom, false);
-
-      // If identity is uninitialized, the installation was revoked - need to re-login
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      if (errorMsg.includes('Uninitialized identity')) {
-        console.error('[StreamManager] Installation revoked, clearing session');
-        import('@/lib/auth/session').then(({ clearSession }) => {
-          clearSession();
-          window.location.href = '/';
-        });
-      }
+      // Note: We intentionally don't clear session on errors here - that's the auth layer's job
+      // StreamManager should never clear session or redirect, just log errors
     }
   }
 
