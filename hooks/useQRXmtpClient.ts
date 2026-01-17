@@ -247,6 +247,7 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
         // Use cached modules for faster load
         const {
           Client,
+          IdentifierKind,
           LogLevel,
           RemoteAttachmentCodec,
           AttachmentCodec,
@@ -255,8 +256,8 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
           PaymentFulfillmentCodec,
         } = await getModules();
 
-        const xmtpClient = await Client.create(signer, {
-          env: "production",
+        const clientOptions = {
+          env: "production" as const,
           appVersion: "WorldChat/1.0.0",
           loggingLevel: LogLevel.Off,
           // Explicitly set history sync URL for cross-device message sync
@@ -269,7 +270,28 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
             new PaymentRequestCodec(),
             new PaymentFulfillmentCodec(),
           ],
-        });
+        };
+
+        let xmtpClient;
+
+        // Try Client.build() first - works if XMTP installation already exists locally
+        // This is faster and doesn't require signing
+        try {
+          console.log("[QRXmtpClient] Trying Client.build() for existing installation...");
+          xmtpClient = await Client.build(
+            {
+              identifier: address.toLowerCase(),
+              identifierKind: IdentifierKind.Ethereum,
+            },
+            clientOptions
+          );
+          console.log("[QRXmtpClient] Client.build() succeeded - reusing existing installation");
+        } catch (buildError) {
+          // Client.build() failed - installation doesn't exist, use Client.create()
+          console.log("[QRXmtpClient] Client.build() failed, falling back to Client.create():", buildError);
+          xmtpClient = await Client.create(signer, clientOptions);
+          console.log("[QRXmtpClient] Client.create() succeeded - new installation created");
+        }
 
         // Cache session for page reloads (async, don't await)
         if (xmtpClient.inboxId) {
