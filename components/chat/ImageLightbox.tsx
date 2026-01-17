@@ -62,8 +62,8 @@ export function ImageLightbox({ src, alt, onClose }: ImageLightboxProps) {
         onClick={onClose}
       />
 
-      {/* Controls - separate from backdrop */}
-      <div className="absolute top-4 right-4 flex gap-2 z-[10001]">
+      {/* Controls - separate from backdrop, with no-drag for Electron */}
+      <div className="absolute top-4 right-4 flex gap-2 z-[10001]" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         {/* Download button */}
         <button
           type="button"
