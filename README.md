@@ -1,3 +1,6 @@
+> This is now deprecated.
+> The main working repo is now at: https://github.com/andy-t-wang/world-chat-desktop/actions
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
