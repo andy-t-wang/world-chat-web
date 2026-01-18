@@ -953,7 +953,7 @@ export function MessagePanel({
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HighlightedInputRef>(null);
-  const languageSelectorRef = useRef<HTMLButtonElement>(null);
+  const languageSelectorRef = useRef<HTMLDivElement>(null);
 
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
@@ -3349,18 +3349,17 @@ export function MessagePanel({
               onClick={() =>
                 alert("Coming soon! Ping Takis to work on this 📎")
               }
-              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[var(--bg-hover)] transition-colors shrink-0 self-stretch"
+              className="w-11 h-11 flex items-center justify-center rounded-xl hover:bg-[var(--bg-hover)] transition-colors shrink-0"
             >
               <Paperclip className="w-5 h-5 text-[var(--text-quaternary)]" />
             </button>
 
             {/* Translate button - only show when translation is available */}
             {translationEnabled && (
-              <>
+              <div ref={languageSelectorRef} className="relative shrink-0">
                 <button
-                  ref={languageSelectorRef}
                   onClick={() => setShowLanguageSelector(!showLanguageSelector)}
-                  className={`w-11 h-11 flex items-center justify-center rounded-xl transition-colors shrink-0 self-stretch ${
+                  className={`w-11 h-11 flex items-center justify-center rounded-xl transition-colors shrink-0 ${
                     outgoingTranslateTo
                       ? "bg-[var(--accent-blue)]/10"
                       : "hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)]"
@@ -3378,8 +3377,8 @@ export function MessagePanel({
 
                 {/* Language Selector Dropdown */}
                 {showLanguageSelector && (
-                  <div className="absolute bottom-14 left-16 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)] p-1 z-50">
-                    <div className="grid grid-cols-4 gap-0.5" style={{ width: '144px' }}>
+                  <div className="absolute bottom-14 left-0 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)] p-1.5 z-50">
+                    <div className="grid grid-cols-4 gap-1" style={{ width: '184px' }}>
                       {TRANSLATE_LANGUAGES.map(lang => (
                         <button
                           key={lang.code}
@@ -3387,19 +3386,19 @@ export function MessagePanel({
                             setOutgoingTranslateTo(outgoingTranslateTo === lang.code ? null : lang.code);
                             setShowLanguageSelector(false);
                           }}
-                          className={`w-[34px] h-[34px] rounded-md text-[10px] hover:bg-[var(--bg-hover)] transition-colors flex flex-col items-center justify-center ${
+                          className={`w-[44px] h-[44px] rounded-lg text-[11px] hover:bg-[var(--bg-hover)] transition-colors flex flex-col items-center justify-center gap-0.5 ${
                             outgoingTranslateTo === lang.code ? "bg-[var(--accent-blue)]/10" : ""
                           }`}
                           title={lang.name}
                         >
-                          <span className="text-[16px] leading-none">{lang.flag}</span>
+                          <span className="text-[22px] leading-none">{lang.flag}</span>
                           <span className={`font-medium ${outgoingTranslateTo === lang.code ? "text-[var(--accent-blue)]" : "text-[var(--text-tertiary)]"}`}>{lang.abbr}</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             <HighlightedInput
@@ -3415,7 +3414,7 @@ export function MessagePanel({
             <button
               onClick={handleSend}
               disabled={!message.trim() || isSending}
-              className="w-11 h-11 flex items-center justify-center rounded-xl bg-[var(--bubble-outgoing)] hover:bg-[var(--accent-blue-hover)] disabled:bg-[var(--border-default)] disabled:cursor-not-allowed transition-colors shrink-0 self-stretch active:scale-95"
+              className="w-11 h-11 flex items-center justify-center rounded-xl bg-[var(--bubble-outgoing)] hover:bg-[var(--accent-blue-hover)] disabled:bg-[var(--border-default)] disabled:cursor-not-allowed transition-colors shrink-0 active:scale-95"
             >
               {isSending ? (
                 <Loader2 className="w-5 h-5 text-white animate-spin" />

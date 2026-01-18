@@ -373,7 +373,7 @@ export const HighlightedInput = forwardRef<HighlightedInputRef, HighlightedInput
     const hasTickers = TICKER_TEST_PATTERN.test(value);
 
     return (
-      <div ref={containerRef} className="relative flex-1 min-w-0">
+      <div ref={containerRef} className="relative flex-1 min-w-0 h-11">
         {/* Actual textarea - at the bottom layer for typing */}
         <textarea
           ref={textareaRef}

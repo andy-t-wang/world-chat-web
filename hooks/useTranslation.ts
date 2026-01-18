@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 import { isElectron } from "@/lib/storage";
 
 // localStorage key for per-conversation auto-translate settings
@@ -26,15 +27,21 @@ interface TranslationProgress {
   file?: string;
 }
 
+// Shared atoms for translation state (so all components see the same state)
+const translationInitializingAtom = atom(false);
+const translationInitializedAtom = atom(false);
+const translationProgressAtom = atom<TranslationProgress | null>(null);
+const translationErrorAtom = atom<string | null>(null);
+
 /**
  * Hook for on-device translation using Electron's Transformers.js + NLLB service
  * Only available in the Electron desktop app
  */
 export function useTranslation() {
-  const [isInitializing, setIsInitializing] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<TranslationProgress | null>(null);
+  const [isInitializing, setIsInitializing] = useAtom(translationInitializingAtom);
+  const [isInitialized, setIsInitialized] = useAtom(translationInitializedAtom);
+  const [error, setError] = useAtom(translationErrorAtom);
+  const [progress, setProgress] = useAtom(translationProgressAtom);
   const cleanupRef = useRef<(() => void) | null>(null);
   const initAttemptedRef = useRef(false);
 
@@ -79,7 +86,7 @@ export function useTranslation() {
         cleanupRef.current = null;
       }
     };
-  }, []);
+  }, [setIsInitializing, setProgress]);
 
   // Check if translation was previously enabled and auto-initialize
   useEffect(() => {
@@ -122,7 +129,7 @@ export function useTranslation() {
     };
 
     checkAndRestore();
-  }, []);
+  }, [setIsInitialized, setIsInitializing, setProgress]);
 
   /**
    * Check if translation is available (only in Electron)
@@ -164,7 +171,7 @@ export function useTranslation() {
       setIsInitializing(false);
       setProgress(null);
     }
-  }, [isInitialized]);
+  }, [isInitialized, setError, setIsInitialized, setIsInitializing, setProgress]);
 
   /**
    * Translate text from one language to another
@@ -214,7 +221,7 @@ export function useTranslation() {
     } catch (err) {
       console.error("[useTranslation] Dispose failed:", err);
     }
-  }, []);
+  }, [setIsInitialized]);
 
   /**
    * Delete downloaded translation models to free disk space
@@ -230,7 +237,7 @@ export function useTranslation() {
       console.error("[useTranslation] Delete models failed:", err);
       return false;
     }
-  }, []);
+  }, [setIsInitialized]);
 
   /**
    * Check if auto-translate is enabled for a conversation
