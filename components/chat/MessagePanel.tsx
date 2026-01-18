@@ -1254,13 +1254,14 @@ export function MessagePanel({
 
         try {
           const result = await translate(text, "es", "en");
-          if (result?.translatedText && result.translatedText !== text) {
+          const trimmedText = result?.translatedText?.trim();
+          if (trimmedText && trimmedText !== text) {
             setTranslations(prev => ({
               ...prev,
-              [msgId]: result.translatedText,
+              [msgId]: trimmedText,
             }));
             // Cache translation (skip for disappearing message conversations)
-            cacheTranslation(conversationId, msgId, result.translatedText, hasDisappearingMessages);
+            cacheTranslation(conversationId, msgId, trimmedText, hasDisappearingMessages);
           }
         } catch {
           // Ignore translation errors for auto-translate
@@ -1297,13 +1298,14 @@ export function MessagePanel({
       // Translate to English from Spanish (most common use case)
       // TODO: Add language detection or let user configure source/target languages
       const result = await translate(text, "es", "en");
-      if (result?.translatedText) {
+      const trimmedText = result?.translatedText?.trim();
+      if (trimmedText) {
         setTranslations(prev => ({
           ...prev,
-          [messageId]: result.translatedText,
+          [messageId]: trimmedText,
         }));
         // Cache translation (skip for disappearing message conversations)
-        cacheTranslation(conversationId, messageId, result.translatedText, hasDisappearingMessages);
+        cacheTranslation(conversationId, messageId, trimmedText, hasDisappearingMessages);
       }
     } catch (error) {
       console.error("[Translation] Failed to translate:", error);
@@ -1855,10 +1857,11 @@ export function MessagePanel({
     setIsTranslatingOutgoing(true);
     try {
       const result = await translate(message.trim(), "en", outgoingTranslateTo);
-      if (result?.translatedText) {
+      const trimmedText = result?.translatedText?.trim();
+      if (trimmedText) {
         setTranslationPreview({
           original: message.trim(),
-          translated: result.translatedText,
+          translated: trimmedText,
           targetLang: outgoingTranslateTo,
         });
       } else {
