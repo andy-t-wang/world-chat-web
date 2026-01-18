@@ -10,6 +10,9 @@ const AUTO_TRANSLATE_KEY = "auto-translate-conversations";
 // localStorage prefix for translation cache per conversation
 const TRANSLATION_CACHE_PREFIX = "translation-cache-";
 
+// localStorage prefix for original text cache (for outgoing translated messages)
+const ORIGINAL_TEXT_CACHE_PREFIX = "original-text-cache-";
+
 interface TranslationResult {
   translatedText: string;
   from: string;
@@ -315,6 +318,48 @@ export function useTranslation() {
     }
   }, []);
 
+  /**
+   * Get cached original text for an outgoing translated message
+   * Returns null if not cached
+   */
+  const getCachedOriginal = useCallback((
+    conversationId: string,
+    translatedContent: string
+  ): string | null => {
+    try {
+      const key = ORIGINAL_TEXT_CACHE_PREFIX + conversationId;
+      const stored = localStorage.getItem(key);
+      if (!stored) return null;
+      const cache = JSON.parse(stored) as Record<string, string>;
+      return cache[translatedContent] || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
+   * Cache original text for an outgoing translated message
+   * Keyed by translated content so we can look it up when rendering
+   * Pass skipCache=true for disappearing message conversations
+   */
+  const cacheOriginal = useCallback((
+    conversationId: string,
+    translatedContent: string,
+    originalText: string,
+    skipCache: boolean = false
+  ): void => {
+    if (skipCache) return; // Don't cache for disappearing message conversations
+    try {
+      const key = ORIGINAL_TEXT_CACHE_PREFIX + conversationId;
+      const stored = localStorage.getItem(key);
+      const cache: Record<string, string> = stored ? JSON.parse(stored) : {};
+      cache[translatedContent] = originalText;
+      localStorage.setItem(key, JSON.stringify(cache));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   return {
     isAvailable,
     initialize,
@@ -330,5 +375,7 @@ export function useTranslation() {
     setAutoTranslate,
     getCachedTranslation,
     cacheTranslation,
+    getCachedOriginal,
+    cacheOriginal,
   };
 }

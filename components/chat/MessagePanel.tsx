@@ -1114,7 +1114,7 @@ export function MessagePanel({
   const ownInboxId = client?.inboxId ?? "";
 
   // Translation state
-  const { translate, isInitialized: translationEnabled, isAutoTranslateEnabled, setAutoTranslate, getCachedTranslation, cacheTranslation } = useTranslation();
+  const { translate, isInitialized: translationEnabled, isAutoTranslateEnabled, setAutoTranslate, getCachedTranslation, cacheTranslation, getCachedOriginal, cacheOriginal } = useTranslation();
   const [translations, setTranslations] = useState<Record<string, string>>({});
   const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
 
@@ -1122,7 +1122,7 @@ export function MessagePanel({
   const [autoTranslate, setAutoTranslateState] = useState(false);
 
   // Outgoing message translation state
-  const [outgoingTranslateTo, setOutgoingTranslateTo] = useState<string | null>(null);
+  const [outgoingTranslateTo, setOutgoingTranslateToState] = useState<string | null>(null);
   const [showLanguageSelector, setShowLanguageSelector] = useState(false);
   const [translationPreview, setTranslationPreview] = useState<{
     original: string;
@@ -1131,10 +1131,34 @@ export function MessagePanel({
   } | null>(null);
   const [isTranslatingOutgoing, setIsTranslatingOutgoing] = useState(false);
 
-  // Load auto-translate preference on conversation change
+  // Wrapper to persist outgoing translation language
+  const setOutgoingTranslateTo = useCallback((lang: string | null) => {
+    setOutgoingTranslateToState(lang);
+    try {
+      const key = `outgoing-translate-${conversationId}`;
+      if (lang) {
+        localStorage.setItem(key, lang);
+      } else {
+        localStorage.removeItem(key);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+  }, [conversationId]);
+
+  // Load auto-translate preference and outgoing language on conversation change
   useEffect(() => {
     if (conversationId && translationEnabled) {
       setAutoTranslateState(isAutoTranslateEnabled(conversationId));
+      // Restore outgoing translation language
+      try {
+        const savedLang = localStorage.getItem(`outgoing-translate-${conversationId}`);
+        setOutgoingTranslateToState(savedLang);
+      } catch {
+        setOutgoingTranslateToState(null);
+      }
+    } else {
+      setOutgoingTranslateToState(null);
     }
     // Reset auto-translated tracking when conversation changes
     autoTranslatedRef.current = new Set();
@@ -1684,15 +1708,53 @@ export function MessagePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messageIds.join(","), pendingMessages.length, ownInboxId]);
 
-  // Scroll to bottom on new messages
+  // Track if user is near bottom (for smart scroll behavior)
+  const isNearBottomRef = useRef(true);
+  const updateNearBottom = useCallback(() => {
+    if (parentRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = parentRef.current;
+      isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 150;
+    }
+  }, []);
+
+  // Scroll to bottom on new messages (only if already near bottom)
   const prevDisplayCountRef = useRef(0);
   useLayoutEffect(() => {
     if (parentRef.current && displayItems.length > 0) {
-      // Always scroll to bottom when messages change
-      parentRef.current.scrollTop = parentRef.current.scrollHeight;
+      const isNewMessage = displayItems.length > prevDisplayCountRef.current;
+      // Only auto-scroll if user was near bottom, or this is initial load
+      if (isNearBottomRef.current || prevDisplayCountRef.current === 0) {
+        parentRef.current.scrollTop = parentRef.current.scrollHeight;
+      }
     }
     prevDisplayCountRef.current = displayItems.length;
   }, [displayItems.length]);
+
+  // Scroll to bottom when translations change (messages get taller)
+  const translationCount = Object.keys(translations).length;
+  const prevTranslationCountRef = useRef(0);
+  useLayoutEffect(() => {
+    // Only run when translations are added (not removed or initial)
+    if (translationCount <= prevTranslationCountRef.current) {
+      prevTranslationCountRef.current = translationCount;
+      return;
+    }
+    prevTranslationCountRef.current = translationCount;
+
+    if (parentRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = parentRef.current;
+      // Only auto-scroll if already near the bottom (within 200px to account for translation height)
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 200;
+      if (isNearBottom) {
+        // Use requestAnimationFrame to wait for DOM to update with new translation
+        requestAnimationFrame(() => {
+          if (parentRef.current) {
+            parentRef.current.scrollTop = parentRef.current.scrollHeight;
+          }
+        });
+      }
+    }
+  }, [translationCount]);
 
   // Mark conversation as read - only run once when messages first load
   // Track which conversation was marked to handle conversation switches correctly
@@ -1757,14 +1819,16 @@ export function MessagePanel({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [conversationId]);
 
-  // Load more when scrolling to top
+  // Load more when scrolling to top + track near-bottom state
   const handleScroll = useCallback(() => {
     if (!parentRef.current) return;
     const { scrollTop } = parentRef.current;
     if (scrollTop < 100 && hasMore && !isLoading) {
       loadMore();
     }
-  }, [hasMore, isLoading, loadMore]);
+    // Update near-bottom tracking for smart scroll behavior
+    updateNearBottom();
+  }, [hasMore, isLoading, loadMore, updateNearBottom]);
 
   const handleSend = async () => {
     if (!message.trim() || isSending) return;
@@ -1773,6 +1837,8 @@ export function MessagePanel({
     setMessage("");
     setReplyingTo(null); // Clear reply state
     setIsSending(true);
+    // Always scroll to bottom when sending your own message
+    isNearBottomRef.current = true;
     try {
       await sendMessage(content, replyToId);
     } catch (error) {
@@ -1813,15 +1879,31 @@ export function MessagePanel({
     if (!translationPreview || isSending) return;
 
     const content = translationPreview.translated;
+    const originalText = translationPreview.original;
     const replyToId = replyingTo?.messageId;
 
     setMessage("");
     setTranslationPreview(null);
     setReplyingTo(null);
     setIsSending(true);
+    // Always scroll to bottom when sending your own message
+    isNearBottomRef.current = true;
 
     try {
       await sendMessage(content, replyToId);
+      // Cache the original text so we can display it alongside the translation
+      // Skip caching for disappearing message conversations
+      cacheOriginal(conversationId, content, originalText, hasDisappearingMessages);
+
+      // Scroll to bottom after DOM updates with the original text
+      // (the message bubble is now taller with original text shown)
+      if (!hasDisappearingMessages) {
+        requestAnimationFrame(() => {
+          if (parentRef.current) {
+            parentRef.current.scrollTop = parentRef.current.scrollHeight;
+          }
+        });
+      }
     } catch (error) {
       console.error("Failed to send message:", error);
     } finally {
@@ -3046,6 +3128,18 @@ export function MessagePanel({
                               }
                             >
                               <MessageText text={text} isOwnMessage={true} onMentionClick={handleMentionClick} />
+                              {/* Show original text for translated outgoing messages (skip for disappearing) */}
+                              {!hasDisappearingMessages && (() => {
+                                const originalText = getCachedOriginal(conversationId, text);
+                                if (!originalText) return null;
+                                return (
+                                  <div className="mt-1.5 pt-1.5 border-t border-white/20">
+                                    <p className="text-[15px] text-white/70 italic leading-[1.4]">
+                                      {originalText}
+                                    </p>
+                                  </div>
+                                );
+                              })()}
                             </div>
                             <MessageReactions
                               messageId={item.id}
