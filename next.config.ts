@@ -1,6 +1,16 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Allow ngrok domain for dev mode HMR (prevents reload issues when /sign page loads via ngrok)
+  allowedDevOrigins: [
+    '*.ngrok-free.app',
+    '*.ngrok.io',
+  ],
+
+  // Disable Fast Refresh to debug reload issues
+  reactStrictMode: false,
+  devIndicators: false,
+
   // Required for XMTP browser SDK - exclude WASM packages from server bundling
   serverExternalPackages: [
     "@xmtp/wasm-bindings",

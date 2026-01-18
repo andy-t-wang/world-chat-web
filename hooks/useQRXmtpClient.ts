@@ -278,40 +278,37 @@ export function useQRXmtpClient(): UseQRXmtpClientResult {
 
         let xmtpClient;
 
-        // Try Client.build() first - works if XMTP installation already exists in OPFS
-        // This is faster and doesn't require signing
-        // IMPORTANT: Only fall back to create() if DB truly doesn't exist
-        // Creating installations burns a slot (max 10) - don't do it unnecessarily
-        try {
-          console.log("[QRXmtpClient] Trying Client.build() for existing DB...");
-          xmtpClient = await Client.build(
-            {
-              identifier: address.toLowerCase(),
-              identifierKind: IdentifierKind.Ethereum,
-            },
-            clientOptions
-          );
-          console.log("[QRXmtpClient] Client.build() succeeded - reusing existing installation");
-        } catch (buildError) {
-          const buildErrorMsg = buildError instanceof Error ? buildError.message : String(buildError);
-          console.log("[QRXmtpClient] Client.build() failed:", buildErrorMsg);
+        // Check if we have an existing session for THIS specific address
+        // Only try build() if session exists - otherwise it might fail due to
+        // DB existing for a different address
+        const existingSession = await getSessionCache();
+        const hasSessionForThisAddress =
+          existingSession?.address?.toLowerCase() === address.toLowerCase();
 
-          // ONLY create if database truly doesn't exist
-          // Other errors (network, transient) should not trigger new installation
-          const isDbMissing =
-            buildErrorMsg.toLowerCase().includes("no local database") ||
-            buildErrorMsg.toLowerCase().includes("not found") ||
-            buildErrorMsg.toLowerCase().includes("database not found");
-
-          if (isDbMissing) {
-            console.log("[QRXmtpClient] No local DB found, using Client.create()");
-            xmtpClient = await Client.create(signer, clientOptions);
-            console.log("[QRXmtpClient] Client.create() succeeded - new installation created");
-          } else {
-            // DB exists but build failed for other reason - DON'T create new installation
-            console.error("[QRXmtpClient] Client.build() failed with unexpected error, not creating new installation");
+        if (hasSessionForThisAddress) {
+          // We have a session for this address - use build() to reuse installation
+          // Don't create new installation if build fails
+          console.log("[QRXmtpClient] Existing session found for this address, using Client.build()");
+          try {
+            xmtpClient = await Client.build(
+              {
+                identifier: address.toLowerCase(),
+                identifierKind: IdentifierKind.Ethereum,
+              },
+              clientOptions
+            );
+            console.log("[QRXmtpClient] Client.build() succeeded - reusing existing installation");
+          } catch (buildError) {
+            // Session exists but build failed - something is wrong
+            // Don't auto-create, let user see the error and retry
+            console.error("[QRXmtpClient] Client.build() failed for existing session:", buildError);
             throw buildError;
           }
+        } else {
+          // No session for this address - this is a fresh login, use create()
+          console.log("[QRXmtpClient] No existing session for this address, using Client.create()");
+          xmtpClient = await Client.create(signer, clientOptions);
+          console.log("[QRXmtpClient] Client.create() succeeded - new installation created");
         }
 
         // Cache session for page reloads (async, don't await)

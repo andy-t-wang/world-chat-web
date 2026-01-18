@@ -3296,6 +3296,28 @@ class XMTPStreamManager {
   }
 
   /**
+   * Manually request history sync from other devices
+   * Call this to pull message history from other installations
+   */
+  async requestHistorySync(): Promise<void> {
+    if (!this.client) {
+      console.warn('[StreamManager] Cannot request history sync - no client');
+      return;
+    }
+
+    console.log('[StreamManager] Manually requesting history sync...');
+    try {
+      await this.client.sendSyncRequest();
+      // Also sync conversations to pull in any new data
+      await this.client.conversations.syncAll([ConsentState.Allowed, ConsentState.Unknown]);
+      console.log('[StreamManager] History sync request completed');
+    } catch (error) {
+      console.error('[StreamManager] History sync request failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Start periodic history sync to respond to sync requests from other installations
    * This is minimal - the streams should handle real-time updates
    */

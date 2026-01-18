@@ -23,6 +23,8 @@ import {
   ChevronLeft,
   Reply,
   Timer,
+  Globe,
+  Languages,
 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { VerificationBadge } from "@/components/ui/VerificationBadge";
@@ -61,6 +63,7 @@ import {
   extractAttachments,
 } from "@/types/attachments";
 import { useDisplayName } from "@/hooks/useDisplayName";
+import { useTranslation } from "@/hooks/useTranslation";
 import { resolveUsername } from "@/lib/username/service";
 import { useMessages } from "@/hooks/useMessages";
 import { xmtpClientAtom } from "@/stores/client";
@@ -498,6 +501,10 @@ interface MessageWrapperProps {
   messageId: string;
   onReactionClick: (messageId: string, position: { x: number; y: number }) => void;
   onReplyClick?: (messageId: string) => void;
+  onTranslateClick?: (messageId: string) => void;
+  isTranslated?: boolean;
+  isTranslating?: boolean;
+  translationEnabled?: boolean;
 }
 
 function MessageWrapper({
@@ -506,6 +513,10 @@ function MessageWrapper({
   messageId,
   onReactionClick,
   onReplyClick,
+  onTranslateClick,
+  isTranslated,
+  isTranslating,
+  translationEnabled,
 }: MessageWrapperProps) {
   const handleReactionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -521,6 +532,11 @@ function MessageWrapper({
   const handleReplyClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     onReplyClick?.(messageId);
+  };
+
+  const handleTranslateClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTranslateClick?.(messageId);
   };
 
   return (
@@ -550,6 +566,27 @@ function MessageWrapper({
       {/* Action buttons - right side for incoming messages */}
       {!isOwnMessage && (
         <div className="flex items-center gap-0.5 opacity-0 group-hover/msg:opacity-100 transition-opacity">
+          {/* Translate button - only show if translation is enabled */}
+          {translationEnabled && (
+            <button
+              onClick={handleTranslateClick}
+              disabled={isTranslating}
+              className={`w-7 h-7 flex items-center justify-center rounded-full transition-colors shrink-0 ${
+                isTranslated
+                  ? "text-[var(--accent-blue)] hover:bg-[var(--bg-hover)]"
+                  : isTranslating
+                  ? "text-[var(--text-quaternary)] cursor-wait"
+                  : "hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)]"
+              }`}
+              title={isTranslated ? "Hide translation" : isTranslating ? "Translating..." : "Translate"}
+            >
+              {isTranslating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Languages className="w-4 h-4" />
+              )}
+            </button>
+          )}
           <button
             onClick={handleReactionClick}
             className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)] hover:text-[var(--text-primary)] transition-colors shrink-0"
@@ -1062,6 +1099,161 @@ export function MessagePanel({
   } = useMessages(conversationId);
 
   const ownInboxId = client?.inboxId ?? "";
+
+  // Translation state
+  const { translate, isInitialized: translationEnabled, isAutoTranslateEnabled, setAutoTranslate, getCachedTranslation, cacheTranslation } = useTranslation();
+  const [translations, setTranslations] = useState<Record<string, string>>({});
+  const [translatingIds, setTranslatingIds] = useState<Set<string>>(new Set());
+
+  // Auto-translate state for this conversation
+  const [autoTranslate, setAutoTranslateState] = useState(false);
+
+  // Load auto-translate preference on conversation change
+  useEffect(() => {
+    if (conversationId && translationEnabled) {
+      setAutoTranslateState(isAutoTranslateEnabled(conversationId));
+    }
+    // Reset auto-translated tracking when conversation changes
+    autoTranslatedRef.current = new Set();
+  }, [conversationId, translationEnabled, isAutoTranslateEnabled]);
+
+  // Restore cached translations when conversation changes (skip for disappearing message conversations)
+  useEffect(() => {
+    if (!conversationId || !translationEnabled || hasDisappearingMessages) {
+      // Clear translations when switching conversations or if disappearing messages
+      setTranslations({});
+      return;
+    }
+
+    // Restore cached translations
+    const restoredTranslations: Record<string, string> = {};
+    for (const msgId of messageIds) {
+      const cached = getCachedTranslation(conversationId, msgId);
+      if (cached) {
+        restoredTranslations[msgId] = cached;
+      }
+    }
+    if (Object.keys(restoredTranslations).length > 0) {
+      setTranslations(prev => ({ ...prev, ...restoredTranslations }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, translationEnabled, hasDisappearingMessages, getCachedTranslation]);
+
+  // Toggle auto-translate for this conversation
+  const handleAutoTranslateToggle = useCallback(() => {
+    if (!conversationId) return;
+    const newValue = !autoTranslate;
+    setAutoTranslateState(newValue);
+    setAutoTranslate(conversationId, newValue);
+  }, [conversationId, autoTranslate, setAutoTranslate]);
+
+  // Track which messages we've already auto-translated
+  const autoTranslatedRef = useRef<Set<string>>(new Set());
+
+  // Auto-translate incoming messages when enabled
+  useEffect(() => {
+    if (!autoTranslate || !translationEnabled || !messageIds.length) return;
+
+    const translateNewMessages = async () => {
+      // Process recent messages (last 10) to avoid overwhelming
+      const recentIds = messageIds.slice(0, 10);
+
+      for (const msgId of recentIds) {
+        const msg = getMessage(msgId);
+        if (!msg) continue;
+
+        // Skip own messages
+        if (msg.senderInboxId === ownInboxId) continue;
+        // Skip already translated
+        if (translations[msgId] || autoTranslatedRef.current.has(msgId)) continue;
+        // Skip if already translating
+        if (translatingIds.has(msgId)) continue;
+
+        // Get text content
+        const content = msg.content;
+        let text = "";
+        if (typeof content === "string") {
+          text = content;
+        } else if (content && typeof content === "object" && "text" in content) {
+          text = (content as { text: string }).text;
+        } else if (content && typeof content === "object" && "content" in content) {
+          const nested = (content as { content: unknown }).content;
+          if (typeof nested === "string") text = nested;
+          else if (nested && typeof nested === "object" && "text" in nested) {
+            text = (nested as { text: string }).text;
+          }
+        }
+
+        // Skip empty or very short messages
+        if (!text || text.length < 3) continue;
+
+        // Mark as being processed
+        autoTranslatedRef.current.add(msgId);
+        setTranslatingIds(prev => new Set(prev).add(msgId));
+
+        try {
+          const result = await translate(text, "es", "en");
+          if (result?.translatedText && result.translatedText !== text) {
+            setTranslations(prev => ({
+              ...prev,
+              [msgId]: result.translatedText,
+            }));
+            // Cache translation (skip for disappearing message conversations)
+            cacheTranslation(conversationId, msgId, result.translatedText, hasDisappearingMessages);
+          }
+        } catch {
+          // Ignore translation errors for auto-translate
+        } finally {
+          setTranslatingIds(prev => {
+            const next = new Set(prev);
+            next.delete(msgId);
+            return next;
+          });
+        }
+      }
+    };
+
+    translateNewMessages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoTranslate, translationEnabled, messageIds.join(","), ownInboxId, translate, conversationId, hasDisappearingMessages, cacheTranslation]);
+
+  // Handle translate button click
+  const handleTranslateClick = useCallback(async (messageId: string, text: string) => {
+    // If already translated, toggle off
+    if (translations[messageId]) {
+      setTranslations(prev => {
+        const next = { ...prev };
+        delete next[messageId];
+        return next;
+      });
+      return;
+    }
+
+    // Start translating
+    setTranslatingIds(prev => new Set(prev).add(messageId));
+
+    try {
+      // Translate to English from Spanish (most common use case)
+      // TODO: Add language detection or let user configure source/target languages
+      const result = await translate(text, "es", "en");
+      if (result?.translatedText) {
+        setTranslations(prev => ({
+          ...prev,
+          [messageId]: result.translatedText,
+        }));
+        // Cache translation (skip for disappearing message conversations)
+        cacheTranslation(conversationId, messageId, result.translatedText, hasDisappearingMessages);
+      }
+    } catch (error) {
+      console.error("[Translation] Failed to translate:", error);
+    } finally {
+      setTranslatingIds(prev => {
+        const next = new Set(prev);
+        next.delete(messageId);
+        return next;
+      });
+    }
+  }, [translate, translations, conversationId, hasDisappearingMessages, cacheTranslation]);
 
   // Check if message should be displayed
   const shouldDisplayMessage = useCallback((msg: DecodedMessage): boolean => {
@@ -1789,6 +1981,24 @@ export function MessagePanel({
             )}
           </div>
         </div>
+        </div>
+
+        {/* Right side actions */}
+        <div className="electron-no-drag flex items-center gap-1">
+          {/* Auto-translate toggle - only show if translation is enabled */}
+          {translationEnabled && (
+            <button
+              onClick={handleAutoTranslateToggle}
+              className={`h-8 px-3 flex items-center gap-1.5 rounded-full text-[13px] font-medium transition-colors cursor-pointer ${
+                autoTranslate
+                  ? "bg-[var(--accent-blue)] text-white"
+                  : "border border-[var(--accent-blue)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue)]/10"
+              }`}
+            >
+              <Languages className="w-4 h-4" />
+              <span>{autoTranslate ? "Auto-translate on" : "Enable translation"}</span>
+            </button>
+          )}
         </div>
       </header>
 
@@ -2560,6 +2770,10 @@ export function MessagePanel({
                             messageId={item.id}
                             onReactionClick={handleReactionButtonClick}
                             onReplyClick={handleQuickReply}
+                            onTranslateClick={(id) => handleTranslateClick(id, replyText)}
+                            isTranslated={!!translations[item.id]}
+                            isTranslating={translatingIds.has(item.id)}
+                            translationEnabled={translationEnabled}
                           >
                             <div
                               onContextMenu={(e) =>
@@ -2579,6 +2793,7 @@ export function MessagePanel({
                                 isFirstInGroup={isFirstInGroup}
                                 isLastInGroup={isLastInGroup}
                                 isVerified={isVerified}
+                                translatedContent={translations[item.id]}
                                 reactions={
                                   <MessageReactions
                                     messageId={item.id}
@@ -2835,6 +3050,10 @@ export function MessagePanel({
                             messageId={item.id}
                             onReactionClick={handleReactionButtonClick}
                             onReplyClick={handleQuickReply}
+                            onTranslateClick={(id) => handleTranslateClick(id, text)}
+                            isTranslated={!!translations[item.id]}
+                            isTranslating={translatingIds.has(item.id)}
+                            translationEnabled={translationEnabled}
                           >
                             <div
                               onContextMenu={(e) =>
@@ -2850,6 +3069,13 @@ export function MessagePanel({
                                 text={text}
                                 isOwnMessage={false}
                               />
+                              {translations[item.id] && (
+                                <div className="mt-1 pt-1 border-t border-[var(--border-subtle)]">
+                                  <p className="text-[13px] text-[var(--text-secondary)] italic">
+                                    {translations[item.id]}
+                                  </p>
+                                </div>
+                              )}
                               <MessageReactions
                                 messageId={item.id}
                                 conversationId={conversationId}
@@ -2905,6 +3131,10 @@ export function MessagePanel({
                           messageId={item.id}
                           onReactionClick={handleReactionButtonClick}
                           onReplyClick={handleQuickReply}
+                          onTranslateClick={(id) => handleTranslateClick(id, text)}
+                          isTranslated={!!translations[item.id]}
+                          isTranslating={translatingIds.has(item.id)}
+                          translationEnabled={translationEnabled}
                         >
                           <div className="max-w-[300px]">
                             <div
@@ -2919,6 +3149,13 @@ export function MessagePanel({
                               }
                             >
                               <MessageText text={text} isOwnMessage={false} onMentionClick={handleMentionClick} />
+                              {translations[item.id] && (
+                                <div className="mt-1.5 pt-1.5 border-t border-[rgba(0,0,0,0.08)]">
+                                  <p className="text-[15px] text-[var(--text-secondary)] italic leading-[1.4]">
+                                    {translations[item.id]}
+                                  </p>
+                                </div>
+                              )}
                             </div>
                             <MessageReactions
                               messageId={item.id}

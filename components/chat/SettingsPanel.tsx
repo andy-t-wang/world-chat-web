@@ -20,8 +20,10 @@ import {
   Check,
   LogOut,
   Settings,
-  Globe,
+  Languages,
   Loader2,
+  History,
+  Trash2,
 } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
@@ -72,9 +74,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [isElectronEnv, setIsElectronEnv] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [translationAvailable, setTranslationAvailable] = useState(false);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
 
   // Translation hook
-  const { isAvailable, initialize, isInitializing, isInitialized, progress: translationProgress, error: translationError } = useTranslation();
+  const { isAvailable, initialize, isInitializing, isInitialized, progress: translationProgress, error: translationError, deleteModels } = useTranslation();
+  const [isDeletingModels, setIsDeletingModels] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Download link
   const BASE_URL = process.env.NEXT_PUBLIC_URL || "https://world-chat-web.vercel.app";
@@ -142,6 +147,18 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       setTimeout(() => setLinkCopied(false), 2000);
     } catch (error) {
       console.error("Failed to copy link:", error);
+    }
+  };
+
+  const handleHistorySync = async () => {
+    if (isSyncingHistory) return;
+    setIsSyncingHistory(true);
+    try {
+      await streamManager.requestHistorySync();
+    } catch (error) {
+      console.error("History sync failed:", error);
+    } finally {
+      setIsSyncingHistory(false);
     }
   };
 
@@ -291,49 +308,102 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </button>
         </div>
 
-        {/* Translation Section - Only show in Electron */}
+        {/* Extensions Section - Only show in Electron */}
         {translationAvailable && (
           <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
             <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
-              Translation
+              Extensions
             </h3>
 
-            <button
-              onClick={() => !isInitialized && !isInitializing && initialize("en")}
-              disabled={isInitializing}
-              className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
-            >
-              {isInitializing ? (
-                <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
-              ) : (
-                <Globe className={`w-5 h-5 ${isInitialized ? "text-[var(--accent-green)]" : "text-[var(--text-tertiary)]"}`} />
-              )}
-              <div className="flex-1 text-left">
-                <p className="text-[14px] text-[var(--text-primary)]">
-                  {isInitializing ? "Downloading Models..." : "Local Translation"}
-                </p>
-                <p className="text-[12px] text-[var(--text-secondary)]">
-                  {isInitializing && translationProgress
-                    ? translationProgress.message
-                    : "Fully private · Messages never leave your device"}
-                </p>
-                {/* Progress bar */}
-                {isInitializing && translationProgress && (
-                  <div className="mt-2 w-full bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full bg-[var(--accent-blue)] transition-all duration-300 ease-out"
-                      style={{ width: `${(translationProgress.progress / translationProgress.total) * 100}%` }}
-                    />
-                  </div>
+            {/* Private Translations Extension */}
+            <div className="py-3 -mx-2 px-2">
+              <div className="flex items-center gap-3">
+                {isInitializing ? (
+                  <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
+                ) : isDeletingModels ? (
+                  <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
+                ) : (
+                  <Languages className={`w-5 h-5 ${isInitialized ? "text-[var(--accent-green)]" : "text-[var(--text-tertiary)]"}`} />
                 )}
-                {translationError && (
-                  <p className="text-[12px] text-[#FF3B30] mt-1">{translationError}</p>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[14px] text-[var(--text-primary)]">Private Translations</p>
+                  <p className="text-[12px] text-[var(--text-secondary)]">
+                    {isInitializing
+                      ? "Downloading..."
+                      : isDeletingModels
+                      ? "Removing..."
+                      : isInitialized
+                      ? "Local"
+                      : "On-device"}
+                  </p>
+                  {/* Progress bar with percent */}
+                  {isInitializing && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex-1 bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-[var(--accent-blue)] transition-all duration-300 ease-out"
+                          style={{ width: `${translationProgress?.progress || 0}%` }}
+                        />
+                      </div>
+                      <span className="text-[11px] text-[var(--text-secondary)] tabular-nums w-8 text-right">
+                        {Math.round(translationProgress?.progress || 0)}%
+                      </span>
+                    </div>
+                  )}
+                  {translationError && (
+                    <p className="text-[12px] text-[#FF3B30] mt-1">{translationError}</p>
+                  )}
+                </div>
+                {isInitialized ? (
+                  isDeletingModels ? (
+                    <Loader2 className="w-4 h-4 text-[var(--text-tertiary)] animate-spin" />
+                  ) : (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4 text-[var(--text-tertiary)]" />
+                    </button>
+                  )
+                ) : isInitializing ? null : (
+                  <button
+                    onClick={() => initialize()}
+                    className="text-[12px] text-[var(--accent-blue)] hover:text-blue-600 font-medium"
+                  >
+                    Download
+                  </button>
                 )}
               </div>
-              <Toggle enabled={isInitialized} />
-            </button>
+            </div>
           </div>
         )}
+
+        {/* Sync Section */}
+        <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+            Sync
+          </h3>
+
+          <button
+            onClick={handleHistorySync}
+            disabled={isSyncingHistory}
+            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2 disabled:opacity-50"
+          >
+            {isSyncingHistory ? (
+              <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
+            ) : (
+              <History className="w-5 h-5 text-[var(--text-tertiary)]" />
+            )}
+            <div className="flex-1 text-left">
+              <p className="text-[14px] text-[var(--text-primary)]">
+                {isSyncingHistory ? "Syncing..." : "History Sync"}
+              </p>
+              <p className="text-[12px] text-[var(--text-secondary)]">
+                Pull message history from other devices
+              </p>
+            </div>
+          </button>
+        </div>
 
         {/* Updates Section */}
         <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
@@ -400,6 +470,41 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </span>
         </button>
       </div>
+
+      {/* Delete Translation Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-4">
+              <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-2">
+                Delete Private Translations?
+              </h3>
+              <p className="text-[14px] text-[var(--text-secondary)]">
+                This will remove the translation models from your device. You can download them again anytime.
+              </p>
+            </div>
+            <div className="flex border-t border-[var(--border-default)]">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-3 text-[14px] font-medium text-[var(--accent-blue)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setShowDeleteConfirm(false);
+                  setIsDeletingModels(true);
+                  await deleteModels();
+                  setIsDeletingModels(false);
+                }}
+                className="flex-1 py-3 text-[14px] font-medium text-red-500 hover:bg-[var(--bg-hover)] transition-colors border-l border-[var(--border-default)]"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

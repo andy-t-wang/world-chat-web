@@ -3,6 +3,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { isElectron } from "@/lib/storage";
 
+// localStorage key for per-conversation auto-translate settings
+const AUTO_TRANSLATE_KEY = "auto-translate-conversations";
+
+// localStorage prefix for translation cache per conversation
+const TRANSLATION_CACHE_PREFIX = "translation-cache-";
+
 interface TranslationResult {
   translatedText: string;
   from: string;
@@ -15,13 +21,13 @@ interface LanguageDetectionResult {
 }
 
 interface TranslationProgress {
+  status: string;
   progress: number;
-  total: number;
-  message: string;
+  file?: string;
 }
 
 /**
- * Hook for on-device translation using Electron's Python translation service
+ * Hook for on-device translation using Electron's Transformers.js + NLLB service
  * Only available in the Electron desktop app
  */
 export function useTranslation() {
@@ -30,6 +36,61 @@ export function useTranslation() {
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<TranslationProgress | null>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
+  const initAttemptedRef = useRef(false);
+
+  // Check if translation was previously enabled and auto-initialize
+  useEffect(() => {
+    if (initAttemptedRef.current) return;
+    initAttemptedRef.current = true;
+
+    const checkAndRestore = async () => {
+      if (!isElectron() || !window.electronAPI?.translation) return;
+
+      try {
+        // First check if already ready (models loaded in memory)
+        const ready = await window.electronAPI.translation.isReady();
+        if (ready) {
+          setIsInitialized(true);
+          return;
+        }
+
+        // Check if translation was previously enabled
+        const wasEnabled = await window.electronAPI.translation.getEnabled();
+        if (wasEnabled) {
+          // Auto-initialize in background
+          console.log("[useTranslation] Auto-initializing translation (was previously enabled)");
+          setIsInitializing(true);
+
+          // Subscribe to progress updates
+          if (window.electronAPI.translation.onProgress) {
+            cleanupRef.current = window.electronAPI.translation.onProgress((p) => {
+              setProgress(p);
+            });
+          }
+
+          try {
+            await window.electronAPI.translation.initialize();
+            setIsInitialized(true);
+          } catch (err) {
+            console.error("[useTranslation] Auto-initialize failed:", err);
+            // Clear the enabled preference if auto-init fails
+            await window.electronAPI.translation.setEnabled(false);
+          } finally {
+            setIsInitializing(false);
+            setProgress(null);
+            if (cleanupRef.current) {
+              cleanupRef.current();
+              cleanupRef.current = null;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("[useTranslation] Check and restore failed:", err);
+      }
+    };
+
+    checkAndRestore();
+  }, []);
 
   // Clean up progress listener on unmount
   useEffect(() => {
@@ -55,13 +116,16 @@ export function useTranslation() {
 
   /**
    * Initialize translation service and download models
-   * This may take a while on first run as it downloads models
+   * This may take a while on first run as it downloads models (~150MB)
    */
-  const initialize = useCallback(async (userLanguage = "en"): Promise<boolean> => {
+  const initialize = useCallback(async (): Promise<boolean> => {
     if (!isElectron() || !window.electronAPI?.translation) {
       setError("Translation only available in desktop app");
       return false;
     }
+
+    // Check if already initialized
+    if (isInitialized) return true;
 
     setIsInitializing(true);
     setError(null);
@@ -75,7 +139,7 @@ export function useTranslation() {
     }
 
     try {
-      await window.electronAPI.translation.initialize(userLanguage);
+      await window.electronAPI.translation.initialize();
       setIsInitialized(true);
       return true;
     } catch (err) {
@@ -91,7 +155,7 @@ export function useTranslation() {
         cleanupRef.current = null;
       }
     }
-  }, []);
+  }, [isInitialized]);
 
   /**
    * Translate text from one language to another
@@ -143,15 +207,112 @@ export function useTranslation() {
     }
   }, []);
 
+  /**
+   * Delete downloaded translation models to free disk space
+   */
+  const deleteModels = useCallback(async (): Promise<boolean> => {
+    if (!isElectron() || !window.electronAPI?.translation) return false;
+
+    try {
+      await window.electronAPI.translation.deleteModels();
+      setIsInitialized(false);
+      return true;
+    } catch (err) {
+      console.error("[useTranslation] Delete models failed:", err);
+      return false;
+    }
+  }, []);
+
+  /**
+   * Check if auto-translate is enabled for a conversation
+   */
+  const isAutoTranslateEnabled = useCallback((conversationId: string): boolean => {
+    try {
+      const stored = localStorage.getItem(AUTO_TRANSLATE_KEY);
+      if (!stored) return false;
+      const ids = JSON.parse(stored) as string[];
+      return ids.includes(conversationId);
+    } catch {
+      return false;
+    }
+  }, []);
+
+  /**
+   * Enable or disable auto-translate for a conversation
+   */
+  const setAutoTranslate = useCallback((conversationId: string, enabled: boolean): void => {
+    try {
+      const stored = localStorage.getItem(AUTO_TRANSLATE_KEY);
+      const ids: string[] = stored ? JSON.parse(stored) : [];
+
+      if (enabled && !ids.includes(conversationId)) {
+        ids.push(conversationId);
+      } else if (!enabled) {
+        const index = ids.indexOf(conversationId);
+        if (index > -1) ids.splice(index, 1);
+      }
+
+      localStorage.setItem(AUTO_TRANSLATE_KEY, JSON.stringify(ids));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  /**
+   * Get cached translation for a message
+   * Returns null if not cached
+   */
+  const getCachedTranslation = useCallback((
+    conversationId: string,
+    messageId: string
+  ): string | null => {
+    try {
+      const key = TRANSLATION_CACHE_PREFIX + conversationId;
+      const stored = localStorage.getItem(key);
+      if (!stored) return null;
+      const cache = JSON.parse(stored) as Record<string, string>;
+      return cache[messageId] || null;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  /**
+   * Cache a translation for a message
+   * Pass skipCache=true for disappearing message conversations
+   */
+  const cacheTranslation = useCallback((
+    conversationId: string,
+    messageId: string,
+    translatedText: string,
+    skipCache: boolean = false
+  ): void => {
+    if (skipCache) return; // Don't cache for disappearing message conversations
+    try {
+      const key = TRANSLATION_CACHE_PREFIX + conversationId;
+      const stored = localStorage.getItem(key);
+      const cache: Record<string, string> = stored ? JSON.parse(stored) : {};
+      cache[messageId] = translatedText;
+      localStorage.setItem(key, JSON.stringify(cache));
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
   return {
     isAvailable,
     initialize,
     translate,
     detectLanguage,
     dispose,
+    deleteModels,
     isInitializing,
     isInitialized,
     progress,
     error,
+    isAutoTranslateEnabled,
+    setAutoTranslate,
+    getCachedTranslation,
+    cacheTranslation,
   };
 }

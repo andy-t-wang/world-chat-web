@@ -250,12 +250,27 @@ export function ConversationList({
     );
   }
 
-  // Show empty state (no conversations at all)
-  if (!isLoading && conversationIds.length === 0) {
+  // Show empty state (no conversations at all) - but still show requests banner if there are requests
+  if (!isLoading && conversationIds.length === 0 && requestCount === 0) {
     return (
       <div className="flex flex-col h-full items-center justify-center px-6 text-center">
         <p className="text-[var(--text-secondary)]">No conversations yet</p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">Start a new conversation to begin chatting</p>
+      </div>
+    );
+  }
+
+  // Show only requests banner when no allowed conversations but there are requests
+  if (!isLoading && conversationIds.length === 0 && requestCount > 0) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="shrink-0 border-b border-[var(--border-subtle)]">
+          <ChatRequestsBanner count={requestCount} newCount={newRequestCount} onClick={onRequestsClick} />
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-6 text-center">
+          <p className="text-[var(--text-secondary)]">No conversations yet</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">Accept a chat request or start a new conversation</p>
+        </div>
       </div>
     );
   }

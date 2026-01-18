@@ -9,6 +9,12 @@ import { RefreshCw, Check } from "lucide-react";
 import { InstallationManager } from "@/components/auth/InstallationManager";
 import { getSessionCache } from "@/lib/storage";
 
+// Pre-compile /sign route in dev mode to prevent HMR reload issues
+// when mini app loads the page via ngrok
+if (typeof window !== "undefined") {
+  fetch("/sign?precompile=1", { method: "HEAD" }).catch(() => {});
+}
+
 const MINI_APP_ID =
   process.env.NEXT_PUBLIC_WORLD_MINI_APP_ID || "app_your_app_id";
 

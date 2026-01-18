@@ -371,7 +371,7 @@ export function MessageRequestsView({ onBack }: MessageRequestsViewProps) {
         >
           <div
             style={{
-              height: virtualizer.getTotalSize(),
+              height: virtualizer.getTotalSize() + 80, // Add bottom padding for scroll
               position: "relative",
             }}
           >
