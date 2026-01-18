@@ -162,6 +162,7 @@ declare global {
         isReady: () => Promise<boolean>;
         initialize: () => Promise<{ success: boolean }>;
         onProgress: (callback: (progress: { status: string; progress: number; file?: string }) => void) => () => void;
+        getProgress: () => Promise<{ isInitializing: boolean; progress: { status: string; progress: number; file?: string } | null }>;
         detectLanguage: (text: string) => Promise<{ language: string | null; confidence: number }>;
         translate: (text: string, from: string, to: string) => Promise<{ translatedText: string; from: string; to: string }>;
         dispose: () => Promise<{ success: boolean }>;
