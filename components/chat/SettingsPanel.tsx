@@ -80,6 +80,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const { isAvailable, initialize, isInitializing, isInitialized, progress: translationProgress, error: translationError, deleteModels } = useTranslation();
   const [isDeletingModels, setIsDeletingModels] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Download link
   const BASE_URL = process.env.NEXT_PUBLIC_URL || "https://world-chat-web.vercel.app";
@@ -176,13 +177,13 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto scrollbar-auto-hide">
         {/* Appearance Section */}
         <div className="px-4 py-3">
           <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-3">
             Appearance
           </h3>
-          <div className="flex items-center gap-1 p-1 bg-[var(--bg-tertiary)] rounded-lg">
+          <div className="w-full flex items-center gap-1 p-1 bg-[var(--bg-tertiary)] rounded-lg">
             <button
               onClick={() => setThemePreference("light")}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-md text-[13px] font-medium transition-all ${
@@ -220,15 +221,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
         {/* Privacy Section */}
-        <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-          <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="px-4 text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
             Privacy
           </h3>
 
           {/* Rich Previews */}
           <button
             onClick={() => setLinkPreviewEnabled(!linkPreviewEnabled)}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {linkPreviewEnabled ? (
               <Link2 className="w-5 h-5 text-[var(--accent-green)]" />
@@ -247,7 +248,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           {/* Notification Sounds */}
           <button
             onClick={() => setSoundMuted(!soundMuted)}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {soundMuted ? (
               <VolumeX className="w-5 h-5 text-[var(--text-tertiary)]" />
@@ -266,7 +267,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           {/* Request Notifications */}
           <button
             onClick={() => setMessageRequestNotifications(!messageRequestNotifications)}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {messageRequestNotifications ? (
               <UserPlus className="w-5 h-5 text-[var(--accent-green)]" />
@@ -284,14 +285,14 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
         {/* Display Section */}
-        <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-          <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="px-4 text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
             Display
           </h3>
 
           <button
             onClick={() => setHideEmptyConversations(!hideEmptyConversations)}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {hideEmptyConversations ? (
               <MessageSquareOff className="w-5 h-5 text-[var(--accent-green)]" />
@@ -308,86 +309,108 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           </button>
         </div>
 
-        {/* Extensions Section - Only show in Electron */}
-        {translationAvailable && (
-          <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-            <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
-              Extensions
-            </h3>
+        {/* Extensions Section */}
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="px-4 text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+            Extensions
+          </h3>
 
-            {/* Private Translations Extension */}
-            <div className="py-3 -mx-2 px-2">
-              <div className="flex items-center gap-3">
-                {isInitializing ? (
-                  <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
-                ) : isDeletingModels ? (
-                  <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
-                ) : (
-                  <Languages className={`w-5 h-5 ${isInitialized ? "text-[var(--accent-green)]" : "text-[var(--text-tertiary)]"}`} />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-[14px] text-[var(--text-primary)]">Private Translations</p>
-                  <p className="text-[12px] text-[var(--text-secondary)]">
-                    {isInitializing
-                      ? "Downloading..."
-                      : isDeletingModels
-                      ? "Removing..."
-                      : isInitialized
-                      ? "Local"
-                      : "On-device"}
-                  </p>
-                  {/* Progress bar with percent */}
-                  {isInitializing && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="flex-1 bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="h-full bg-[var(--accent-blue)] transition-all duration-300 ease-out"
-                          style={{ width: `${translationProgress?.progress || 0}%` }}
-                        />
-                      </div>
-                      <span className="text-[11px] text-[var(--text-secondary)] tabular-nums w-8 text-right">
-                        {Math.round(translationProgress?.progress || 0)}%
-                      </span>
-                    </div>
-                  )}
-                  {translationError && (
-                    <p className="text-[12px] text-[#FF3B30] mt-1">{translationError}</p>
-                  )}
-                </div>
-                {isInitialized ? (
-                  isDeletingModels ? (
-                    <Loader2 className="w-4 h-4 text-[var(--text-tertiary)] animate-spin" />
+          {/* Private Translations Extension */}
+          <div className="py-3 px-4">
+            <div className="flex items-center gap-3">
+              {translationAvailable ? (
+                // Electron version - fully functional
+                <>
+                  {isInitializing ? (
+                    <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
+                  ) : isDeletingModels ? (
+                    <Loader2 className="w-5 h-5 text-[var(--text-tertiary)] animate-spin" />
                   ) : (
+                    <Languages className={`w-5 h-5 ${isInitialized ? "text-[var(--accent-green)]" : "text-[var(--text-tertiary)]"}`} />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] text-[var(--text-primary)]">Private Translations</p>
+                    <p className="text-[12px] text-[var(--text-secondary)]">
+                      {isInitializing
+                        ? "Downloading..."
+                        : isDeletingModels
+                        ? "Removing..."
+                        : isInitialized
+                        ? "Local"
+                        : "On-device"}
+                    </p>
+                    {/* Progress bar with percent */}
+                    {isInitializing && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <div className="flex-1 bg-[var(--bg-tertiary)] rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-full bg-[var(--accent-blue)] transition-all duration-300 ease-out"
+                            style={{ width: `${translationProgress?.progress || 0}%` }}
+                          />
+                        </div>
+                        <span className="text-[11px] text-[var(--text-secondary)] tabular-nums w-8 text-right">
+                          {Math.round(translationProgress?.progress || 0)}%
+                        </span>
+                      </div>
+                    )}
+                    {translationError && (
+                      <p className="text-[12px] text-[#FF3B30] mt-1">{translationError}</p>
+                    )}
+                  </div>
+                  {isInitialized ? (
+                    isDeletingModels ? (
+                      <Loader2 className="w-4 h-4 text-[var(--text-tertiary)] animate-spin" />
+                    ) : (
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4 text-[var(--text-tertiary)]" />
+                      </button>
+                    )
+                  ) : isInitializing ? null : (
                     <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="p-1 hover:bg-[var(--bg-hover)] rounded transition-colors"
+                      onClick={() => initialize()}
+                      className="text-[12px] text-[var(--accent-blue)] hover:text-blue-600 font-medium"
                     >
-                      <Trash2 className="w-4 h-4 text-[var(--text-tertiary)]" />
+                      Download
                     </button>
-                  )
-                ) : isInitializing ? null : (
-                  <button
-                    onClick={() => initialize()}
+                  )}
+                </>
+              ) : (
+                // Web version - prompt to download Mac app
+                <>
+                  <Languages className="w-5 h-5 text-[var(--text-quaternary)]" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[14px] text-[var(--text-tertiary)]">Private Translations</p>
+                    <p className="text-[12px] text-[var(--text-quaternary)]">
+                      Requires Mac app
+                    </p>
+                  </div>
+                  <a
+                    href={DOWNLOAD_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-[12px] text-[var(--accent-blue)] hover:text-blue-600 font-medium"
                   >
-                    Download
-                  </button>
-                )}
-              </div>
+                    Get App
+                  </a>
+                </>
+              )}
             </div>
           </div>
-        )}
+        </div>
 
         {/* Sync Section */}
-        <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-          <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="px-4 text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
             Sync
           </h3>
 
           <button
             onClick={handleHistorySync}
             disabled={isSyncingHistory}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2 disabled:opacity-50"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
           >
             {isSyncingHistory ? (
               <Loader2 className="w-5 h-5 text-[var(--accent-blue)] animate-spin" />
@@ -406,15 +429,15 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
         </div>
 
         {/* Updates Section */}
-        <div className="px-4 py-3 border-t border-[var(--border-subtle)]">
-          <h3 className="text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <h3 className="px-4 text-[12px] font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
             Updates
           </h3>
 
           <button
             onClick={handleCheckForUpdates}
             disabled={isCheckingUpdates}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2 disabled:opacity-50"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-5 h-5 text-[var(--accent-blue)] ${isCheckingUpdates ? "animate-spin" : ""}`} />
             <div className="flex-1 text-left">
@@ -429,7 +452,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
 
           <button
             onClick={handleCopyDownloadLink}
-            className="w-full flex items-center gap-3 py-3 hover:bg-[var(--bg-hover)] rounded-lg transition-colors -mx-2 px-2"
+            className="w-full flex items-center gap-3 py-3 px-4 hover:bg-[var(--bg-hover)] transition-colors"
           >
             {linkCopied ? (
               <Check className="w-5 h-5 text-[var(--accent-green)]" />
@@ -460,7 +483,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
       {/* Footer - Logout Button */}
       <div className="shrink-0 px-4 pt-3 pb-6 border-t border-[var(--border-default)]">
         <button
-          onClick={handleLogout}
+          onClick={() => setShowLogoutConfirm(true)}
           disabled={isLoggingOut}
           className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors disabled:opacity-50"
         >
@@ -477,7 +500,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           <div className="bg-[var(--bg-primary)] rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
             <div className="p-4">
               <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-2">
-                Delete Private Translations?
+                Delete Private Translations Extension?
               </h3>
               <p className="text-[14px] text-[var(--text-secondary)]">
                 This will remove the translation models from your device. You can download them again anytime.
@@ -500,6 +523,39 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
                 className="flex-1 py-3 text-[14px] font-medium text-red-500 hover:bg-[var(--bg-hover)] transition-colors border-l border-[var(--border-default)]"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Dialog */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-[var(--bg-primary)] rounded-xl shadow-xl max-w-sm w-full mx-4 overflow-hidden">
+            <div className="p-4">
+              <h3 className="text-[16px] font-semibold text-[var(--text-primary)] mb-2">
+                Log out?
+              </h3>
+              <p className="text-[14px] text-[var(--text-secondary)]">
+                Are you sure you want to log out of your account?
+              </p>
+            </div>
+            <div className="flex border-t border-[var(--border-default)]">
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-3 text-[14px] font-medium text-[var(--accent-blue)] hover:bg-[var(--bg-hover)] transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  handleLogout();
+                }}
+                className="flex-1 py-3 text-[14px] font-medium text-red-500 hover:bg-[var(--bg-hover)] transition-colors border-l border-[var(--border-default)]"
+              >
+                Log Out
               </button>
             </div>
           </div>

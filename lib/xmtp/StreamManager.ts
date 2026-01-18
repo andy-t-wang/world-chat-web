@@ -725,7 +725,17 @@ class XMTPStreamManager {
         this.conversations.set(conv.id, conv);
 
         // Create placeholder metadata (fast, no async)
+        // Get consent state synchronously to prevent request flicker
         const isConvDm = isDm(conv);
+        let placeholderConsent: 'allowed' | 'denied' | 'unknown' = 'unknown';
+        try {
+          // consentState() is actually sync in the SDK despite returning Promise
+          const rawConsent = await conv.consentState();
+          if (rawConsent === ConsentState.Allowed) placeholderConsent = 'allowed';
+          else if (rawConsent === ConsentState.Denied) placeholderConsent = 'denied';
+        } catch {
+          // Fall back to unknown
+        }
         const placeholderMetadata: ConversationMetadata = {
           id: conv.id,
           conversationType: isConvDm ? 'dm' : 'group',
@@ -738,7 +748,7 @@ class XMTPStreamManager {
           lastMessagePreview: '', // Will be populated in phase 2
           lastActivityNs: BigInt(0),
           unreadCount: 0,
-          consentState: 'unknown',
+          consentState: placeholderConsent,
           disappearingMessagesEnabled: false,
         };
         this.conversationMetadata.set(conv.id, placeholderMetadata);

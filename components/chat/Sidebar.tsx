@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useAtom } from 'jotai';
-import { Search, SquarePen, X, Settings } from 'lucide-react';
+import { Search, SquarePen, X, Settings, CheckCircle } from 'lucide-react';
 import { ConversationList } from './ConversationList';
 import { MessageRequestsView } from './MessageRequestsView';
 import { SettingsPanel } from './SettingsPanel';
@@ -12,6 +12,7 @@ import { UpdateBanner } from './UpdateBanner';
 import { settingsPanelOpenAtom } from '@/stores/settings';
 import { showMessageRequestsAtom } from '@/stores/ui';
 import { useMessageRequests } from '@/hooks/useConversations';
+import { useTranslation } from '@/hooks/useTranslation';
 
 interface SidebarProps {
   onNewChat?: () => void;
@@ -26,6 +27,23 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
   const [showRequests, setShowRequests] = useAtom(showMessageRequestsAtom);
   const [showSettings, setShowSettings] = useAtom(settingsPanelOpenAtom);
   const { requestCount, newRequestCount } = useMessageRequests();
+
+  // Translation toast
+  const { isInitializing, isInitialized, progress } = useTranslation();
+  const [showTranslationToast, setShowTranslationToast] = useState(false);
+  const wasInitializingRef = useRef(false);
+
+  // Show toast when translation finishes (and settings is not open)
+  useEffect(() => {
+    if (isInitializing) {
+      wasInitializingRef.current = true;
+    } else if (wasInitializingRef.current && isInitialized && !showSettings) {
+      wasInitializingRef.current = false;
+      setShowTranslationToast(true);
+      const timer = setTimeout(() => setShowTranslationToast(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitializing, isInitialized, showSettings]);
 
   // Debounce search query - 250ms after user stops typing
   useEffect(() => {
@@ -155,6 +173,16 @@ export function Sidebar({ onNewChat, className, width }: SidebarProps) {
           </button>
         </div>
       </div>
+
+      {/* Translation Success Toast */}
+      {showTranslationToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2 px-4 py-3 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)]">
+            <CheckCircle className="w-5 h-5 text-green-500" />
+            <span className="text-[14px] text-[var(--text-primary)]">Private Translations installed</span>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

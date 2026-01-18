@@ -38,6 +38,49 @@ export function useTranslation() {
   const cleanupRef = useRef<(() => void) | null>(null);
   const initAttemptedRef = useRef(false);
 
+  // Always subscribe to progress updates when mounted (to catch ongoing initialization)
+  useEffect(() => {
+    if (!isElectron() || !window.electronAPI?.translation) return;
+
+    // Query current progress state on mount (in case initialization is already in progress)
+    const checkCurrentProgress = async () => {
+      if (window.electronAPI?.translation?.getProgress) {
+        try {
+          const state = await window.electronAPI.translation.getProgress();
+          if (state.isInitializing) {
+            setIsInitializing(true);
+            if (state.progress) {
+              setProgress(state.progress);
+            }
+          }
+        } catch (err) {
+          console.error('[useTranslation] Failed to get current progress:', err);
+        }
+      }
+    };
+    checkCurrentProgress();
+
+    // Subscribe to progress updates
+    if (window.electronAPI.translation.onProgress) {
+      const cleanup = window.electronAPI.translation.onProgress((p) => {
+        setProgress(p);
+        // If we're receiving progress, we're initializing
+        if (p && p.progress < 100) {
+          setIsInitializing(true);
+        }
+      });
+
+      cleanupRef.current = cleanup;
+    }
+
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+    };
+  }, []);
+
   // Check if translation was previously enabled and auto-initialize
   useEffect(() => {
     if (initAttemptedRef.current) return;
@@ -61,13 +104,6 @@ export function useTranslation() {
           console.log("[useTranslation] Auto-initializing translation (was previously enabled)");
           setIsInitializing(true);
 
-          // Subscribe to progress updates
-          if (window.electronAPI.translation.onProgress) {
-            cleanupRef.current = window.electronAPI.translation.onProgress((p) => {
-              setProgress(p);
-            });
-          }
-
           try {
             await window.electronAPI.translation.initialize();
             setIsInitialized(true);
@@ -78,10 +114,6 @@ export function useTranslation() {
           } finally {
             setIsInitializing(false);
             setProgress(null);
-            if (cleanupRef.current) {
-              cleanupRef.current();
-              cleanupRef.current = null;
-            }
           }
         }
       } catch (err) {
@@ -90,16 +122,6 @@ export function useTranslation() {
     };
 
     checkAndRestore();
-  }, []);
-
-  // Clean up progress listener on unmount
-  useEffect(() => {
-    return () => {
-      if (cleanupRef.current) {
-        cleanupRef.current();
-        cleanupRef.current = null;
-      }
-    };
   }, []);
 
   /**
@@ -129,14 +151,6 @@ export function useTranslation() {
 
     setIsInitializing(true);
     setError(null);
-    setProgress(null);
-
-    // Subscribe to progress updates
-    if (window.electronAPI.translation.onProgress) {
-      cleanupRef.current = window.electronAPI.translation.onProgress((p) => {
-        setProgress(p);
-      });
-    }
 
     try {
       await window.electronAPI.translation.initialize();
@@ -149,11 +163,6 @@ export function useTranslation() {
     } finally {
       setIsInitializing(false);
       setProgress(null);
-      // Clean up progress listener
-      if (cleanupRef.current) {
-        cleanupRef.current();
-        cleanupRef.current = null;
-      }
     }
   }, [isInitialized]);
 

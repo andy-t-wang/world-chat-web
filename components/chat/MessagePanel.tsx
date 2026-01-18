@@ -80,6 +80,18 @@ import type { PendingMessage } from "@/types/messages";
 // Common reaction emojis
 const REACTION_EMOJIS = ["❤️", "👍", "👎", "😂", "😮", "😢"];
 
+// Languages for outgoing message translation
+const TRANSLATE_LANGUAGES = [
+  { code: "es", name: "Spanish", abbr: "ES", flag: "🇪🇸" },
+  { code: "fr", name: "French", abbr: "FR", flag: "🇫🇷" },
+  { code: "de", name: "German", abbr: "DE", flag: "🇩🇪" },
+  { code: "pt", name: "Portuguese", abbr: "PT", flag: "🇵🇹" },
+  { code: "zh", name: "Chinese", abbr: "ZH", flag: "🇨🇳" },
+  { code: "ja", name: "Japanese", abbr: "JA", flag: "🇯🇵" },
+  { code: "ko", name: "Korean", abbr: "KO", flag: "🇰🇷" },
+  { code: "ar", name: "Arabic", abbr: "AR", flag: "🇸🇦" },
+];
+
 // Status message patterns - these are system messages shown as centered pills
 const STATUS_MESSAGE_PATTERNS = [
   /^.+ was added to the group$/,
@@ -941,6 +953,7 @@ export function MessagePanel({
   const [isSending, setIsSending] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HighlightedInputRef>(null);
+  const languageSelectorRef = useRef<HTMLButtonElement>(null);
 
   // Reaction picker state
   const [reactionPicker, setReactionPicker] = useState<{
@@ -1108,6 +1121,16 @@ export function MessagePanel({
   // Auto-translate state for this conversation
   const [autoTranslate, setAutoTranslateState] = useState(false);
 
+  // Outgoing message translation state
+  const [outgoingTranslateTo, setOutgoingTranslateTo] = useState<string | null>(null);
+  const [showLanguageSelector, setShowLanguageSelector] = useState(false);
+  const [translationPreview, setTranslationPreview] = useState<{
+    original: string;
+    translated: string;
+    targetLang: string;
+  } | null>(null);
+  const [isTranslatingOutgoing, setIsTranslatingOutgoing] = useState(false);
+
   // Load auto-translate preference on conversation change
   useEffect(() => {
     if (conversationId && translationEnabled) {
@@ -1116,6 +1139,20 @@ export function MessagePanel({
     // Reset auto-translated tracking when conversation changes
     autoTranslatedRef.current = new Set();
   }, [conversationId, translationEnabled, isAutoTranslateEnabled]);
+
+  // Close language selector when clicking outside
+  useEffect(() => {
+    if (!showLanguageSelector) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (languageSelectorRef.current && !languageSelectorRef.current.contains(e.target as Node)) {
+        setShowLanguageSelector(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [showLanguageSelector]);
 
   // Restore cached translations when conversation changes (skip for disappearing message conversations)
   useEffect(() => {
@@ -1745,6 +1782,53 @@ export function MessagePanel({
     }
   };
 
+  // Show translation preview before sending
+  const handleShowTranslationPreview = async () => {
+    if (!message.trim() || !outgoingTranslateTo || isTranslatingOutgoing) return;
+
+    setIsTranslatingOutgoing(true);
+    try {
+      const result = await translate(message.trim(), "en", outgoingTranslateTo);
+      if (result?.translatedText) {
+        setTranslationPreview({
+          original: message.trim(),
+          translated: result.translatedText,
+          targetLang: outgoingTranslateTo,
+        });
+      } else {
+        // Translation returned empty, send original
+        handleSend();
+      }
+    } catch (error) {
+      console.error("Translation failed:", error);
+      // Fall back to sending original
+      handleSend();
+    } finally {
+      setIsTranslatingOutgoing(false);
+    }
+  };
+
+  // Send the translated message
+  const handleSendTranslated = async () => {
+    if (!translationPreview || isSending) return;
+
+    const content = translationPreview.translated;
+    const replyToId = replyingTo?.messageId;
+
+    setMessage("");
+    setTranslationPreview(null);
+    setReplyingTo(null);
+    setIsSending(true);
+
+    try {
+      await sendMessage(content, replyToId);
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const handleRetry = async (pendingId: string) => {
     try {
       await retryMessage(pendingId);
@@ -1754,8 +1838,29 @@ export function MessagePanel({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Escape or Backspace cancels translation preview
+    if ((e.key === "Escape" || e.key === "Backspace") && translationPreview) {
+      e.preventDefault();
+      setTranslationPreview(null);
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+
+      // If preview is showing, send the translated message
+      if (translationPreview) {
+        handleSendTranslated();
+        return;
+      }
+
+      // If outgoing translation is enabled, show preview first
+      if (outgoingTranslateTo && message.trim()) {
+        handleShowTranslationPreview();
+        return;
+      }
+
+      // Normal send
       handleSend();
     }
   };
@@ -3213,6 +3318,22 @@ export function MessagePanel({
         />
       )}
 
+      {/* Translation Preview */}
+      {translationPreview && !isMessageRequest && (
+        <div className="shrink-0 px-4 py-2 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-[12px] text-[var(--text-tertiary)] flex items-center gap-1">
+              <span>{TRANSLATE_LANGUAGES.find(l => l.code === translationPreview.targetLang)?.flag}</span>
+              <span>{TRANSLATE_LANGUAGES.find(l => l.code === translationPreview.targetLang)?.abbr || translationPreview.targetLang}</span>
+            </span>
+            <span className="text-[11px] text-[var(--text-quaternary)]">
+              Enter to send
+            </span>
+          </div>
+          <div className="text-[14px] text-[var(--text-primary)]">{translationPreview.translated}</div>
+        </div>
+      )}
+
       {/* Input Area */}
       {isMessageRequest ? (
         <div className="shrink-0 px-4 py-3 border-t border-[var(--border-default)] bg-[var(--bg-secondary)]">
@@ -3222,7 +3343,7 @@ export function MessagePanel({
           </div>
         </div>
       ) : (
-        <div className="shrink-0 px-4 py-2 border-t border-[var(--border-default)] bg-[var(--bg-primary)]">
+        <div className="shrink-0 px-4 py-2 border-t border-[var(--border-default)] bg-[var(--bg-primary)] relative">
           <div className="flex items-center gap-2">
             <button
               onClick={() =>
@@ -3232,6 +3353,55 @@ export function MessagePanel({
             >
               <Paperclip className="w-5 h-5 text-[var(--text-quaternary)]" />
             </button>
+
+            {/* Translate button - only show when translation is available */}
+            {translationEnabled && (
+              <>
+                <button
+                  ref={languageSelectorRef}
+                  onClick={() => setShowLanguageSelector(!showLanguageSelector)}
+                  className={`w-11 h-11 flex items-center justify-center rounded-xl transition-colors shrink-0 self-stretch ${
+                    outgoingTranslateTo
+                      ? "bg-[var(--accent-blue)]/10"
+                      : "hover:bg-[var(--bg-hover)] text-[var(--text-quaternary)]"
+                  }`}
+                  title={outgoingTranslateTo ? `Translating to ${TRANSLATE_LANGUAGES.find(l => l.code === outgoingTranslateTo)?.name}` : "Translate message"}
+                >
+                  {isTranslatingOutgoing ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-[var(--accent-blue)]" />
+                  ) : outgoingTranslateTo ? (
+                    <span className="text-[20px] h-5 flex items-center justify-center">{TRANSLATE_LANGUAGES.find(l => l.code === outgoingTranslateTo)?.flag}</span>
+                  ) : (
+                    <Languages className="w-5 h-5" />
+                  )}
+                </button>
+
+                {/* Language Selector Dropdown */}
+                {showLanguageSelector && (
+                  <div className="absolute bottom-14 left-16 bg-[var(--bg-primary)] rounded-xl shadow-lg border border-[var(--border-default)] p-1 z-50">
+                    <div className="grid grid-cols-4 gap-0.5" style={{ width: '144px' }}>
+                      {TRANSLATE_LANGUAGES.map(lang => (
+                        <button
+                          key={lang.code}
+                          onClick={() => {
+                            setOutgoingTranslateTo(outgoingTranslateTo === lang.code ? null : lang.code);
+                            setShowLanguageSelector(false);
+                          }}
+                          className={`w-[34px] h-[34px] rounded-md text-[10px] hover:bg-[var(--bg-hover)] transition-colors flex flex-col items-center justify-center ${
+                            outgoingTranslateTo === lang.code ? "bg-[var(--accent-blue)]/10" : ""
+                          }`}
+                          title={lang.name}
+                        >
+                          <span className="text-[16px] leading-none">{lang.flag}</span>
+                          <span className={`font-medium ${outgoingTranslateTo === lang.code ? "text-[var(--accent-blue)]" : "text-[var(--text-tertiary)]"}`}>{lang.abbr}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
             <HighlightedInput
               ref={inputRef}
               value={message}
